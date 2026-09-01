@@ -177,6 +177,25 @@ interface NewWorkspaceScreenProps {
   projectId?: string;
   displayName?: string;
   draftId?: string;
+  initialPrompt?: string;
+}
+
+function useSeedNewWorkspacePrompt(
+  chatDraft: ReturnType<typeof useAgentInputDraft>,
+  initialPrompt: string | undefined,
+): void {
+  const seededPromptRef = useRef(false);
+  useEffect(() => {
+    if (seededPromptRef.current || !chatDraft.isHydrated || initialPrompt === undefined) {
+      return;
+    }
+    seededPromptRef.current = true;
+    chatDraft.replaceText(initialPrompt);
+  }, [chatDraft, initialPrompt]);
+}
+
+function initialPromptText(initialPrompt: string | undefined): string {
+  return initialPrompt ?? "";
 }
 
 // A terminal launch sends argv, not a message: there is nothing to attach and
@@ -1544,6 +1563,7 @@ export function NewWorkspaceScreen({
   projectId,
   displayName: displayNameProp,
   draftId,
+  initialPrompt,
 }: NewWorkspaceScreenProps) {
   const queryClient = useQueryClient();
   const { theme } = useUnistyles();
@@ -1610,7 +1630,9 @@ export function NewWorkspaceScreen({
     () => resolveLaunchTarget(manualLaunchTarget ?? formPreferences.launchTarget, terminalProfiles),
     [manualLaunchTarget, formPreferences.launchTarget, terminalProfiles],
   );
-  const [terminalPromptText, setTerminalPromptText] = useState("");
+  const [terminalPromptText, setTerminalPromptText] = useState(() =>
+    initialPromptText(initialPrompt),
+  );
   const {
     isTerminalLaunch,
     selectedTerminalProfile,
@@ -1675,6 +1697,7 @@ export function NewWorkspaceScreen({
       initialSetup: forkDraftSetup?.setup,
     }),
   });
+  useSeedNewWorkspacePrompt(chatDraft, initialPrompt);
   const composerState = chatDraft.composerState;
   const [pickerSelection, dispatchPickerSelection] = useReducer(
     reducePickerSelection,
