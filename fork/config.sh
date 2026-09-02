@@ -1,5 +1,5 @@
-# Shared settings for fork/sync.sh and fork/build.sh.
-# Override any of these in the environment; nothing here is machine-specific.
+# Shared settings for the fork/ scripts. Override any of these in the
+# environment; nothing here is machine-specific.
 
 # Where upstream and your fork live.
 UPSTREAM_REMOTE="${FORK_UPSTREAM_REMOTE:-upstream}"
@@ -10,16 +10,18 @@ FORK_REMOTE="${FORK_REMOTE:-origin}"
 TOOLING_REF="${FORK_TOOLING_REF:-fork-tooling}"
 TARGET="${FORK_TARGET_BRANCH:-panrafal}"
 
-# Scratch and build checkouts. Kept outside the repo so they survive rebuilds
-# and out of `.git/` so agents can be pointed at them.
+# Scratch, build and artifact directories. Kept outside the repo so they
+# survive rebuilds and out of `.git/` so agents can be pointed at them.
 WORK_ROOT="${FORK_WORK_ROOT:-$HOME/.paseo-fork}"
 SYNC_DIR="$WORK_ROOT/sync"     # throwaway merge worktree
 BUILD_DIR="$WORK_ROOT/build"   # persistent build checkout (keeps node_modules)
+DIST_DIR="$WORK_ROOT/dist"     # packed npm tarballs
 
-# The side-by-side daemon fork/build.sh installs on this machine.
-FORK_PASEO_HOME="${FORK_PASEO_HOME:-$HOME/.paseo-fork/home}"
-FORK_PASEO_LISTEN="${FORK_PASEO_LISTEN:-127.0.0.1:6866}"
-FORK_BIN_DIR="${FORK_BIN_DIR:-$HOME/.local/bin}"
+# How the laptop reaches this machine to install a daemon build. The scripts
+# never run these themselves; they print the command for you to paste.
+FORK_DEVBOX_SSH="${FORK_DEVBOX_SSH:-devbox-admin}"
+FORK_DEVBOX_NPM_PREFIX="${FORK_DEVBOX_NPM_PREFIX:-/usr}"
+FORK_DEVBOX_SERVICE="${FORK_DEVBOX_SERVICE:-paseo}"
 
 # Agent used by `--agent` conflict resolution.
 FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-claude}"
@@ -30,6 +32,19 @@ warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
 die() {
   printf '\033[31merror:\033[0m %s\n' "$*" >&2
   exit 1
+}
+
+# Print the command to paste locally, and push it to the terminal's clipboard
+# with OSC 52 so it can be pasted without selecting it. Terminals that do not
+# support OSC 52 ignore the sequence, so the printed block is the contract.
+offer_command() {
+  local label="$1" command="$2"
+  printf '\n\033[1m%s\033[0m\n' "$label"
+  printf '\033[36m%s\033[0m\n\n' "$command"
+  if [ -t 1 ]; then
+    printf '\033]52;c;%s\a' "$(printf '%s' "$command" | base64 | tr -d '\n')"
+    printf '(copied to your clipboard, if the terminal allows it)\n'
+  fi
 }
 
 require_repo() {

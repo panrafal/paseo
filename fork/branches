@@ -7,8 +7,9 @@
 #
 # When a PR lands upstream, delete its line. The next sync drops it.
 
-# Fork identity: own update feed, own app/EAS identifiers. Not for upstream.
-origin/fork-dist
+# Fork identity: own update feed, own app/EAS identifiers, upstream workflows
+# disabled, panrafal: scripts in paseo.json. Never sent upstream.
+origin/panrafal-dist
 
 # Open PRs against getpaseo/paseo.
 origin/add-daemon-loopback-password-bypass

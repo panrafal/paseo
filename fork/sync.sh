@@ -45,6 +45,31 @@ require_repo
 [ "$(git config --get rerere.enabled || true)" = "true" ] || git config rerere.enabled true
 [ "$(git config --get rerere.autoupdate || true)" = "true" ] || git config rerere.autoupdate true
 
+# `git branch -f` refuses to move a branch that is checked out somewhere, and
+# both patch branches and the target routinely are. Move the worktree instead.
+move_branch() {
+  local branch="$1" sha="$2" wt
+  wt="$(git worktree list --porcelain |
+    awk -v b="refs/heads/$branch" '
+      /^worktree /{p=$2} /^branch /{if ($2==b) {print p; exit}}')"
+  if [ -z "$wt" ]; then
+    git branch -f "$branch" "$sha"
+    return
+  fi
+  [ -z "$(git -C "$wt" status --porcelain)" ] ||
+    die "$branch is checked out with local changes in $wt — commit or clear them, then re-run"
+  git -C "$wt" reset --hard "$sha" >/dev/null
+  say "reset worktree $wt to the new $branch"
+}
+
+# A rebase is in progress when git's state directory exists; REBASE_HEAD can
+# linger after one finishes.
+rebase_in_progress() {
+  local dir="$1"
+  [ -d "$(git -C "$dir" rev-parse --git-path rebase-merge)" ] ||
+    [ -d "$(git -C "$dir" rev-parse --git-path rebase-apply)" ]
+}
+
 # Hand a stopped merge or rebase to a Paseo agent. Returns non-zero if the
 # agent did not finish the job.
 resolve_with_agent() {
@@ -137,19 +162,26 @@ if [ "$do_rebase" -eq 1 ]; then
     rm -rf "$rb"
     git worktree prune
     git worktree add --detach "$rb" "$local_branch" >/dev/null
-    if ! git -C "$rb" rebase "$BASE" >/dev/null 2>&1; then
+    # A rebase can stop once per commit, so keep resolving until it is done.
+    git -C "$rb" rebase "$BASE" >/dev/null 2>&1 || true
+    while rebase_in_progress "$rb"; do
       if [ "$use_agent" -eq 1 ] && resolve_with_agent "$rb" "rebase of $local_branch onto $BASE"; then
-        git -C "$rb" rebase --continue >/dev/null 2>&1 || true
+        GIT_EDITOR=true git -C "$rb" rebase --continue >/dev/null 2>&1 || true
+        continue
       fi
-      if git -C "$rb" rev-parse --verify -q REBASE_HEAD >/dev/null 2>&1; then
-        git -C "$rb" rebase --abort >/dev/null 2>&1 || true
-        git worktree remove --force "$rb" >/dev/null 2>&1 || true
-        die "rebase of $local_branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
-      fi
-    fi
-    git branch -f "$local_branch" "$(git -C "$rb" rev-parse HEAD)"
+      git -C "$rb" rebase --abort >/dev/null 2>&1 || true
+      git worktree remove --force "$rb" >/dev/null 2>&1 || true
+      die "rebase of $local_branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
+    done
+    rebased_sha="$(git -C "$rb" rev-parse HEAD)"
     git worktree remove --force "$rb" >/dev/null 2>&1 || true
-    say "rebased $local_branch onto $BASE — push it with: git push --force-with-lease $FORK_REMOTE $local_branch"
+    move_branch "$local_branch" "$rebased_sha"
+    if [ "$push" -eq 1 ]; then
+      git push --force-with-lease "$FORK_REMOTE" "$local_branch:$local_branch"
+      say "rebased $local_branch onto $BASE and pushed it"
+    else
+      say "rebased $local_branch onto $BASE — push it with: git push --force-with-lease $FORK_REMOTE $local_branch"
+    fi
   done
   # Rebased local branches are now ahead of their remote refs; merge those.
   for i in "${!REFS[@]}"; do
@@ -215,18 +247,7 @@ done
 
 RESULT="$(git -C "$SYNC_DIR" rev-parse HEAD)"
 
-# Move the branch. If it is checked out somewhere, update that worktree too.
-WT_PATH="$(git worktree list --porcelain |
-  awk -v b="refs/heads/$TARGET" '
-    /^worktree /{p=$2} /^branch /{if ($2==b) {print p; exit}}')"
-if [ -n "$WT_PATH" ]; then
-  [ -z "$(git -C "$WT_PATH" status --porcelain)" ] ||
-    die "$TARGET is checked out with local changes in $WT_PATH — commit or clear them, then re-run"
-  git -C "$WT_PATH" reset --hard "$RESULT" >/dev/null
-  say "reset worktree $WT_PATH to the new $TARGET"
-else
-  git branch -f "$TARGET" "$RESULT"
-fi
+move_branch "$TARGET" "$RESULT"
 
 cleanup
 trap - EXIT
