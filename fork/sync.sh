@@ -1,81 +1,100 @@
 #!/usr/bin/env bash
 #
-# fork/sync.sh — rebuild the `panrafal` integration branch.
+# fork/sync.sh — rebuild the integration branch.
 #
 #   panrafal = upstream/main + fork-tooling + every ref in fork/branches
 #
 # The branch is rebuilt from scratch every run, so it is always exactly
-# "latest upstream plus my patches" with no accumulated merge cruft. That
-# means the result is a new history each time and the push is a force-push.
+# "latest upstream plus my patches" with no accumulated merge cruft. The
+# result is a new history each time, so publishing it is a force-push.
 #
 # Usage:
-#   fork/sync.sh              build locally, print the push command
-#   fork/sync.sh --push       build and force-push to origin/panrafal
-#   fork/sync.sh --no-fetch   skip fetching (use the refs you already have)
+#   fork/sync.sh                 rebuild locally, print the push command
+#   fork/sync.sh --push          rebuild and force-push to origin/panrafal
+#   fork/sync.sh --agent         hand merge conflicts to a Paseo agent
+#   fork/sync.sh --rebase        also rebase each feature branch onto upstream
+#   fork/sync.sh --no-fetch      use the refs already fetched
 #
-# Environment overrides: FORK_UPSTREAM_REMOTE, FORK_UPSTREAM_BRANCH,
-# FORK_REMOTE, FORK_TOOLING_REF, FORK_TARGET_BRANCH.
-#
-# Run it from any worktree of this repo; it builds in a scratch worktree and
-# never touches your checkout.
+# See fork/README.md. Settings live in fork/config.sh.
 
 set -euo pipefail
 
-UPSTREAM_REMOTE="${FORK_UPSTREAM_REMOTE:-upstream}"
-UPSTREAM_BRANCH="${FORK_UPSTREAM_BRANCH:-main}"
-FORK_REMOTE="${FORK_REMOTE:-origin}"
-TOOLING_REF="${FORK_TOOLING_REF:-fork-tooling}"
-TARGET="${FORK_TARGET_BRANCH:-panrafal}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=fork/config.sh
+. "$HERE/config.sh"
 
-push=0
-fetch=1
+push=0 fetch=1 use_agent=0 do_rebase=0
 for arg in "$@"; do
   case "$arg" in
     --push) push=1 ;;
+    --agent) use_agent=1 ;;
+    --rebase) do_rebase=1 ;;
     --no-fetch) fetch=0 ;;
     -h | --help)
-      sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
-    *)
-      echo "fork/sync.sh: unknown argument: $arg" >&2
-      exit 2
-      ;;
+    *) die "unknown argument: $arg" ;;
   esac
 done
 
-say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
-die() {
-  printf '\033[31merror:\033[0m %s\n' "$*" >&2
-  exit 1
+require_repo
+
+# Conflict resolutions are remembered and replayed, so a collision between
+# upstream and one of your patches is hand-resolved once, not every sync.
+[ "$(git config --get rerere.enabled || true)" = "true" ] || git config rerere.enabled true
+[ "$(git config --get rerere.autoupdate || true)" = "true" ] || git config rerere.autoupdate true
+
+# Hand a stopped merge or rebase to a Paseo agent. Returns non-zero if the
+# agent did not finish the job.
+resolve_with_agent() {
+  local dir="$1" what="$2"
+  command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
+  local files
+  files="$(git -C "$dir" diff --name-only --diff-filter=U | sed 's/^/  /')"
+  say "Handing $what to a Paseo agent ($FORK_AGENT_PROVIDER)"
+  paseo run \
+    --cwd "$dir" \
+    --provider "$FORK_AGENT_PROVIDER" \
+    --mode bypass \
+    --wait-timeout "$FORK_AGENT_TIMEOUT" \
+    --title "fork sync: resolve $what" \
+    --label fork-sync=1 \
+    "You are resolving a git merge conflict in a throwaway integration worktree at $dir.
+
+Context: this checkout is the '$TARGET' integration branch being rebuilt as
+'$UPSTREAM_REMOTE/$UPSTREAM_BRANCH' plus a series of personal patch branches. The
+conflict is between new upstream code and one of those patches ($what).
+
+Conflicted files:
+$files
+
+Do this and nothing else:
+1. Read both sides of every conflict. 'ours' is upstream plus the patches merged
+   so far; 'theirs' is the patch branch being merged.
+2. Resolve so the upstream change and the intent of the patch both survive. When
+   upstream has restructured or already implemented what the patch did, prefer
+   upstream and keep only what the patch adds on top. Never drop an upstream
+   change to make a patch apply.
+3. Leave no conflict markers anywhere.
+4. Run 'npm run typecheck' and 'npm run lint' if the conflicts touched source
+   files, and fix what you broke.
+5. 'git add -A' and 'git commit --no-edit'. Do not push, do not amend history,
+   do not touch any other branch or worktree.
+
+If a conflict genuinely cannot be resolved without a decision only the repo
+owner can make, stop, leave the conflict in place, and explain why." || true
+
+  if [ -n "$(git -C "$dir" diff --name-only --diff-filter=U)" ]; then
+    return 1
+  fi
+  if git -C "$dir" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1; then
+    git -C "$dir" commit --no-edit >/dev/null
+  fi
+  return 0
 }
 
-git rev-parse --git-dir >/dev/null 2>&1 || die "not inside a git repository"
-COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir)"
-BUILD_DIR="$COMMON_DIR/fork-sync"
-
-git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1 ||
-  die "remote '$UPSTREAM_REMOTE' is missing. Add it:
-  git remote add $UPSTREAM_REMOTE https://github.com/getpaseo/paseo.git"
-
-# Conflict resolutions are remembered and replayed, so a conflict between
-# upstream and one of your patches is hand-resolved once, not every sync.
-[ "$(git config --get rerere.enabled || true)" = "true" ] ||
-  git config rerere.enabled true
-[ "$(git config --get rerere.autoupdate || true)" = "true" ] ||
-  git config rerere.autoupdate true
-
-# A left-over build worktree means the previous run stopped on a conflict.
-if [ -e "$BUILD_DIR" ]; then
-  if git -C "$BUILD_DIR" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1; then
-    die "a previous sync stopped on a conflict in:
-  $BUILD_DIR
-Finish it (git -C '$BUILD_DIR' status), or throw it away:
-  git worktree remove --force '$BUILD_DIR'"
-  fi
-  git worktree remove --force "$BUILD_DIR" >/dev/null 2>&1 || true
-fi
-git worktree prune
+# ---------------------------------------------------------------- fetch ----
 
 if [ "$fetch" -eq 1 ]; then
   say "Fetching $UPSTREAM_REMOTE and $FORK_REMOTE"
@@ -85,17 +104,10 @@ fi
 
 BASE="$UPSTREAM_REMOTE/$UPSTREAM_BRANCH"
 git rev-parse --verify -q "$BASE^{commit}" >/dev/null || die "cannot resolve $BASE"
-
 git rev-parse --verify -q "$TOOLING_REF^{commit}" >/dev/null ||
-  die "tooling branch '$TOOLING_REF' not found — it holds fork/branches and this script"
+  die "tooling branch '$TOOLING_REF' not found — it holds fork/branches and these scripts"
 
-# Read the branch list from the tooling ref, not the working tree, so the
-# script behaves the same no matter which branch you invoke it from.
-mapfile -t REFS < <(
-  git show "$TOOLING_REF:fork/branches" |
-    sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^$/d'
-)
-
+mapfile -t REFS < <(read_branch_list)
 MERGE_REFS=("$TOOLING_REF" ${REFS[@]+"${REFS[@]}"})
 for ref in "${MERGE_REFS[@]}"; do
   git rev-parse --verify -q "$ref^{commit}" >/dev/null ||
@@ -104,42 +116,104 @@ done
 
 say "Base: $BASE ($(git log -1 --format='%h %s' "$BASE"))"
 
-git worktree add --detach "$BUILD_DIR" "$BASE" >/dev/null
-trap 'git worktree remove --force "$BUILD_DIR" >/dev/null 2>&1 || true' EXIT
+# --------------------------------------------------------------- rebase ----
+# Optional: move the patch branches themselves onto current upstream, so their
+# PRs stay mergeable and the integration merges stay trivial. Only local
+# branches are rebased; a remote-tracking ref is rebased through its local
+# branch of the same name when one exists.
+
+if [ "$do_rebase" -eq 1 ]; then
+  for ref in ${REFS[@]+"${REFS[@]}"}; do
+    local_branch="${ref#"$FORK_REMOTE"/}"
+    git show-ref --verify -q "refs/heads/$local_branch" || {
+      warn "no local branch '$local_branch' to rebase — merging $ref as-is"
+      continue
+    }
+    if git merge-base --is-ancestor "$BASE" "$local_branch"; then
+      say "rebase $local_branch: already on $BASE"
+      continue
+    fi
+    rb="$WORK_ROOT/rebase"
+    rm -rf "$rb"
+    git worktree prune
+    git worktree add --detach "$rb" "$local_branch" >/dev/null
+    if ! git -C "$rb" rebase "$BASE" >/dev/null 2>&1; then
+      if [ "$use_agent" -eq 1 ] && resolve_with_agent "$rb" "rebase of $local_branch onto $BASE"; then
+        git -C "$rb" rebase --continue >/dev/null 2>&1 || true
+      fi
+      if git -C "$rb" rev-parse --verify -q REBASE_HEAD >/dev/null 2>&1; then
+        git -C "$rb" rebase --abort >/dev/null 2>&1 || true
+        git worktree remove --force "$rb" >/dev/null 2>&1 || true
+        die "rebase of $local_branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
+      fi
+    fi
+    git branch -f "$local_branch" "$(git -C "$rb" rev-parse HEAD)"
+    git worktree remove --force "$rb" >/dev/null 2>&1 || true
+    say "rebased $local_branch onto $BASE — push it with: git push --force-with-lease $FORK_REMOTE $local_branch"
+  done
+  # Rebased local branches are now ahead of their remote refs; merge those.
+  for i in "${!REFS[@]}"; do
+    lb="${REFS[$i]#"$FORK_REMOTE"/}"
+    git show-ref --verify -q "refs/heads/$lb" && REFS[$i]="$lb"
+  done
+  MERGE_REFS=("$TOOLING_REF" ${REFS[@]+"${REFS[@]}"})
+fi
+
+# ---------------------------------------------------------------- build ----
+
+if [ -e "$SYNC_DIR" ]; then
+  if git -C "$SYNC_DIR" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1; then
+    die "a previous sync stopped on a conflict in:
+  $SYNC_DIR
+Finish it (git -C '$SYNC_DIR' status), or throw it away:
+  git worktree remove --force '$SYNC_DIR'"
+  fi
+  git worktree remove --force "$SYNC_DIR" >/dev/null 2>&1 || rm -rf "$SYNC_DIR"
+fi
+git worktree prune
+mkdir -p "$WORK_ROOT"
+
+git worktree add --detach "$SYNC_DIR" "$BASE" >/dev/null
+cleanup() { git worktree remove --force "$SYNC_DIR" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
 
 for ref in "${MERGE_REFS[@]}"; do
   short="$(git log -1 --format='%h' "$ref")"
-  if git -C "$BUILD_DIR" merge --no-ff --no-edit \
+  if git -C "$SYNC_DIR" merge --no-ff --no-edit \
     -m "Merge $ref into $TARGET" "$ref" >/dev/null 2>&1; then
     say "merged $ref ($short)"
     continue
   fi
-  # rerere may have replayed a stored resolution; if nothing is left
-  # unmerged, just commit and carry on.
-  if [ -z "$(git -C "$BUILD_DIR" diff --name-only --diff-filter=U)" ]; then
-    git -C "$BUILD_DIR" commit --no-edit >/dev/null
+  # rerere may have replayed a stored resolution already.
+  if [ -z "$(git -C "$SYNC_DIR" diff --name-only --diff-filter=U)" ]; then
+    git -C "$SYNC_DIR" commit --no-edit >/dev/null
     say "merged $ref ($short) — conflict replayed from rerere"
+    continue
+  fi
+  if [ "$use_agent" -eq 1 ] && resolve_with_agent "$SYNC_DIR" "merge of $ref"; then
+    say "merged $ref ($short) — conflict resolved by agent"
     continue
   fi
   trap - EXIT
   printf '\033[31mconflict\033[0m merging %s:\n' "$ref" >&2
-  git -C "$BUILD_DIR" diff --name-only --diff-filter=U | sed 's/^/  /' >&2
+  git -C "$SYNC_DIR" diff --name-only --diff-filter=U | sed 's/^/  /' >&2
   cat >&2 <<EOF
 
-Resolve it in the build worktree, then re-run this script:
+Resolve it in the sync worktree, then re-run this script:
 
-  cd $BUILD_DIR
+  cd $SYNC_DIR
   # edit, then:
   git add -A && git commit --no-edit
-  cd - && fork/sync.sh
+  fork/sync.sh
 
+Or re-run with --agent to let a Paseo agent try.
 The resolution is recorded by rerere and replayed on future syncs.
-To abandon instead: git worktree remove --force '$BUILD_DIR'
+To abandon: git worktree remove --force '$SYNC_DIR'
 EOF
   exit 1
 done
 
-RESULT="$(git -C "$BUILD_DIR" rev-parse HEAD)"
+RESULT="$(git -C "$SYNC_DIR" rev-parse HEAD)"
 
 # Move the branch. If it is checked out somewhere, update that worktree too.
 WT_PATH="$(git worktree list --porcelain |
@@ -154,7 +228,7 @@ else
   git branch -f "$TARGET" "$RESULT"
 fi
 
-git worktree remove --force "$BUILD_DIR" >/dev/null 2>&1 || true
+cleanup
 trap - EXIT
 
 say "$TARGET is now $(git log -1 --format='%h' "$TARGET") = $BASE + ${#MERGE_REFS[@]} branches"
