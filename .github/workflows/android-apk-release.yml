@@ -1,10 +1,8 @@
 name: Android APK Release
 
+# Disabled on the fork: upstream's automatic triggers are removed so pushes
+# and tags here never start a run. Still dispatchable by hand.
 on:
-  push:
-    tags:
-      - "v*"
-      - "android-v*"
   workflow_dispatch:
     inputs:
       tag:

@@ -1,10 +1,8 @@
 name: CI
 
+# Upstream CI checks every base branch, including stacked PRs and `next`.
+# Automatic triggers are disabled on the fork; merge queue and manual runs remain available.
 on:
-  push:
-    branches: [main]
-  # Every base branch, so stacked PRs and PRs into `next` get the same checks.
-  pull_request:
   merge_group:
   workflow_dispatch:
 
