@@ -1,9 +1,9 @@
 const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
-// A fork stamps its own prerelease shape, e.g. 0.7.2-pr.76d. Upstream's
-// pattern knows only stable and -beta.N, and every Expo config read goes
-// through this file, so an unrecognised version breaks even
-// `expo export --platform web` — which the daemon's bundled web UI build runs.
-const forkVersionPattern = /^(\d+)\.(\d+)\.(\d+)-pr\.[0-9a-f]{3}$/;
+// A fork stamps its own prerelease shape, e.g. 0.7.2-FR07a. Upstream's pattern
+// knows only stable and -beta.N, and every Expo config read goes through this
+// file, so an unrecognised version breaks even `expo export --platform web` —
+// which the daemon's bundled web UI build runs.
+const forkVersionPattern = /^(\d+)\.(\d+)\.(\d+)-FR[0-9a-f]{3}$/;
 const stableIosBuildSlot = 999;
 const FDROID_ABI_VERSION_CODE_SUFFIXES = {
   "armeabi-v7a": 1,
