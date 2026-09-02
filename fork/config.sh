@@ -22,6 +22,11 @@ DIST_DIR="$WORK_ROOT/dist"     # packed npm tarballs
 FORK_DEVBOX_SSH="${FORK_DEVBOX_SSH:-devbox-admin}"
 FORK_DEVBOX_NPM_PREFIX="${FORK_DEVBOX_NPM_PREFIX:-/usr}"
 FORK_DEVBOX_SERVICE="${FORK_DEVBOX_SERVICE:-paseo}"
+# Run after the restart to confirm the new daemon actually came up. The pause
+# is there because systemd returns as soon as the unit is started, not when the
+# daemon is serving.
+FORK_DEVBOX_SETTLE="${FORK_DEVBOX_SETTLE:-8}"
+FORK_DEVBOX_HEALTHCHECK="${FORK_DEVBOX_HEALTHCHECK:-sudo devbox-healthcheck}"
 
 # Fork identity lives in fork/dist.env; config.sh only needs the owner for
 # version stamping, so default it and let dist.env override.

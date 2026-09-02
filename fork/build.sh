@@ -121,10 +121,19 @@ build_daemon() {
     die "expected ${#PACKAGES[@]} tarballs in $DIST_DIR, found $count"
   say "Packed $count tarballs for $version in $DIST_DIR"
 
-  local tarballs
-  tarballs="$(for p in "${PACKAGES[@]}"; do printf '%s ' "$DIST_DIR/getpaseo-$p-$version.tgz"; done)"
+  # Brace expansion keeps the seven paths readable. It is expanded by the
+  # login shell on the far side, so devbox-admin needs bash or zsh, not dash.
+  # The order is dependency-first: npm has to see a package on disk before the
+  # one that requires it.
+  local list
+  list="$(
+    IFS=,
+    echo "${PACKAGES[*]}"
+  )"
   offer_command "Run this on your laptop to update the devbox daemon:" \
-    "ssh $FORK_DEVBOX_SSH \"sudo npm install -g --prefix $FORK_DEVBOX_NPM_PREFIX --allow-scripts=esbuild,node-pty ${tarballs% } && sudo systemctl restart $FORK_DEVBOX_SERVICE\""
+    "ssh $FORK_DEVBOX_SSH \"sudo npm install -g --prefix $FORK_DEVBOX_NPM_PREFIX --allow-scripts=esbuild,node-pty \\
+  $DIST_DIR/getpaseo-{$list}-$version.tgz \\
+  && sudo systemctl restart $FORK_DEVBOX_SERVICE && sleep $FORK_DEVBOX_SETTLE && $FORK_DEVBOX_HEALTHCHECK\""
   echo "Restarting the service drops every running agent on this machine,"
   echo "including any that is watching you paste it."
 }

@@ -123,12 +123,22 @@ would kill the agent doing it. So the build only packs tarballs into
 `~/.paseo-fork/dist`, and you run the install from your laptop:
 
 ```bash
-ssh devbox-admin "sudo npm install -g --prefix /usr --allow-scripts=esbuild,node-pty /home/paseo/.paseo-fork/dist/getpaseo-*.tgz && sudo systemctl restart paseo"
+ssh devbox-admin "sudo npm install -g --prefix /usr --allow-scripts=esbuild,node-pty \
+  /home/paseo/.paseo-fork/dist/getpaseo-{highlight,relay,protocol,client,plugin,server,cli}-0.7.2-fr.2.tgz \
+  && sudo systemctl restart paseo && sleep 8 && sudo devbox-healthcheck"
 ```
 
-`fork/build.sh daemon` prints that line with the exact versioned paths filled
-in. Override the target with `FORK_DEVBOX_SSH`, `FORK_DEVBOX_NPM_PREFIX` and
-`FORK_DEVBOX_SERVICE`.
+`fork/build.sh daemon` prints that line with the current version filled in.
+Override the pieces with `FORK_DEVBOX_SSH`, `FORK_DEVBOX_NPM_PREFIX`,
+`FORK_DEVBOX_SERVICE`, `FORK_DEVBOX_SETTLE` and `FORK_DEVBOX_HEALTHCHECK`.
+
+The brace expansion runs in `devbox-admin`'s login shell, so that account needs
+bash or zsh; under dash npm would receive a literal path with braces in it. The
+package order is dependency-first — npm has to see a package on disk before the
+one that requires it.
+
+`systemctl restart` returns as soon as the unit is started, not when the daemon
+is serving, which is what the pause before the healthcheck is for.
 
 `--allow-scripts` is needed because npm blocks install scripts by default;
 without it esbuild and node-pty install unconfigured.
