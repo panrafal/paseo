@@ -54,34 +54,26 @@ offer_command() {
 # The fork version, shared by every artifact so a daemon, a desktop app and a
 # TestFlight build from the same commit all report the same string.
 #
-#   0.7.2-pr.76d
+#   0.7.2-FR07a
 #   ^base   ^commit
 #
-# Short by choice, with two consequences worth knowing:
+# The FR prefix is not decoration: it keeps the prerelease identifier
+# alphanumeric. A bare sha like 076 would be an all-numeric identifier with a
+# leading zero, which semver forbids and npm rejects outright.
 #
-# - It does not sort. Semver compares `76d` against `abc` lexically, so roughly
-#   half of all updates look like downgrades. The desktop's in-app updater
-#   therefore cannot be relied on; fork/update-macos.sh installs by release
-#   recency instead and is unaffected.
-# - Three hex characters is 4096 values, so two commits eventually collide.
-#   That surfaces as `git tag` refusing a duplicate in fork/release.sh, which
-#   is loud and recoverable, not silent.
+# One consequence worth knowing: this does not sort. Semver compares FR07a
+# against FRb51 lexically, so roughly half of all updates look like downgrades
+# and the desktop's in-app updater cannot be relied on to offer a fork build.
+# fork/update-macos.sh installs by release recency instead and is unaffected.
+# Three hex characters is also 4096 values, so commits eventually collide; that
+# surfaces as `git tag` refusing a duplicate in fork/release.sh, which is loud
+# and recoverable rather than silent.
 fork_version() {
-  local ref="${1:-$TARGET}" base sha version
+  local ref="${1:-$TARGET}" base sha
   base="$(git show "$ref:package.json" |
     node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')"
   sha="$(git rev-parse "$ref")"
-  version="$base-pr.${sha:0:3}"
-  # Semver forbids a leading zero in an all-numeric prerelease identifier, so a
-  # sha like 076 (about 2% of commits) makes a version npm refuses outright.
-  # Fail here rather than three minutes into a pack.
-  if [[ "${sha:0:3}" =~ ^0[0-9][0-9]$ ]]; then
-    die "commit ${sha:0:7} yields $version, which is not valid semver:
-a leading zero is not allowed in an all-numeric prerelease identifier.
-Prefix the sha in fork_version() (0.7.2-pr.g076) to make this impossible,
-or build a different commit."
-  fi
-  echo "$version"
+  echo "$base-FR${sha:0:3}"
 }
 
 # App Store Connect requires CFBundleVersion to increase with every upload for

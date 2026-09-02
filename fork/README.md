@@ -83,29 +83,27 @@ Every fork artifact carries the same stamped version, so a daemon, a desktop
 app and a TestFlight build from one commit all report the same string:
 
 ```
-0.7.2-pr.76d
+0.7.2-FR07a
 ^^^^^ upstream base
-         ^^^ commit
+        ^^^ commit
 ```
 
 `paseo --version` on the devbox therefore tells you it is a fork build and
 which commit it came from — a plain `0.7.2` is upstream's.
 
+The `FR` prefix keeps the prerelease identifier alphanumeric. A bare sha like
+`076` would be an all-numeric identifier with a leading zero, which semver
+forbids and npm rejects outright — about 2% of commits.
+
 Short by choice, and the shortness costs two things:
 
-- **It does not sort.** Semver compares `76d` against `abc` lexically, so about
-  half of all updates look like downgrades. The desktop's in-app updater cannot
-  be relied on to offer a fork build; `fork/update-macos.sh` installs by release
-  recency instead and is unaffected. Use it.
+- **It does not sort.** Semver compares `FR07a` against `FRb51` lexically, so
+  about half of all updates look like downgrades. The desktop's in-app updater
+  cannot be relied on to offer a fork build; `fork/update-macos.sh` installs by
+  release recency instead and is unaffected. Use it.
 - **Three hex characters is 4096 values**, so two commits collide eventually.
   That surfaces as `git tag` refusing a duplicate in `fork/release.sh` — loud
   and recoverable, never silent.
-
-`fork_version()` also refuses to produce a version from a sha like `076`:
-semver forbids a leading zero in an all-numeric prerelease identifier, npm
-rejects it outright, and about 2% of commits would hit it. The build stops
-immediately with the fix in the message rather than failing three minutes into
-a pack.
 
 iOS is the one place a non-sorting version does not work: App Store Connect
 requires `CFBundleVersion` to increase with every upload for a given short
