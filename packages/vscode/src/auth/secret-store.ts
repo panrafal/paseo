@@ -1,7 +1,18 @@
+import { hostname } from "node:os";
 import * as vscode from "vscode";
 import { type FetchLike, validateDaemonPassword } from "../daemon/discovery";
+import { createDaemonPasswordKey } from "./password-key";
 
 function passwordKey(endpoint: string): string {
+  return createDaemonPasswordKey({
+    endpoint,
+    hostName: hostname(),
+    machineId: vscode.env.machineId,
+    remoteName: vscode.env.remoteName ?? null,
+  });
+}
+
+function legacyPasswordKey(endpoint: string): string {
   return `paseo.daemonPassword.${endpoint}`;
 }
 
@@ -9,6 +20,8 @@ export async function getPassword(
   context: vscode.ExtensionContext,
   endpoint: string,
 ): Promise<string | null> {
+  // Do not fall back to endpoint-only keys: localhost can identify a different
+  // daemon in every local, SSH, WSL, or Codespaces extension host.
   return (await context.secrets.get(passwordKey(endpoint))) ?? null;
 }
 
@@ -18,6 +31,7 @@ export async function setPassword(
   password: string,
 ): Promise<void> {
   await context.secrets.store(passwordKey(endpoint), password);
+  await context.secrets.delete(legacyPasswordKey(endpoint));
 }
 
 export async function clearPassword(
@@ -25,6 +39,7 @@ export async function clearPassword(
   endpoint: string,
 ): Promise<void> {
   await context.secrets.delete(passwordKey(endpoint));
+  await context.secrets.delete(legacyPasswordKey(endpoint));
 }
 
 export async function promptForDaemonPassword(input: {

@@ -54,8 +54,11 @@ pipe listen targets such as Unix sockets, Windows pipes, `unix:`, `pipe:`, and
 ## Password Handling
 
 If the daemon responds with `401`, the extension prompts for the daemon password
-and stores it in VS Code `SecretStorage`, keyed by endpoint. Users can manage the
-stored secret with these commands:
+and stores it in VS Code `SecretStorage`. The key includes the extension-host
+machine identity, remote kind, and daemon endpoint. A local daemon and SSH, WSL,
+or Codespaces daemons can therefore use different passwords even when each one
+listens on `127.0.0.1:6767`. Users can manage the secret for the daemon reached by
+the current VS Code window with these commands:
 
 - `Paseo: Set Daemon Password`
 - `Paseo: Clear Daemon Password`
@@ -63,6 +66,8 @@ stored secret with these commands:
 The plaintext password stays in the Node extension host. It is used there to
 validate the password and authenticate the daemon WebSocket connection; it is not
 written into the webview HTML, runtime config, or postMessage payloads.
+Endpoint-only secrets written by extension versions before 0.7.2 are not reused;
+each extension host prompts once before writing its scoped secret.
 
 ## VS Code-Owned Surfaces
 
