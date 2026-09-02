@@ -82,6 +82,8 @@ import {
   extractWsBearerProtocol,
   extractWsBearerToken,
   isBearerTokenValidAsync,
+  isLoopbackAddress,
+  isLoopbackPasswordExempt,
   type DaemonAuthConfig,
 } from "./auth.js";
 import { resolveSessionAdmission } from "./session-admission-auth.js";
@@ -826,7 +828,8 @@ export class VoiceAssistantWebSocketServer {
     const wss = new WebSocketServer({
       server,
       path: "/ws",
-      handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
+      handleProtocols: (protocols, request) =>
+        selectWebSocketProtocol(protocols, password, isUpgradePasswordExempt(auth, request)),
       verifyClient: ({ req }, callback) => {
         this.verifyWsUpgrade(
           req,
@@ -837,7 +840,7 @@ export class VoiceAssistantWebSocketServer {
       },
     });
     wss.on("connection", (ws, request) => {
-      void this.attachAuthenticatedSocket(ws, request, password);
+      void this.attachAuthenticatedSocket(ws, request, auth);
     });
     return wss;
   }
@@ -919,8 +922,10 @@ export class VoiceAssistantWebSocketServer {
   private async attachAuthenticatedSocket(
     ws: WebSocket,
     request: IncomingMessage,
-    password: string | undefined,
+    auth: DaemonAuthConfig | undefined,
   ): Promise<void> {
+    const password = auth?.password;
+    const loopbackExempt = isUpgradePasswordExempt(auth, request);
     // Header validation is asynchronous. Buffer frames until the socket has a
     // pending hello handler so an eager client cannot lose its first message.
     ws.pause();
@@ -930,7 +935,7 @@ export class VoiceAssistantWebSocketServer {
       const token =
         extractHttpBearerToken(request.headers.authorization) ?? extractWsBearerToken(protocol);
       const hasHeaderCredential = token !== null;
-      if (password && hasHeaderCredential) {
+      if (password && hasHeaderCredential && !loopbackExempt) {
         const requestMetadata = extractSocketRequestMetadata(request);
         const isAuthorized = await isBearerTokenValidAsync({ password, token });
         if (!isAuthorized) {
@@ -949,7 +954,7 @@ export class VoiceAssistantWebSocketServer {
         request,
         undefined,
         false,
-        hasHeaderCredential ? OWNER_SESSION_ADMISSION : null,
+        hasHeaderCredential || loopbackExempt ? OWNER_SESSION_ADMISSION : null,
       );
     } finally {
       ws.resume();
@@ -2812,13 +2817,6 @@ function resolveConnectionPeer(
   return isLoopbackAddress(requestMetadata.remoteAddress) ? "loopback" : "external";
 }
 
-function isLoopbackAddress(address: string): boolean {
-  const normalized = address.toLowerCase();
-  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
-  const ipv4 = normalized.startsWith("::ffff:") ? normalized.slice("::ffff:".length) : normalized;
-  return ipv4.startsWith("127.");
-}
-
 function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
   if (!request || typeof request !== "object") {
     return {};
@@ -2951,11 +2949,22 @@ export function isWebSocketSameOrigin(
   return isLoopbackAlias(originUrl.hostname) && isLoopbackAlias(requestAuthority.hostname);
 }
 
+function isUpgradePasswordExempt(
+  auth: DaemonAuthConfig | undefined,
+  request: IncomingMessage,
+): boolean {
+  return isLoopbackPasswordExempt(auth, {
+    remoteAddress: request.socket.remoteAddress,
+    headers: request.headers,
+  });
+}
+
 function selectWebSocketProtocol(
   protocols: Set<string>,
   password: string | undefined,
+  loopbackExempt: boolean,
 ): string | false {
-  if (!password) {
+  if (!password || loopbackExempt) {
     return protocols.values().next().value ?? false;
   }
 
