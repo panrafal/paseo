@@ -83,23 +83,35 @@ Every fork artifact carries the same stamped version, so a daemon, a desktop
 app and a TestFlight build from one commit all report the same string:
 
 ```
-0.7.2-panrafal.202609022028.gb4d987582
-^^^^^ upstream base    ^^^^ commit time (UTC)   ^^^^ commit
+0.7.2-pr.76d
+^^^^^ upstream base
+         ^^^ commit
 ```
 
 `paseo --version` on the devbox therefore tells you it is a fork build and
-exactly which commit it came from — a plain `0.7.2` is upstream's.
+which commit it came from — a plain `0.7.2` is upstream's.
 
-The timestamp is the commit's, not the clock's, so the version is a function of
-the commit and still increases with every rebuild. Semver compares that
-identifier numerically, which is what lets the desktop updater treat a newer
-fork build as an upgrade. The sha is `g`-prefixed so it can never be a purely
-numeric identifier, which semver rejects for a leading zero.
+Short by choice, and the shortness costs two things:
 
-A fork build sorts *below* the upstream release of the same base
-(`0.7.2-panrafal.X` < `0.7.2`), which is correct: it is built from upstream
-`main` after that release, before the next one. The fork's update feed only
-ever lists fork builds, so nothing compares the two.
+- **It does not sort.** Semver compares `76d` against `abc` lexically, so about
+  half of all updates look like downgrades. The desktop's in-app updater cannot
+  be relied on to offer a fork build; `fork/update-macos.sh` installs by release
+  recency instead and is unaffected. Use it.
+- **Three hex characters is 4096 values**, so two commits collide eventually.
+  That surfaces as `git tag` refusing a duplicate in `fork/release.sh` — loud
+  and recoverable, never silent.
+
+`fork_version()` also refuses to produce a version from a sha like `076`:
+semver forbids a leading zero in an all-numeric prerelease identifier, npm
+rejects it outright, and about 2% of commits would hit it. The build stops
+immediately with the fix in the message rather than failing three minutes into
+a pack.
+
+iOS is the one place a non-sorting version does not work: App Store Connect
+requires `CFBundleVersion` to increase with every upload for a given short
+version. `fork/ios.sh` passes the commit timestamp separately through
+`PASEO_FORK_IOS_BUILD_NUMBER`, so uploads keep working and the version string
+stays short.
 
 `fork/build.sh daemon` stamps the version after `npm install` (so the install
 still resolves against the committed lockfile) and before `npm pack` (so the
