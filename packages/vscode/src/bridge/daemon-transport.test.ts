@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DaemonTransport,
   DaemonTransportAuthError,
+  parseTcpTransportOpenInput,
   type TransportEventPayload,
   type WebSocketFactoryInput,
   type WebSocketLike,
@@ -96,10 +97,35 @@ function createTransport(options?: { openAuthGraceMs?: number }): {
 }
 
 describe("daemon transport", () => {
+  it("parses the app bridge open contract and pins it to the discovered endpoint", () => {
+    expect(
+      parseTcpTransportOpenInput(
+        {
+          sessionId: "local-session-test",
+          target: {
+            transportType: "tcp",
+            endpoint: "untrusted.example:1234",
+            protocols: ["paseo.extra", 42],
+          },
+        },
+        "127.0.0.1:6767",
+      ),
+    ).toEqual({
+      sessionId: "local-session-test",
+      target: {
+        transportType: "tcp",
+        endpoint: "127.0.0.1:6767",
+        protocols: ["paseo.extra"],
+      },
+    });
+  });
+
   it("opens a bearer-authenticated TCP WebSocket and proxies text, binary, and close events", async () => {
     const { transport, events, sockets } = createTransport();
+    const sessionId = "local-session-test";
 
     const sessionPromise = transport.openLocalTransportSession({
+      sessionId,
       target: {
         transportType: "tcp",
         endpoint: "192.168.1.194:6768",
@@ -109,7 +135,7 @@ describe("daemon transport", () => {
     });
     const socket = sockets[0];
     socket.open();
-    const sessionId = await sessionPromise;
+    await sessionPromise;
 
     expect(socket.input).toEqual({
       url: "ws://192.168.1.194:6768/ws",
@@ -139,6 +165,7 @@ describe("daemon transport", () => {
     const { transport, events, sockets } = createTransport({ openAuthGraceMs: 10 });
 
     const sessionPromise = transport.openLocalTransportSession({
+      sessionId: "local-session-auth-grace",
       target: { transportType: "tcp", endpoint: "192.168.1.194:6768" },
       password: "test-password",
     });
@@ -148,7 +175,8 @@ describe("daemon transport", () => {
     socket.message(Buffer.from("server info"), false);
     expect(events).toEqual([]);
 
-    const sessionId = await sessionPromise;
+    await sessionPromise;
+    const sessionId = "local-session-auth-grace";
     expect(events).toEqual([
       { sessionId, kind: "open" },
       { sessionId, kind: "message", text: "server info" },
@@ -159,10 +187,24 @@ describe("daemon transport", () => {
     const { transport, sockets } = createTransport();
 
     const sessionPromise = transport.openLocalTransportSession({
+      sessionId: "local-session-auth-failure",
       target: { transportType: "tcp", endpoint: "192.168.1.194:6768" },
       password: null,
     });
     sockets[0].closeFromServer(4401, "Password required");
+
+    await expect(sessionPromise).rejects.toBeInstanceOf(DaemonTransportAuthError);
+  });
+
+  it("recognizes an HTTP 401 WebSocket handshake failure as an auth failure", async () => {
+    const { transport, sockets } = createTransport();
+
+    const sessionPromise = transport.openLocalTransportSession({
+      sessionId: "local-session-http-auth-failure",
+      target: { transportType: "tcp", endpoint: "192.168.1.194:6768" },
+      password: "stale-password",
+    });
+    sockets[0].fail(new Error("Unexpected server response: 401"));
 
     await expect(sessionPromise).rejects.toBeInstanceOf(DaemonTransportAuthError);
   });

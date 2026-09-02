@@ -13,7 +13,7 @@ import {
 import {
   DaemonTransport,
   DaemonTransportAuthError,
-  type TcpTransportTarget,
+  parseTcpTransportOpenInput,
   type TransportEventPayload,
 } from "./daemon-transport";
 import {
@@ -40,23 +40,6 @@ export interface BridgeRouterInput {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function parseTransportTarget(args: unknown, fallbackEndpoint: string): TcpTransportTarget {
-  if (!isRecord(args)) {
-    throw new Error("open_local_daemon_transport requires a transport target.");
-  }
-  if (args.transportType !== "tcp") {
-    throw new Error("Only TCP daemon transport is supported in VS Code v1.");
-  }
-  const protocols = Array.isArray(args.protocols)
-    ? args.protocols.filter((protocol): protocol is string => typeof protocol === "string")
-    : [];
-  return {
-    transportType: "tcp",
-    endpoint: fallbackEndpoint,
-    ...(protocols.length > 0 ? { protocols } : {}),
-  };
 }
 
 function parseSessionId(args: unknown): string {
@@ -180,11 +163,11 @@ export class BridgeRouter {
     return promptForDaemonPassword({ context: this.context, endpoint, fetch: this.fetch });
   }
 
-  private async openTransport(args: unknown): Promise<string> {
-    const target = parseTransportTarget(args, this.resolvedEndpoint.endpoint);
+  private async openTransport(args: unknown): Promise<void> {
+    const { sessionId, target } = parseTcpTransportOpenInput(args, this.resolvedEndpoint.endpoint);
     const password = await this.resolvePassword(target.endpoint);
     try {
-      return await this.transport.openLocalTransportSession({ target, password });
+      await this.transport.openLocalTransportSession({ sessionId, target, password });
     } catch (error) {
       if (!(error instanceof DaemonTransportAuthError)) {
         throw error;
@@ -195,7 +178,7 @@ export class BridgeRouter {
         endpoint: target.endpoint,
         fetch: this.fetch,
       });
-      return this.transport.openLocalTransportSession({ target, password: nextPassword });
+      await this.transport.openLocalTransportSession({ sessionId, target, password: nextPassword });
     }
   }
 

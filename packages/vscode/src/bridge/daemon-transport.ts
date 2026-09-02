@@ -34,6 +34,11 @@ export interface WebSocketFactoryInput {
 
 export type WebSocketFactory = (input: WebSocketFactoryInput) => WebSocketLike;
 
+export interface ParsedTcpTransportOpenInput {
+  sessionId: string;
+  target: TcpTransportTarget;
+}
+
 interface Session {
   id: string;
   ws: WebSocketLike;
@@ -55,6 +60,44 @@ export class DaemonTransportAuthError extends Error {
 
 const WS_ENDPOINT_PATH = "/ws";
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseTcpTransportOpenInput(
+  value: unknown,
+  endpoint: string,
+): ParsedTcpTransportOpenInput {
+  if (!isRecord(value)) {
+    throw new Error("Local transport open input must be an object.");
+  }
+
+  const sessionId = typeof value.sessionId === "string" ? value.sessionId.trim() : "";
+  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(sessionId)) {
+    throw new Error("Local transport session ID is invalid.");
+  }
+
+  const target = value.target;
+  if (!isRecord(target)) {
+    throw new Error("open_local_daemon_transport requires a transport target.");
+  }
+  if (target.transportType !== "tcp") {
+    throw new Error("Only TCP daemon transport is supported in VS Code v1.");
+  }
+  const protocols = Array.isArray(target.protocols)
+    ? target.protocols.filter((protocol): protocol is string => typeof protocol === "string")
+    : [];
+
+  return {
+    sessionId,
+    target: {
+      transportType: "tcp",
+      endpoint,
+      ...(protocols.length > 0 ? { protocols } : {}),
+    },
+  };
+}
 
 function createWebSocket(input: WebSocketFactoryInput): WebSocketLike {
   const ws = new WebSocket(input.url, input.protocols);
@@ -108,8 +151,11 @@ function decodeTransportMessage(input: { text?: string; binaryBase64?: string })
   throw new Error("Local transport send requires text or binary payload.");
 }
 
+function isUnauthorizedHandshakeError(error: Error): boolean {
+  return /unexpected server response:\s*401\b/i.test(error.message);
+}
+
 export class DaemonTransport {
-  private nextSessionId = 0;
   private readonly sessions = new Map<string, Session>();
   private readonly emitEvent: (payload: TransportEventPayload) => void;
   private readonly webSocketFactory: WebSocketFactory;
@@ -122,10 +168,14 @@ export class DaemonTransport {
   }
 
   openLocalTransportSession(input: {
+    sessionId: string;
     target: TcpTransportTarget;
     password: string | null;
-  }): Promise<string> {
-    const sessionId = `vscode-session-${++this.nextSessionId}`;
+  }): Promise<void> {
+    const sessionId = input.sessionId;
+    if (this.sessions.has(sessionId)) {
+      throw new Error(`Local transport session already exists: ${sessionId}`);
+    }
     const url = buildWebSocketUrl(input.target);
     const protocols = [
       ...(input.target.protocols ?? []),
@@ -176,7 +226,7 @@ export class DaemonTransport {
           return;
         }
         openSettled = true;
-        resolve(sessionId);
+        resolve();
         this.emitEvent({ sessionId, kind: "open" });
         for (const message of pendingMessages) {
           this.emitEvent(message);
@@ -233,7 +283,9 @@ export class DaemonTransport {
       ws.onError((error: Error) => {
         if (!openSettled) {
           finalizeOpenFailure(
-            new Error(`Failed to connect to TCP daemon transport: ${error.message}`),
+            isUnauthorizedHandshakeError(error)
+              ? new DaemonTransportAuthError("Paseo daemon password required.")
+              : new Error(`Failed to connect to TCP daemon transport: ${error.message}`),
           );
           return;
         }
