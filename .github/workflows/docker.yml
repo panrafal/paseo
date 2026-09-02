@@ -1,10 +1,8 @@
 name: Docker
 
+# Disabled on the fork: upstream's automatic triggers are removed so pushes
+# and tags here never start a run. Still dispatchable by hand.
 on:
-  push:
-    branches: [main]
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       paseo_version:
