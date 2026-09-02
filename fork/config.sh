@@ -54,33 +54,32 @@ offer_command() {
 # The fork version, shared by every artifact so a daemon, a desktop app and a
 # TestFlight build from the same commit all report the same string.
 #
-#   0.7.2-FR07a
-#   ^base   ^commit
+#   0.7.2-fr.7
+#   ^base   ^build number
 #
-# The FR prefix is not decoration: it keeps the prerelease identifier
-# alphanumeric. A bare sha like 076 would be an all-numeric identifier with a
-# leading zero, which semver forbids and npm rejects outright.
+# The build number lives in fork/build-number on the tooling branch and is
+# bumped once per sync, before anything is merged, so it is committed into the
+# `panrafal` commit it identifies. It never resets: it is a build id, not a
+# per-release counter, and semver orders 0.7.3-fr.1 above 0.7.2-fr.99 anyway.
 #
-# One consequence worth knowing: this does not sort. Semver compares FR07a
-# against FRb51 lexically, so roughly half of all updates look like downgrades
-# and the desktop's in-app updater cannot be relied on to offer a fork build.
-# fork/update-macos.sh installs by release recency instead and is unaffected.
-# Three hex characters is also 4096 values, so commits eventually collide; that
-# surfaces as `git tag` refusing a duplicate in fork/release.sh, which is loud
-# and recoverable rather than silent.
+# Being a plain integer is the point. Semver compares numeric prerelease
+# identifiers numerically, so every build sorts above the one before it and the
+# desktop's in-app updater sees a new fork build as an upgrade. It is also
+# monotonic enough to be the iOS CFBundleVersion, which App Store Connect
+# requires to increase with every upload.
 fork_version() {
-  local ref="${1:-$TARGET}" base sha
+  local ref="${1:-$TARGET}" base number
   base="$(git show "$ref:package.json" |
     node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')"
-  sha="$(git rev-parse "$ref")"
-  echo "$base-FR${sha:0:3}"
+  number="$(fork_build_number "$ref")"
+  echo "$base-fr.$number"
 }
 
-# App Store Connect requires CFBundleVersion to increase with every upload for
-# a given CFBundleShortVersionString, and a 3-character sha cannot carry that.
-# The commit timestamp can, and it stays out of the version string.
-fork_ios_build_number() {
-  TZ=UTC git log -1 --date=format:%Y%m%d%H%M --format=%cd "${1:-$TARGET}"
+fork_build_number() {
+  local ref="${1:-$TARGET}" number
+  number="$(git show "$ref:fork/build-number" 2>/dev/null | tr -d '[:space:]')"
+  [ -n "$number" ] || die "no fork/build-number on $ref — run fork/sync.sh first"
+  echo "$number"
 }
 
 require_repo() {

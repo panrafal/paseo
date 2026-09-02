@@ -83,33 +83,31 @@ Every fork artifact carries the same stamped version, so a daemon, a desktop
 app and a TestFlight build from one commit all report the same string:
 
 ```
-0.7.2-FR07a
+0.7.2-fr.7
 ^^^^^ upstream base
-        ^^^ commit
+        ^ build number
 ```
 
 `paseo --version` on the devbox therefore tells you it is a fork build and
-which commit it came from — a plain `0.7.2` is upstream's.
+which build — a plain `0.7.2` is upstream's.
 
-The `FR` prefix keeps the prerelease identifier alphanumeric. A bare sha like
-`076` would be an all-numeric identifier with a leading zero, which semver
-forbids and npm rejects outright — about 2% of commits.
+The build number lives in `fork/build-number` on the `fork-tooling` branch.
+`fork/sync.sh` bumps it once per run, before anything is merged, so it is
+committed into the `panrafal` commit it identifies. It never resets: it is a
+build id, not a per-release counter, and semver orders `0.7.3-fr.1` above
+`0.7.2-fr.99` regardless.
 
-Short by choice, and the shortness costs two things:
+Being a plain integer is the point. Semver compares numeric prerelease
+identifiers numerically, so `fr.10` really is newer than `fr.9`, every build
+sorts above the one before it, and the desktop's in-app updater sees a fork
+build as an upgrade. The same number is the iOS `CFBundleVersion`, which App
+Store Connect requires to increase with every upload — upstream's 1..999 build
+slot is a per-release counter and would run out.
 
-- **It does not sort.** Semver compares `FR07a` against `FRb51` lexically, so
-  about half of all updates look like downgrades. The desktop's in-app updater
-  cannot be relied on to offer a fork build; `fork/update-macos.sh` installs by
-  release recency instead and is unaffected. Use it.
-- **Three hex characters is 4096 values**, so two commits collide eventually.
-  That surfaces as `git tag` refusing a duplicate in `fork/release.sh` — loud
-  and recoverable, never silent.
-
-iOS is the one place a non-sorting version does not work: App Store Connect
-requires `CFBundleVersion` to increase with every upload for a given short
-version. `fork/ios.sh` passes the commit timestamp separately through
-`PASEO_FORK_IOS_BUILD_NUMBER`, so uploads keep working and the version string
-stays short.
+A fork build sorts below the upstream release of the same base
+(`0.7.2-fr.7` < `0.7.2`), which is correct: it is built from upstream `main`
+after that release and before the next. The fork's update feed only lists fork
+builds, so nothing compares the two.
 
 `fork/build.sh daemon` stamps the version after `npm install` (so the install
 still resolves against the committed lockfile) and before `npm pack` (so the

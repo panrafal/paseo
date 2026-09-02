@@ -45,6 +45,26 @@ require_repo
 [ "$(git config --get rerere.enabled || true)" = "true" ] || git config rerere.enabled true
 [ "$(git config --get rerere.autoupdate || true)" = "true" ] || git config rerere.autoupdate true
 
+# The build number identifies the commit this sync is about to produce, so it
+# has to be committed to the tooling branch before that branch is merged.
+bump_build_number() {
+  local dir="$WORK_ROOT/bump" current next sha
+  rm -rf "$dir"
+  git worktree prune
+  git worktree add --detach "$dir" "$TOOLING_REF" >/dev/null
+  current="$(cat "$dir/fork/build-number" 2>/dev/null | tr -d '[:space:]')"
+  [ -n "$current" ] || current=0
+  next=$((current + 1))
+  echo "$next" >"$dir/fork/build-number"
+  git -C "$dir" add fork/build-number
+  git -C "$dir" -c core.hooksPath=/dev/null commit -q -m "fork: build $next"
+  sha="$(git -C "$dir" rev-parse HEAD)"
+  git worktree remove --force "$dir" >/dev/null 2>&1 || true
+  move_branch "$TOOLING_REF" "$sha"
+  [ "$push" -eq 0 ] || git push -q "$FORK_REMOTE" "$TOOLING_REF:$TOOLING_REF"
+  say "Build $next"
+}
+
 # `git branch -f` refuses to move a branch that is checked out somewhere, and
 # both patch branches and the target routinely are. Move the worktree instead.
 move_branch() {
@@ -140,6 +160,8 @@ for ref in "${MERGE_REFS[@]}"; do
 done
 
 say "Base: $BASE ($(git log -1 --format='%h %s' "$BASE"))"
+
+bump_build_number
 
 # --------------------------------------------------------------- rebase ----
 # Optional: move the patch branches themselves onto current upstream, so their

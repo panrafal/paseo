@@ -48,9 +48,6 @@ $(printf '  %s\n' "${missing[@]}")"
 # The fork-dist branch makes app.config.js read these; eas.json is plain JSON
 # with no interpolation, so the submit profile is rewritten in the disposable
 # build checkout instead of being patched on a branch.
-# The fork version is too short to be monotonic, but App Store Connect needs a
-# CFBundleVersion that always increases. native-release-version.js reads this.
-export PASEO_FORK_IOS_BUILD_NUMBER="$(fork_ios_build_number)"
 export APP_PACKAGE_ID="$FORK_IOS_BUNDLE_ID"
 export EAS_OWNER="$FORK_EAS_OWNER"
 export EAS_PROJECT_ID="$FORK_EAS_PROJECT_ID"
