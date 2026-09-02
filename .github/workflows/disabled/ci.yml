@@ -1,8 +1,10 @@
 name: CI
 
-# Disabled on the fork: upstream's automatic triggers are removed so pushes
-# and tags here never start a run. Still dispatchable by hand.
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   merge_group:
   workflow_dispatch:
 
