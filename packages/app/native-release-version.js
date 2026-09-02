@@ -1,9 +1,9 @@
 const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
-// A fork stamps its own prerelease shape, e.g. 0.7.2-FR07a. Upstream's pattern
+// A fork stamps its own prerelease shape, e.g. 0.7.2-fr.7. Upstream's pattern
 // knows only stable and -beta.N, and every Expo config read goes through this
 // file, so an unrecognised version breaks even `expo export --platform web` —
 // which the daemon's bundled web UI build runs.
-const forkVersionPattern = /^(\d+)\.(\d+)\.(\d+)-FR[0-9a-f]{3}$/;
+const forkVersionPattern = /^(\d+)\.(\d+)\.(\d+)-fr\.(\d+)$/;
 const stableIosBuildSlot = 999;
 const FDROID_ABI_VERSION_CODE_SUFFIXES = {
   "armeabi-v7a": 1,
@@ -15,7 +15,7 @@ const FDROID_ABI_VERSION_CODE_SUFFIXES = {
 function getNativeReleaseVersion(version) {
   const forkMatch = forkVersionPattern.exec(version);
   if (forkMatch) {
-    const [, majorText, minorText, patchText] = forkMatch;
+    const [, majorText, minorText, patchText, buildNumber] = forkMatch;
     const versionCode =
       Number(majorText) * 1_000_000 + Number(minorText) * 1_000 + Number(patchText);
     return {
@@ -24,14 +24,10 @@ function getNativeReleaseVersion(version) {
       // versionCode. Play requires it to increase per upload; TestFlight, which
       // is the fork's only mobile target, does not look at it.
       androidVersionCode: versionCode,
-      // A three-character sha cannot be monotonic, and App Store Connect
-      // requires CFBundleVersion to increase with every upload for a given
-      // short version. fork/ios.sh passes the commit timestamp here so the
-      // version string stays short and uploads still succeed. The fallback
-      // only ever applies to builds that never reach App Store Connect, such
-      // as the web export behind the daemon's bundled UI.
-      iosBuildNumber:
-        process.env.PASEO_FORK_IOS_BUILD_NUMBER ?? String(versionCode * 1_000 + stableIosBuildSlot),
+      // The fork build number is already monotonic, which is all App Store
+      // Connect asks of CFBundleVersion. Upstream's 1..999 build slot is a
+      // per-release counter and would run out.
+      iosBuildNumber: buildNumber,
     };
   }
 
