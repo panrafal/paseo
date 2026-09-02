@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import type { AddressInfo, Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -6,6 +6,7 @@ import path from "node:path";
 import pino from "pino";
 import { afterEach, expect, test } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
+import { z } from "zod";
 import type { HubExecutionAgents } from "./daemon-executions.js";
 import {
   HubRelationshipController,
@@ -153,6 +154,83 @@ test.each([408, 429])("transient enrollment status %s remains retryable", async 
   expect(error).toBeInstanceOf(Error);
   expect(error).not.toBeInstanceOf(HubEnrollmentRejectedError);
   expect((error as Error).message).toBe(`Hub enrollment failed (${status})`);
+});
+
+test("enrollment follows the Hub contract: strict request body, legacy scopes in the response", async () => {
+  const hub = await startContractHub();
+  const remote = new DirectHubRelationshipRemote();
+
+  const result = await remote.enroll({
+    daemonId: "daemon-1",
+    idempotencyKey: "ceremony-1",
+    hubOrigin: hub.origin,
+    token: "token",
+    hostname: "test-daemon.local",
+    serverId: "server-1",
+    daemonPublicKey: "public-key",
+    credentialVerifier: "verifier",
+    permissions: ["hub.execute"],
+  });
+
+  expect(hub.requests).toEqual([
+    {
+      method: "POST",
+      url: "/api/daemons/enroll",
+      authorization: "Bearer token",
+      body: {
+        daemonId: "daemon-1",
+        idempotencyKey: "ceremony-1",
+        hostname: "test-daemon.local",
+        serverId: "server-1",
+        daemonPublicKey: "public-key",
+        credentialVerifier: "verifier",
+      },
+    },
+  ]);
+  expect(result).toEqual({
+    daemonId: "daemon-1",
+    permissions: ["hub.execute"],
+    webSocketUrl: hub.webSocketUrl,
+  });
+});
+
+test.each([
+  {
+    name: "semantic permissions win over legacy scopes",
+    grant: { permissions: [], scopes: ["hub.execution.*"] },
+    expected: [],
+  },
+  {
+    name: "unknown legacy scopes grant nothing",
+    grant: { scopes: ["*"] },
+    expected: [],
+  },
+  {
+    name: "a response without any grant field grants nothing",
+    grant: {},
+    expected: [],
+  },
+])("enrollment result: $name", async ({ grant, expected }) => {
+  const hub = await startContractHub({ grant });
+  const remote = new DirectHubRelationshipRemote();
+
+  await expect(
+    remote.enroll({
+      daemonId: "daemon-1",
+      idempotencyKey: "ceremony-1",
+      hubOrigin: hub.origin,
+      token: "token",
+      hostname: "test-daemon.local",
+      serverId: "server-1",
+      daemonPublicKey: "public-key",
+      credentialVerifier: "verifier",
+      permissions: [],
+    }),
+  ).resolves.toEqual({
+    daemonId: "daemon-1",
+    permissions: expected,
+    webSocketUrl: hub.webSocketUrl,
+  });
 });
 
 test("enrollment rejects a transport URL that cannot open a WebSocket", async () => {
@@ -311,6 +389,32 @@ test("a stalled socket opening handshake times out and releases the connection",
   expect(socket.readyState).toBe(WebSocket.CLOSED);
 });
 
+test("controller enrolls a presence-only relationship against the Hub contract", async () => {
+  const hub = await UpgradeRejectingHub.start([503]);
+  const clock = new ManualRelationshipClock();
+  const controller = await connectController(hub, clock, []);
+
+  await hub.expectAttemptReleased(1);
+
+  expect(hub.enrollments).toEqual([
+    {
+      method: "POST",
+      url: "/api/daemons/enroll",
+      authorization: "Bearer enrollment-token",
+      body: {
+        daemonId: expect.any(String),
+        idempotencyKey: expect.any(String),
+        hostname: "test-daemon.local",
+        serverId: "server-1",
+        daemonPublicKey: "daemon-public-key",
+        credentialVerifier: expect.any(String),
+      },
+    },
+  ]);
+  expect(hub.attemptCount()).toBe(1);
+  expect(controller.status()).toMatchObject({ state: "reconnecting", permissions: [] });
+});
+
 test.each([401, 403] as const)(
   "controller treats socket authentication status %s as terminal without redialing",
   async (status) => {
@@ -406,6 +510,94 @@ async function startEnrollmentHub(
   return `http://127.0.0.1:${address.port}`;
 }
 
+interface ContractHub {
+  origin: string;
+  webSocketUrl: string;
+  requests: ObservedEnrollment[];
+}
+
+interface ObservedEnrollment {
+  method: string | undefined;
+  url: string | undefined;
+  authorization: string | undefined;
+  body: unknown;
+}
+
+// Hub's enrollment endpoint: a strict request body that knows only the legacy `scopes`
+// key, a fixed `hub.execution.*` grant, and a response that carries `scopes` rather than
+// semantic permissions.
+const HubEnrollmentBodySchema = z
+  .object({
+    daemonId: z.string().min(1),
+    idempotencyKey: z.string().min(1),
+    hostname: z.string().min(1),
+    serverId: z.string().min(1),
+    daemonPublicKey: z.string().min(1),
+    credentialVerifier: z.string().min(1),
+    scopes: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .strict();
+const HUB_CONTRACT_GRANT = { scopes: ["hub.execution.*"] };
+
+async function respondToContractEnrollment(
+  request: IncomingMessage,
+  response: ServerResponse,
+  options: { webSocketUrl: string; grant: Record<string, unknown>; observed: ObservedEnrollment[] },
+): Promise<void> {
+  if (request.method !== "POST" || request.url !== "/api/daemons/enroll") {
+    response.writeHead(404).end();
+    return;
+  }
+  let body = "";
+  for await (const chunk of request) body += chunk;
+  const parsed = HubEnrollmentBodySchema.safeParse(JSON.parse(body));
+  if (!parsed.success) {
+    response
+      .writeHead(400, { "content-type": "application/json" })
+      .end(JSON.stringify({ error: "invalid enrollment" }));
+    return;
+  }
+  options.observed.push({
+    method: request.method,
+    url: request.url,
+    authorization: request.headers.authorization,
+    body: parsed.data,
+  });
+  response.writeHead(200, { "content-type": "application/json" }).end(
+    JSON.stringify({
+      daemonId: parsed.data.daemonId,
+      slug: "test-daemon",
+      ...options.grant,
+      webSocketUrl: options.webSocketUrl,
+    }),
+  );
+}
+
+async function startContractHub(
+  options: { grant?: Record<string, unknown> } = {},
+): Promise<ContractHub> {
+  const requests: ObservedEnrollment[] = [];
+  const server = createServer((request, response) => {
+    const address = server.address() as AddressInfo;
+    void respondToContractEnrollment(request, response, {
+      webSocketUrl: `ws://127.0.0.1:${address.port}/api/daemons/socket`,
+      grant: options.grant ?? HUB_CONTRACT_GRANT,
+      observed: requests,
+    });
+  });
+  openServers.push(server);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address() as AddressInfo;
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    webSocketUrl: `ws://127.0.0.1:${address.port}/api/daemons/socket`,
+    requests,
+  };
+}
+
 async function startStalledHub(): Promise<string> {
   const server = createServer(() => undefined);
   openServers.push(server);
@@ -476,17 +668,13 @@ class SocketOutcomes {
 }
 
 class UpgradeRejectingHub {
-  private readonly server = createServer(async (request, response) => {
-    let body = "";
-    for await (const chunk of request) body += chunk;
-    const enrollment = JSON.parse(body) as { daemonId: string };
-    response.writeHead(200, { "content-type": "application/json" }).end(
-      JSON.stringify({
-        daemonId: enrollment.daemonId,
-        permissions: ["hub.execute"],
-        webSocketUrl: this.webSocketUrl,
-      }),
-    );
+  readonly enrollments: ObservedEnrollment[] = [];
+  private readonly server = createServer((request, response) => {
+    void respondToContractEnrollment(request, response, {
+      webSocketUrl: this.webSocketUrl,
+      grant: HUB_CONTRACT_GRANT,
+      observed: this.enrollments,
+    });
   });
   private readonly sockets = new Set<Socket>();
   private readonly releasedAttempts = new Map<number, Deferred<void>>();
@@ -612,6 +800,7 @@ const unusedExecutionAgents: HubExecutionAgents = {
 async function connectController(
   hub: UpgradeRejectingHub,
   clock: ManualRelationshipClock,
+  permissions: readonly string[] = ["hub.execute"],
 ): Promise<HubRelationshipController> {
   const paseoHome = await mkdtemp(path.join(tmpdir(), "paseo-hub-socket-"));
   openPaseoHomes.push(paseoHome);
@@ -628,11 +817,7 @@ async function connectController(
     updateAttachedPermissions: () => undefined,
     createExecutionAgents: () => unusedExecutionAgents,
   });
-  await controller.connect({
-    hubUrl: hub.origin,
-    token: "enrollment-token",
-    permissions: ["hub.execute"],
-  });
+  await controller.connect({ hubUrl: hub.origin, token: "enrollment-token", permissions });
   return controller;
 }
 

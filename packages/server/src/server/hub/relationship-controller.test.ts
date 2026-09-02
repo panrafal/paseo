@@ -157,8 +157,70 @@ describe("Hub relationship", () => {
     relationship.returnEnrollmentPermissions(["hub.execute", "daemon.manage"]);
 
     await relationship.beginConnect().result;
+    await relationship.socketDialed();
+    relationship.connectLatestSocket();
+
     expect(relationship.relationshipFile()?.relationship.permissions).toEqual(["hub.execute"]);
-    expect((await relationship.status()).state).toBe("reconnecting");
+    expect(await relationship.status()).toMatchObject({
+      state: "connected",
+      permissions: "hub.execute",
+    });
+    expect(relationship.socketAttempts()).toBe(1);
+    const responses = relationship.sendHubRequestOnLatest({
+      type: "daemon.config.reload.request",
+      requestId: "widened-grant",
+    });
+    expect(responses).toContainEqual({
+      type: "rpc_error",
+      payload: {
+        requestId: "widened-grant",
+        requestType: "daemon.config.reload.request",
+        error: "Session is not authorized for daemon.config.reload.request",
+        code: "access_denied",
+      },
+    });
+  });
+
+  test("a Hub that always grants execution connects a presence-only relationship", async () => {
+    relationship = await HubRelationshipHarness.start();
+    relationship.returnEnrollmentPermissions(["hub.execute"]);
+
+    await relationship.beginConnect("registered-token", "https://hub.example", false).result;
+    await relationship.socketDialed();
+    relationship.connectLatestSocket();
+
+    expect(relationship.relationshipFile()?.relationship.permissions).toEqual([]);
+    expect(await relationship.status()).toMatchObject({ state: "connected", permissions: "" });
+    const responses = relationship.sendHubRequestOnLatest({
+      type: "hub.execution.agent.create.request",
+      requestId: "presence-only-execution",
+      executionId: "execution-1",
+      provider: "codex",
+      cwd: "/workspace",
+      prompt: "Do not run",
+    });
+    expect(responses).toContainEqual({
+      type: "rpc_error",
+      payload: {
+        requestId: "presence-only-execution",
+        requestType: "hub.execution.agent.create.request",
+        error: "Session is not authorized for hub.execution.agent.create.request",
+        code: "access_denied",
+      },
+    });
+  });
+
+  test("a Hub that grants less than requested names the missing permission", async () => {
+    relationship = await HubRelationshipHarness.start();
+    relationship.returnEnrollmentPermissions([]);
+
+    const connected = await relationship.beginConnect().result;
+
+    expect(connected).toMatchObject({
+      state: "reconnecting",
+      error: "Hub did not grant the requested daemon permission: hub.execute",
+    });
+    expect(relationship.relationshipFile()?.relationship.permissions).toEqual(["hub.execute"]);
     expect(relationship.socketAttempts()).toBe(0);
   });
 

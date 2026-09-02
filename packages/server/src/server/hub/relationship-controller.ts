@@ -424,11 +424,18 @@ export class HubRelationshipController implements HubRelationshipManagement {
     try {
       const enrollment = await request;
       if (enrollmentGeneration !== this.enrollmentGeneration) return;
-      if (
-        enrollment.daemonId !== pending.relationship.daemonId ||
-        !samePermissions(enrollment.permissions, pending.relationship.permissions)
-      ) {
+      if (enrollment.daemonId !== pending.relationship.daemonId) {
         throw new Error("Hub enrollment response did not match the pending relationship");
+      }
+      // Local authority stays pending.relationship.permissions; the active record below
+      // never reads Hub's grant. Only a grant narrower than the request is a failure.
+      const missing = pending.relationship.permissions.filter(
+        (permission) => !enrollment.permissions.includes(permission),
+      );
+      if (missing.length > 0) {
+        throw new Error(
+          `Hub did not grant the requested daemon permission${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`,
+        );
       }
       const active: ActiveRecord = {
         version: 2,

@@ -44,6 +44,18 @@ PASEO_HUB_URL=https://hub.example.com PASEO_HUB_API_KEY=paseo_pk_... paseo hub c
 
 Origin precedence is explicit `[origin]`, `PASEO_HUB_URL`, active stored login, then `https://hub.paseo.sh`. An explicit `--api-key <secret>` takes precedence over the environment and an exact-origin stored login.
 
+### Permissions
+
+Connecting gives Hub the daemon's identity and presence, nothing more. Workflows can create workspaces and run agents on the daemon only after it holds the `hub.execute` permission. Guided login and `paseo hub init` ask for it; a bare `connect` does not grant it. Grant it at connection time or later:
+
+```sh
+paseo hub connect --permission hub.execute
+paseo hub permissions grant hub.execute
+paseo hub permissions list
+```
+
+Until then Hub shows the daemon as connected, and dispatches to it fail with an access denied error.
+
 Check and undo:
 
 ```sh

@@ -179,9 +179,9 @@ Codex MultiAgentV2 real tests use local Codex authentication rather than the Ope
 
 Test suites in this repo are heavy. Running them in bulk freezes the machine, especially with multiple agents in parallel.
 
-- Run only the file you changed: `npx vitest run <path> --bail=1`
+- Run only the file you changed, through its package so the package Vitest config applies: `npm run test:unit --workspace=@getpaseo/server -- src/server/hub/relationship-remote.test.ts --bail=1`. From the repo root, `npx vitest run <path>` uses the root config and its 5-second test timeout, and server tests that boot a daemon time out before they can fail for a real reason.
 - Never run `npm run test` for a whole workspace unless asked.
-- For a broad sweep, redirect to a file and read it after: `npx vitest run <path> --bail=1 > /tmp/test-output.txt 2>&1`
+- For a broad sweep, redirect to a file and read it after: `npm run test:unit --workspace=@getpaseo/server -- <path> --bail=1 > /tmp/test-output.txt 2>&1`
 - Never re-run a suite another agent already reported green.
 - For full-suite confidence, push to CI and check GitHub Actions.
 - Never run the full Playwright E2E suite locally — defer whole-suite verification to CI. Targeted Playwright specs are allowed when you changed or need to prove that specific flow.

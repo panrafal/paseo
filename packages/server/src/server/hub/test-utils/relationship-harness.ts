@@ -417,9 +417,10 @@ class InMemoryHubRelationships implements HubRelationshipRemote {
   }
 
   private enrollmentResult(input: HubEnrollment): HubEnrollmentResult {
+    // Hub ignores the requested permissions and always grants its fixed execution scope.
     return {
       daemonId: input.daemonId,
-      permissions: this.enrollmentPermissions?.slice() ?? input.permissions.slice(),
+      permissions: this.enrollmentPermissions?.slice() ?? ["hub.execute"],
       webSocketUrl: SOCKET_URL,
     };
   }

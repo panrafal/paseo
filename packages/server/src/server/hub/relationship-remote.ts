@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
 import { z } from "zod";
+import { permissionsForLegacyHubScopes } from "../authorization/index.js";
 import type { WebSocketLike } from "../websocket-server.js";
 
 export interface HubEnrollment {
@@ -64,19 +65,29 @@ export class HubEnrollmentRejectedError extends Error {
   }
 }
 
-const EnrollmentResultSchema = z.object({
-  daemonId: z.string(),
-  permissions: z.array(z.string()),
-  webSocketUrl: z
-    .string()
-    .url()
-    .refine((value) => ["ws:", "wss:"].includes(new URL(value).protocol), {
-      message: "Hub WebSocket URL must use ws or wss",
-    })
-    .refine((value) => new URL(value).hash === "", {
-      message: "Hub WebSocket URL cannot include a fragment",
+const EnrollmentResultSchema = z
+  .object({
+    daemonId: z.string(),
+    permissions: z.array(z.string()).optional(),
+    // COMPAT(semanticHubPermissions): added in v0.7, remove after Hub enrollment uses permissions.
+    // Hub still answers with its legacy `scopes` grant; a Hub that sends `permissions` wins.
+    scopes: z.array(z.string()).optional(),
+    webSocketUrl: z
+      .string()
+      .url()
+      .refine((value) => ["ws:", "wss:"].includes(new URL(value).protocol), {
+        message: "Hub WebSocket URL must use ws or wss",
+      })
+      .refine((value) => new URL(value).hash === "", {
+        message: "Hub WebSocket URL cannot include a fragment",
+      }),
+  })
+  .transform(
+    ({ scopes, permissions, ...result }): HubEnrollmentResult => ({
+      ...result,
+      permissions: permissions ?? [...permissionsForLegacyHubScopes(scopes ?? [])],
     }),
-});
+  );
 
 function ensureWebSocketMatchesHubOrigin(hubOrigin: string, webSocketUrl: string): void {
   const hub = new URL(hubOrigin);
@@ -109,7 +120,10 @@ export class DirectHubRelationshipRemote implements HubRelationshipRemote {
           serverId: input.serverId,
           daemonPublicKey: input.daemonPublicKey,
           credentialVerifier: input.credentialVerifier,
-          permissions: input.permissions,
+          // COMPAT(semanticHubPermissions): added in v0.7, remove after Hub enrollment uses permissions.
+          // Hub's enrollment body is strict and knows only legacy `scopes`, so requested
+          // permissions are not sent; Hub grants its fixed scope and the daemon keeps the
+          // requested set as local authority.
         }),
         signal,
       });

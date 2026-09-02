@@ -21,7 +21,8 @@ Normal authenticated daemon sessions may manage the daemon's Hub relationship an
 Hub connections have no daemon permissions by default. Connecting gives Hub machine identity and
 presence but no execution authority. The `hub.execute` permission lets workflows triggered from
 GitHub, Slack, Discord, Linear, and other integrations create workspaces and run agents. Grant it
-during interactive login or later with `paseo hub permissions grant hub.execute`. Relationships
+during interactive login or later with `paseo hub permissions grant hub.execute`; see
+[permissions.md](permissions.md#hub) for how enrollment maps Hub's grant. Relationships
 created before this split migrate their legacy execution scope to `hub.execute`. Hub sessions cannot
 manage their own relationship or permissions.
 
@@ -97,7 +98,7 @@ ceremony.
 
 Hub authentication rejection or close code `4403` permanently revokes the local relationship. The
 daemon deletes its credential, stops reconnecting, and retains only the relationship ID, Hub origin,
-scopes, and a sanitized reason for status reporting.
+permissions, and a sanitized reason for status reporting.
 
 `paseo hub disconnect` disables socket reconnect and execution authority before making one bounded
 remote revocation request. The daemon then removes the local relationship whether the request
