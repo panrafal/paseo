@@ -1,31 +1,8 @@
 name: Docker
 
+# Disabled on the fork: upstream's automatic triggers are removed so pushes
+# and tags here never start a run. Still dispatchable by hand.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "docker/**"
-      - ".dockerignore"
-      - ".github/workflows/docker.yml"
-      - "package.json"
-      - "package-lock.json"
-      - "patches/**"
-      - "scripts/**"
-      - "tsconfig.json"
-      - "tsconfig.base.json"
-      - "packages/app/**"
-      - "packages/cli/**"
-      - "packages/client/**"
-      - "packages/expo-two-way-audio/**"
-      - "packages/highlight/**"
-      - "packages/plugin/**"
-      - "packages/protocol/**"
-      - "packages/relay/**"
-      - "packages/server/**"
-  push:
-    branches: [main]
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       paseo_version:

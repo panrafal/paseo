@@ -1,18 +1,8 @@
 name: Deploy Website
 
+# Disabled on the fork: upstream's automatic triggers are removed so pushes
+# and tags here never start a run. Still dispatchable by hand.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "CHANGELOG.md"
-      - "public-docs/**"
-      - "packages/website/**"
-      - "package.json"
-      - "package-lock.json"
-      - "patches/**"
-      - ".github/workflows/deploy-website.yml"
-  release:
-    types: [published]
   workflow_dispatch:
 
 jobs:
