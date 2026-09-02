@@ -87,6 +87,22 @@ PACKAGES=(highlight relay protocol client plugin server cli)
 build_daemon() {
   prepare_checkout
 
+  # Stamp the fork version AFTER npm install, so the install still resolves
+  # against the committed lockfile, and before pack, so the tarballs and their
+  # @getpaseo/* cross-dependency ranges all carry it. The build checkout is
+  # disposable; prepare_checkout force-resets it on the next run.
+  local version
+  version="$(fork_version)"
+  say "Stamping $version"
+  node -e '
+    const fs = require("node:fs");
+    const p = process.argv[1];
+    const pkg = JSON.parse(fs.readFileSync(p, "utf8"));
+    pkg.version = process.argv[2];
+    fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + "\n");
+  ' "$BUILD_DIR/package.json" "$version"
+  (cd "$BUILD_DIR" && node scripts/sync-workspace-versions.mjs >/dev/null)
+
   rm -rf "$DIST_DIR"
   mkdir -p "$DIST_DIR"
   local args=()
@@ -97,8 +113,9 @@ build_daemon() {
   say "Packing ${#PACKAGES[@]} workspaces (this builds them)"
   (cd "$BUILD_DIR" && npm pack "${args[@]}" --pack-destination "$DIST_DIR" >/dev/null)
 
-  local version count
-  version="$(node -pe 'require(process.argv[1]).version' "$BUILD_DIR/packages/cli/package.json")"
+  local packed count
+  packed="$(node -pe 'require(process.argv[1]).version' "$BUILD_DIR/packages/cli/package.json")"
+  [ "$packed" = "$version" ] || die "expected packed version $version, got $packed"
   count="$(find "$DIST_DIR" -name '*.tgz' | wc -l | tr -d ' ')"
   [ "$count" -eq "${#PACKAGES[@]}" ] ||
     die "expected ${#PACKAGES[@]} tarballs in $DIST_DIR, found $count"

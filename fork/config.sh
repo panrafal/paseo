@@ -23,6 +23,10 @@ FORK_DEVBOX_SSH="${FORK_DEVBOX_SSH:-devbox-admin}"
 FORK_DEVBOX_NPM_PREFIX="${FORK_DEVBOX_NPM_PREFIX:-/usr}"
 FORK_DEVBOX_SERVICE="${FORK_DEVBOX_SERVICE:-paseo}"
 
+# Fork identity lives in fork/dist.env; config.sh only needs the owner for
+# version stamping, so default it and let dist.env override.
+FORK_GH_OWNER="${FORK_GH_OWNER:-panrafal}"
+
 # Agent used by `--agent` conflict resolution.
 FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-claude}"
 FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
@@ -45,6 +49,27 @@ offer_command() {
     printf '\033]52;c;%s\a' "$(printf '%s' "$command" | base64 | tr -d '\n')"
     printf '(copied to your clipboard, if the terminal allows it)\n'
   fi
+}
+
+# The fork version, shared by every artifact so a daemon, a desktop app and a
+# TestFlight build from the same commit all report the same string.
+#
+#   0.7.2-panrafal.202609022145.gb4d9875
+#   ^base  ^owner  ^commit time  ^commit
+#
+# The timestamp is the commit's, not the clock's, so the version is a function
+# of the commit and still increases with every rebuild — semver compares that
+# identifier numerically, which is what lets the desktop updater see a newer
+# fork build as an upgrade. The sha is prefixed with `g` (as git describe does)
+# so it can never be a purely numeric identifier, which semver would reject for
+# a leading zero.
+fork_version() {
+  local ref="${1:-$TARGET}" base stamp sha
+  base="$(git show "$ref:package.json" |
+    node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')"
+  stamp="$(TZ=UTC git log -1 --date=format:%Y%m%d%H%M --format=%cd "$ref")"
+  sha="$(git rev-parse --short "$ref")"
+  echo "$base-$FORK_GH_OWNER.$stamp.g$sha"
 }
 
 require_repo() {

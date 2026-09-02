@@ -13,8 +13,8 @@
 #   fork/release.sh status                show the latest fork release
 #   fork/release.sh watch                 follow the running workflow
 #
-# The version defaults to the repo version plus a fork counter, e.g. upstream
-# 0.7.2 becomes 0.7.2-panrafal.1, then .2, and resets when upstream bumps.
+# The version is fork_version() from fork/config.sh — the same string the
+# daemon and iOS builds carry, so artifacts from one commit all agree.
 
 set -euo pipefail
 
@@ -32,22 +32,12 @@ explicit_version="${2:-}"
 
 command -v gh >/dev/null 2>&1 || die "the gh CLI is required"
 
-next_version() {
-  local base counter
-  base="$(git show "$TARGET:package.json" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).version')"
-  counter=1
-  while git rev-parse -q --verify "refs/tags/fork-v$base-$FORK_GH_OWNER.$counter" >/dev/null; do
-    counter=$((counter + 1))
-  done
-  echo "$base-$FORK_GH_OWNER.$counter"
-}
-
 case "$cmd" in
   desktop)
     require_repo
     git rev-parse --verify -q "$TARGET^{commit}" >/dev/null || die "branch '$TARGET' does not exist"
     git fetch --tags --quiet "$FORK_REMOTE"
-    version="${explicit_version:-$(next_version)}"
+    version="${explicit_version:-$(fork_version)}"
     tag="fork-v$version"
     sha="$(git rev-parse "$TARGET")"
 

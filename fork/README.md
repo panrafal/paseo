@@ -77,6 +77,35 @@ intent and never to drop an upstream change to make a patch apply. Set
 Rebasing is free here: `panrafal` is rebuilt from the branches every time and
 never remembers their old shape.
 
+## Versions
+
+Every fork artifact carries the same stamped version, so a daemon, a desktop
+app and a TestFlight build from one commit all report the same string:
+
+```
+0.7.2-panrafal.202609022028.gb4d987582
+^^^^^ upstream base    ^^^^ commit time (UTC)   ^^^^ commit
+```
+
+`paseo --version` on the devbox therefore tells you it is a fork build and
+exactly which commit it came from — a plain `0.7.2` is upstream's.
+
+The timestamp is the commit's, not the clock's, so the version is a function of
+the commit and still increases with every rebuild. Semver compares that
+identifier numerically, which is what lets the desktop updater treat a newer
+fork build as an upgrade. The sha is `g`-prefixed so it can never be a purely
+numeric identifier, which semver rejects for a leading zero.
+
+A fork build sorts *below* the upstream release of the same base
+(`0.7.2-panrafal.X` < `0.7.2`), which is correct: it is built from upstream
+`main` after that release, before the next one. The fork's update feed only
+ever lists fork builds, so nothing compares the two.
+
+`fork/build.sh daemon` stamps the version after `npm install` (so the install
+still resolves against the committed lockfile) and before `npm pack` (so the
+tarballs and their `@getpaseo/*` cross-dependency ranges all carry it), using
+the repo's own `scripts/sync-workspace-versions.mjs`.
+
 ## Updating the devbox daemon
 
 The devbox runs the daemon from a global npm install driven by the `paseo`
