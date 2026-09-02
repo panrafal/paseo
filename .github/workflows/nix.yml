@@ -1,27 +1,9 @@
 name: Nix
 
+# Disabled on the fork: upstream's automatic triggers are removed so pushes
+# and tags here never start a run. Still dispatchable by hand.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "nix/**"
-      - "flake.nix"
-      - "flake.lock"
-      - "package.json"
-      - "package-lock.json"
-      - "packages/app/**"
-      - "packages/expo-two-way-audio/**"
-      - "packages/highlight/**"
-      - "packages/plugin/**"
-      - "packages/protocol/**"
-      - "packages/client/**"
-      - "packages/server/**"
-      - "packages/relay/**"
-      - "packages/cli/**"
-      - "scripts/build-daemon-web-ui.mjs"
-      - "scripts/update-nix.sh"
-      - "scripts/fix-lockfile.mjs"
-      - ".github/workflows/nix.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
