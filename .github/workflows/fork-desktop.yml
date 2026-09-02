@@ -1,0 +1,165 @@
+# Fork desktop release.
+#
+# Upstream's desktop-release.yml publishes to getpaseo/paseo and carries the
+# rollout, changelog and multi-platform machinery a public release needs. This
+# is the fork's own, much smaller path: tag `fork-v<version>` on the `panrafal`
+# integration branch and get a signed, notarized macOS build published to a
+# release on this fork, with the in-app updater pointed here instead of
+# upstream.
+#
+# The fork version always carries a prerelease suffix (0.7.2-panrafal.1), so
+# the desktop app runs on the "beta" update channel and looks for
+# beta-mac.yml — which is what this workflow uploads.
+#
+# Required repo secrets: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+# APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID.
+
+name: Fork Desktop
+
+on:
+  push:
+    tags:
+      - "fork-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing fork-v* tag to build"
+        required: true
+        type: string
+
+concurrency:
+  group: fork-desktop-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  FORK_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  DESKTOP_PACKAGE_PATH: "packages/desktop"
+  RELEASE_CHANNEL: beta
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - id: meta
+        run: echo "version=${FORK_TAG#fork-v}" >> "$GITHUB_OUTPUT"
+      - name: Create or reuse the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$FORK_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $FORK_TAG already exists"
+          else
+            gh release create "$FORK_TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Fork build ${FORK_TAG#fork-v}" \
+              --prerelease \
+              --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the fork-tooling branch."
+          fi
+
+  macos:
+    needs: [create-release]
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            electron_arch: arm64
+          - runner: macos-15-intel
+            electron_arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Stamp the fork version
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const p = `${process.env.DESKTOP_PACKAGE_PATH}/package.json`;
+            const pkg = JSON.parse(fs.readFileSync(p, "utf8"));
+            pkg.version = process.env.FORK_TAG.replace(/^fork-v/, "");
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + "\n");
+          '
+
+      - name: Build, sign and notarize
+        env:
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          # publish.owner/repo are what the shipped app-update.yml records, so
+          # this is the line that makes the installed app update from the fork.
+          npm run build:desktop -- --publish never --mac --${{ matrix.electron_arch }} \
+            "-c.publish.provider=github" \
+            "-c.publish.owner=${{ github.repository_owner }}" \
+            "-c.publish.repo=${{ github.event.repository.name }}" \
+            "-c.publish.channel=${RELEASE_CHANNEL}"
+
+      - name: Upload artifacts to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$DESKTOP_PACKAGE_PATH/release"
+          gh release upload "$FORK_TAG" --repo "${{ github.repository }}" --clobber \
+            *.dmg *.zip
+
+      - name: Keep the arch manifest for merging
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-manifest-${{ matrix.electron_arch }}
+          path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
+          retention-days: 1
+
+  publish-manifest:
+    needs: [macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mac-manifest-*
+      # One update feed has to describe both architectures, or whichever arch
+      # uploads last wins and the other stops seeing updates.
+      - name: Merge and upload the update feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/merge-mac-manifest.mjs \
+            "mac-manifest-arm64/${RELEASE_CHANNEL}-mac.yml" \
+            "mac-manifest-x64/${RELEASE_CHANNEL}-mac.yml" \
+            "${RELEASE_CHANNEL}-mac.yml"
+          gh release upload "$FORK_TAG" --repo "${{ github.repository }}" --clobber \
+            "${RELEASE_CHANNEL}-mac.yml"
