@@ -1465,7 +1465,10 @@ export class HostRuntimeStore {
 
   private async runBoot(): Promise<void> {
     const override = readConfiguredLocalDaemonOverride();
-    await this.loadFromStorage();
+    const useVscodeDaemon = shouldUseVscodeDaemon();
+    // A webview's persisted localhost may belong to another local or Remote SSH
+    // extension host. VS Code sessions use only their injected bridge endpoint.
+    await this.loadFromStorage({ includeHostRegistry: !useVscodeDaemon });
     this.markHostRegistryLoaded();
 
     let isE2E: string | null = null;
@@ -1482,7 +1485,7 @@ export class HostRuntimeStore {
       return;
     }
 
-    if (shouldUseVscodeDaemon()) {
+    if (useVscodeDaemon) {
       await this.bootstrapVscodeDaemon();
       return;
     }
@@ -1504,30 +1507,18 @@ export class HostRuntimeStore {
     }
   }
 
-  private async loadFromStorage(): Promise<void> {
+  private async loadFromStorage(
+    options: { includeHostRegistry: boolean } = {
+      includeHostRegistry: true,
+    },
+  ): Promise<void> {
     let shouldPersistHosts = false;
     let profiles: HostProfile[] = [];
     try {
-      const stored = await readValidatedJson(
-        this.storage,
-        REGISTRY_STORAGE_KEY,
-        StoredHostRegistrySchema,
-      );
-      if (stored) {
-        const normalizedProfiles: HostProfile[] = [];
-        for (const entry of stored) {
-          const profile = normalizeStoredHostProfile(entry);
-          if (!profile) {
-            await this.storage.removeItem(REGISTRY_STORAGE_KEY);
-            normalizedProfiles.length = 0;
-            break;
-          }
-          normalizedProfiles.push(profile);
-        }
-        profiles = normalizedProfiles.filter((entry) => !isPlaceholderServerId(entry.serverId));
-        if (profiles.length !== normalizedProfiles.length) {
-          shouldPersistHosts = true;
-        }
+      if (options.includeHostRegistry) {
+        const storedRegistry = await this.loadStoredHostProfiles();
+        profiles = storedRegistry.profiles;
+        shouldPersistHosts = storedRegistry.shouldPersist;
       }
       this.hosts = profiles;
       this.replicaCache.setHosts(profiles.map((profile) => profile.serverId));
@@ -1545,6 +1536,36 @@ export class HostRuntimeStore {
         );
       }
     }
+  }
+
+  private async loadStoredHostProfiles(): Promise<{
+    profiles: HostProfile[];
+    shouldPersist: boolean;
+  }> {
+    const stored = await readValidatedJson(
+      this.storage,
+      REGISTRY_STORAGE_KEY,
+      StoredHostRegistrySchema,
+    );
+    if (!stored) {
+      return { profiles: [], shouldPersist: false };
+    }
+
+    const normalizedProfiles: HostProfile[] = [];
+    for (const entry of stored) {
+      const profile = normalizeStoredHostProfile(entry);
+      if (!profile) {
+        await this.storage.removeItem(REGISTRY_STORAGE_KEY);
+        return { profiles: [], shouldPersist: false };
+      }
+      normalizedProfiles.push(profile);
+    }
+
+    const profiles = normalizedProfiles.filter((entry) => !isPlaceholderServerId(entry.serverId));
+    return {
+      profiles,
+      shouldPersist: profiles.length !== normalizedProfiles.length,
+    };
   }
 
   private markHostRegistryLoaded(): void {
@@ -2069,6 +2090,11 @@ export class HostRuntimeStore {
   }
 
   private async persistHosts(hosts = this.hosts): Promise<void> {
+    // Keep the injected bridge session-local so concurrent VS Code windows do
+    // not overwrite one another's daemon registry.
+    if (shouldUseVscodeDaemon()) {
+      return;
+    }
     await this.storage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(hosts));
   }
 
