@@ -1,12 +1,8 @@
 name: Deploy App
 
+# Disabled on the fork: upstream's automatic triggers are removed so pushes
+# and tags here never start a run. Still dispatchable by hand.
 on:
-  push:
-    tags:
-      - "v*"
-      - "!v*-beta.*"
-      - "app-v*"
-      - "!app-v*-beta.*"
   workflow_dispatch:
 
 jobs:
