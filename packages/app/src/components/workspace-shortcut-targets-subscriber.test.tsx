@@ -31,6 +31,7 @@ function workspaceDescriptor(input: {
   statusEnteredAt?: Date | null;
 }): WorkspaceDescriptor {
   return {
+    activityAt: null,
     id: input.id,
     projectId: input.projectId ?? "project-1",
     projectDisplayName: input.projectDisplayName ?? "Project 1",

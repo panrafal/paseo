@@ -32,6 +32,7 @@ export interface VscodeWorkspaceMatchWorkspace {
   projectId: WorkspaceDescriptor["projectId"];
   projectRootPath: WorkspaceDescriptor["projectRootPath"];
   workspaceDirectory: WorkspaceDescriptor["workspaceDirectory"];
+  activityAt: WorkspaceDescriptor["activityAt"];
 }
 
 export interface VscodeWorkspaceMatchAgent {
@@ -108,11 +109,42 @@ function getWorkspaceId(value: string | null | undefined): string | null {
   return trimmed || null;
 }
 
-function getFirstSetValue(values: Set<string>): string | null {
-  for (const value of values) {
-    return value;
+function getActivityTime(workspace: VscodeWorkspaceMatchWorkspace): number {
+  const parsed = workspace.activityAt ? Date.parse(workspace.activityAt) : Number.NaN;
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+/**
+ * Several workspaces can legitimately sit on one directory: two checkouts of the same
+ * repo folder, or a project root whose work happens in worktrees. Take the most
+ * recently active one. Reporting "host only" instead sends startup through the host
+ * index, which restores the last remembered workspace and lands the user in an
+ * unrelated project.
+ */
+function pickLatestWorkspace(
+  candidates: readonly VscodeWorkspaceMatchWorkspace[],
+): VscodeWorkspaceMatchWorkspace | null {
+  let latest: VscodeWorkspaceMatchWorkspace | null = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+  for (const candidate of candidates) {
+    const time = getActivityTime(candidate);
+    // Ties keep the earlier candidate, so a host that reports no activity at all
+    // resolves to the first workspace it listed.
+    if (latest && time <= latestTime) {
+      continue;
+    }
+    latest = candidate;
+    latestTime = time;
   }
-  return null;
+  return latest;
+}
+
+function buildLatestWorkspaceMatch(
+  host: VscodeWorkspaceMatchHost,
+  candidates: readonly VscodeWorkspaceMatchWorkspace[],
+): VscodeWorkspaceMatch | null {
+  const workspace = pickLatestWorkspace(candidates);
+  return workspace ? { serverId: host.serverId, workspaceId: workspace.id } : null;
 }
 
 function isSameOrDescendantPath(child: string, parent: string): boolean {
@@ -132,60 +164,34 @@ function resolveProjectRootMatch(
   folderPath: string,
   host: VscodeWorkspaceMatchHost,
 ): VscodeWorkspaceMatch | null {
-  const workspaces = Array.from(host.workspaces);
-  const projectIds = new Set<string>();
-  for (const workspace of workspaces) {
-    if (normalizePathForMatch(workspace.projectRootPath) === folderPath) {
-      projectIds.add(workspace.projectId);
-    }
-  }
-
-  if (projectIds.size === 0) {
-    return null;
-  }
-  if (projectIds.size > 1) {
-    return { serverId: host.serverId };
-  }
-
-  const projectId = getFirstSetValue(projectIds);
-  if (!projectId) {
-    return { serverId: host.serverId };
-  }
-  const projectWorkspaces = workspaces.filter((workspace) => workspace.projectId === projectId);
-  const workspace = projectWorkspaces[0];
-  if (projectWorkspaces.length === 1 && workspace) {
-    return { serverId: host.serverId, workspaceId: workspace.id };
-  }
-  return { serverId: host.serverId };
+  return buildLatestWorkspaceMatch(
+    host,
+    Array.from(host.workspaces).filter(
+      (workspace) => normalizePathForMatch(workspace.projectRootPath) === folderPath,
+    ),
+  );
 }
 
 function resolveWorkspaceDirMatch(
   folderPath: string,
   host: VscodeWorkspaceMatchHost,
 ): VscodeWorkspaceMatch | null {
-  const matchedWorkspaceIds = new Set<string>();
-  for (const workspace of host.workspaces) {
-    if (normalizePathForMatch(workspace.workspaceDirectory) === folderPath) {
-      matchedWorkspaceIds.add(workspace.id);
-    }
-  }
-
-  if (matchedWorkspaceIds.size === 0) {
-    return null;
-  }
-  if (matchedWorkspaceIds.size === 1) {
-    const workspaceId = getFirstSetValue(matchedWorkspaceIds);
-    return workspaceId ? { serverId: host.serverId, workspaceId } : { serverId: host.serverId };
-  }
-  return { serverId: host.serverId };
+  return buildLatestWorkspaceMatch(
+    host,
+    Array.from(host.workspaces).filter(
+      (workspace) => normalizePathForMatch(workspace.workspaceDirectory) === folderPath,
+    ),
+  );
 }
 
 function resolveAgentCwdMatch(
   folderPath: string,
   host: VscodeWorkspaceMatchHost,
 ): VscodeWorkspaceMatch | null {
-  const workspaceIds = new Set(Array.from(host.workspaces, (workspace) => workspace.id));
-  const matchedWorkspaceIds = new Set<string>();
+  const workspacesById = new Map(
+    Array.from(host.workspaces, (workspace) => [workspace.id, workspace] as const),
+  );
+  const candidates = new Map<string, VscodeWorkspaceMatchWorkspace>();
   let matchedAgent = false;
 
   for (const agent of host.agents) {
@@ -195,19 +201,20 @@ function resolveAgentCwdMatch(
     }
     matchedAgent = true;
     const workspaceId = getWorkspaceId(agent.workspaceId);
-    if (workspaceId && workspaceIds.has(workspaceId)) {
-      matchedWorkspaceIds.add(workspaceId);
+    const workspace = workspaceId ? workspacesById.get(workspaceId) : undefined;
+    if (workspace) {
+      candidates.set(workspace.id, workspace);
     }
   }
 
   if (!matchedAgent) {
     return null;
   }
-  if (matchedWorkspaceIds.size === 1) {
-    const workspaceId = getFirstSetValue(matchedWorkspaceIds);
-    return workspaceId ? { serverId: host.serverId, workspaceId } : { serverId: host.serverId };
-  }
-  return { serverId: host.serverId };
+  // An agent can name a workspace the host has not sent yet. Keep the host-only match
+  // so startup still lands on the right daemon.
+  return (
+    buildLatestWorkspaceMatch(host, Array.from(candidates.values())) ?? { serverId: host.serverId }
+  );
 }
 
 function resolveProjectRootMatchForHosts(

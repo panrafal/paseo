@@ -17,8 +17,9 @@ function workspace(
   projectId: string,
   projectRootPath: string,
   workspaceDirectory = projectRootPath,
+  activityAt: string | null = null,
 ): VscodeWorkspaceMatchWorkspace {
-  return { id, projectId, projectRootPath, workspaceDirectory };
+  return { id, projectId, projectRootPath, workspaceDirectory, activityAt };
 }
 
 function agent(cwd: string, workspaceId?: string): VscodeWorkspaceMatchAgent {
@@ -78,7 +79,35 @@ describe("resolveVscodeWorkspaceMatch", () => {
     ).toEqual({ serverId: "server-1", workspaceId: "workspace-win" });
   });
 
-  it("returns the host when the matching project has multiple workspaces", () => {
+  it("picks the most recently active workspace when the folder matches several", () => {
+    expect(
+      resolveVscodeWorkspaceMatch({
+        folders: ["/repo/app"],
+        hosts: [
+          host({
+            workspaces: [
+              workspace(
+                "workspace-main",
+                "project-app",
+                "/repo/app",
+                "/repo/app",
+                "2026-04-01T00:00:00.000Z",
+              ),
+              workspace(
+                "workspace-branch",
+                "project-app",
+                "/repo/app",
+                "/repo/app",
+                "2026-04-02T00:00:00.000Z",
+              ),
+            ],
+          }),
+        ],
+      }),
+    ).toEqual({ serverId: "server-1", workspaceId: "workspace-branch" });
+  });
+
+  it("falls back to the first listed workspace when no candidate reports activity", () => {
     expect(
       resolveVscodeWorkspaceMatch({
         folders: ["/repo/app"],
@@ -91,7 +120,57 @@ describe("resolveVscodeWorkspaceMatch", () => {
           }),
         ],
       }),
-    ).toEqual({ serverId: "server-1" });
+    ).toEqual({ serverId: "server-1", workspaceId: "workspace-main" });
+  });
+
+  it("prefers a workspace with activity over one the daemon reports as never active", () => {
+    expect(
+      resolveVscodeWorkspaceMatch({
+        folders: ["/repo/app"],
+        hosts: [
+          host({
+            workspaces: [
+              workspace("workspace-idle", "project-app", "/repo/app"),
+              workspace(
+                "workspace-active",
+                "project-app",
+                "/repo/app",
+                "/repo/app",
+                "2026-04-02T00:00:00.000Z",
+              ),
+            ],
+          }),
+        ],
+      }),
+    ).toEqual({ serverId: "server-1", workspaceId: "workspace-active" });
+  });
+
+  it("picks the most recently active workspace of a project root with only worktrees", () => {
+    expect(
+      resolveVscodeWorkspaceMatch({
+        folders: ["/repo/main"],
+        hosts: [
+          host({
+            workspaces: [
+              workspace(
+                "workspace-old",
+                "project-app",
+                "/repo/main",
+                "/repo/worktrees/old",
+                "2026-04-01T00:00:00.000Z",
+              ),
+              workspace(
+                "workspace-new",
+                "project-app",
+                "/repo/main",
+                "/repo/worktrees/new",
+                "2026-04-03T00:00:00.000Z",
+              ),
+            ],
+          }),
+        ],
+      }),
+    ).toEqual({ serverId: "server-1", workspaceId: "workspace-new" });
   });
 
   it("falls back to an agent cwd match when no project root matches", () => {
@@ -150,16 +229,74 @@ describe("resolveVscodeWorkspaceMatch", () => {
     ).toEqual({ serverId: "server-1", workspaceId: "workspace-main" });
   });
 
-  it("returns the host when multiple workspaces share the matching workspace directory", () => {
+  it("picks the most recently active workspace sharing the matching directory", () => {
     expect(
       resolveVscodeWorkspaceMatch({
         folders: ["/repo/worktrees/shared"],
         hosts: [
           host({
             workspaces: [
-              workspace("workspace-one", "project-app", "/repo/main", "/repo/worktrees/shared"),
-              workspace("workspace-two", "project-app", "/repo/main", "/repo/worktrees/shared"),
+              workspace(
+                "workspace-one",
+                "project-app",
+                "/repo/main",
+                "/repo/worktrees/shared",
+                "2026-04-05T00:00:00.000Z",
+              ),
+              workspace(
+                "workspace-two",
+                "project-app",
+                "/repo/main",
+                "/repo/worktrees/shared",
+                "2026-04-04T00:00:00.000Z",
+              ),
             ],
+          }),
+        ],
+      }),
+    ).toEqual({ serverId: "server-1", workspaceId: "workspace-one" });
+  });
+
+  it("picks the most recently active workspace among agent cwd matches", () => {
+    expect(
+      resolveVscodeWorkspaceMatch({
+        folders: ["/repo/app"],
+        hosts: [
+          host({
+            workspaces: [
+              workspace(
+                "workspace-old",
+                "project-other",
+                "/repo/other",
+                "/repo/other/old",
+                "2026-04-01T00:00:00.000Z",
+              ),
+              workspace(
+                "workspace-new",
+                "project-other",
+                "/repo/other",
+                "/repo/other/new",
+                "2026-04-06T00:00:00.000Z",
+              ),
+            ],
+            agents: [
+              agent("/repo/app/src", "workspace-old"),
+              agent("/repo/app/docs", "workspace-new"),
+            ],
+          }),
+        ],
+      }),
+    ).toEqual({ serverId: "server-1", workspaceId: "workspace-new" });
+  });
+
+  it("returns the host when a matching agent names a workspace the host has not sent", () => {
+    expect(
+      resolveVscodeWorkspaceMatch({
+        folders: ["/repo/app"],
+        hosts: [
+          host({
+            workspaces: [workspace("workspace-other", "project-other", "/repo/other")],
+            agents: [agent("/repo/app", "workspace-unknown")],
           }),
         ],
       }),

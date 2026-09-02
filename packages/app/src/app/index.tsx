@@ -188,6 +188,7 @@ function buildVscodeWorkspaceMatchHosts(input: {
         projectId: workspace.projectId,
         projectRootPath: workspace.projectRootPath,
         workspaceDirectory: workspace.workspaceDirectory,
+        activityAt: workspace.activityAt,
       })),
       agents: session?.agents.values() ?? [],
     };

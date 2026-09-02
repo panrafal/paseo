@@ -51,6 +51,27 @@ IP to loopback; for example, `192.168.1.50:6767` remains
 pipe listen targets such as Unix sockets, Windows pipes, `unix:`, `pipe:`, and
 `ws+unix:` are rejected as unsupported.
 
+## Workspace Matching
+
+The extension sends VS Code's open folder paths into the webview, and the app resolves
+the workspace to open from the first usable folder. Matching runs in three tiers against
+the daemon's workspaces: workspace directory, then project root, then the cwd of any
+agent living inside the folder. Remote folders need no special handling — `uri.fsPath`
+on a `vscode-remote://` folder is the path on the remote, which is where the extension
+host and daemon both run.
+
+One folder can match several workspaces: two checkouts registered on the same directory,
+or a project root whose work all happens in worktrees. Take the most recently active
+one (`activityAt`), and fall back to the first workspace the daemon listed when none of
+them report activity. Do not resolve an ambiguous folder to the host alone. That sends
+startup through the host index, which restores the last remembered workspace and drops
+the user into an unrelated project — the folder VS Code has open is better evidence than
+navigation history. The host-only match is left for the one case that has no workspace
+to name: an agent inside the folder belongs to a workspace the daemon has not sent.
+
+A match redirects straight to the workspace route. A folder that matches nothing is
+opened as a new project instead.
+
 ## Password Handling
 
 If the daemon responds with `401`, the extension prompts for the daemon password
