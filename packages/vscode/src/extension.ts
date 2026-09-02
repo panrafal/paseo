@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ensureUsableDaemonPassword } from "./auth/daemon-password";
 import { getPassword, clearPassword, promptForDaemonPassword } from "./auth/secret-store";
 import { BridgeRouter } from "./bridge/bridge-router";
 import { readDaemonListen } from "./daemon/config-reader";
@@ -66,20 +67,23 @@ async function renderWebview(
     localResourceRoots: getLocalResourceRoots(context),
   };
   const resolvedEndpoint = await resolveDaemonEndpoint();
-  // Resolve the daemon password BEFORE loading the webview app. The app's bootstrap
-  // connection probe has a short (~2.5s) timeout; if the bridge prompted lazily during that
-  // probe the interactive input box would outlive the timeout and the probe would fail. So we
-  // prompt up-front (storing the secret). EXCEPTION: when PASEO_VSCODE_TEST_PASSWORD is set
-  // (CDP/E2E harness only — never production) we skip the prompt AND the secrets write
-  // entirely; the bridge reads that env var directly. Touching SecretStorage here can hang in
-  // a headless host with no keyring, which would block the render.
-  if (
-    resolvedEndpoint.requiresPassword &&
-    !process.env.PASEO_VSCODE_TEST_PASSWORD?.trim() &&
-    (await getPassword(context, resolvedEndpoint.endpoint)) === null
-  ) {
+  // Resolve and validate the daemon password BEFORE loading the webview app. The app's
+  // bootstrap connection probe has a short (~2.5s) timeout; if the bridge prompted lazily
+  // during that probe the interactive input box would outlive the timeout and the probe would
+  // fail. Reinstalling the extension preserves SecretStorage, so stale passwords must be
+  // cleared here as well. EXCEPTION: when PASEO_VSCODE_TEST_PASSWORD is set (CDP/E2E harness
+  // only — never production) we skip the prompt AND the secrets write entirely; the bridge
+  // reads that env var directly. Touching SecretStorage here can hang in a headless host with
+  // no keyring, which would block the render.
+  if (resolvedEndpoint.requiresPassword && !process.env.PASEO_VSCODE_TEST_PASSWORD?.trim()) {
     try {
-      await promptForDaemonPassword({ context, endpoint: resolvedEndpoint.endpoint });
+      await ensureUsableDaemonPassword({
+        endpoint: resolvedEndpoint.endpoint,
+        getStoredPassword: () => getPassword(context, resolvedEndpoint.endpoint),
+        clearStoredPassword: () => clearPassword(context, resolvedEndpoint.endpoint),
+        promptForPassword: () =>
+          promptForDaemonPassword({ context, endpoint: resolvedEndpoint.endpoint }),
+      });
     } catch {
       // User dismissed or entered a wrong password; render the app anyway (it will show a
       // not-connected state). They can retry via the "Paseo: Set Daemon Password" command.
