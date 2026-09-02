@@ -61,7 +61,11 @@ bump_build_number() {
   sha="$(git -C "$dir" rev-parse HEAD)"
   git worktree remove --force "$dir" >/dev/null 2>&1 || true
   move_branch "$TOOLING_REF" "$sha"
-  [ "$push" -eq 0 ] || git push -q "$FORK_REMOTE" "$TOOLING_REF:$TOOLING_REF"
+  # --force-with-lease everywhere, including here where the push is normally a
+  # fast-forward: if another machine or agent bumped the number since the last
+  # fetch, the lease fails instead of quietly reusing or overwriting a build id.
+  [ "$push" -eq 0 ] ||
+    git push -q --force-with-lease "$FORK_REMOTE" "$TOOLING_REF:$TOOLING_REF"
   say "Build $next"
 }
 
