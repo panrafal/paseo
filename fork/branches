@@ -1,0 +1,11 @@
+# Branches merged into the `panrafal` integration branch, in order.
+#
+# One git ref per line. Blank lines and `#` comments are ignored.
+# Use `origin/<name>` for branches you push (PR heads); a bare name means a
+# local branch. Order matters only for conflict resolution — put the branch
+# you want to "win" the base last.
+#
+# When a PR lands upstream, delete its line. The next sync drops it.
+
+origin/add-daemon-loopback-password-bypass
+origin/add-paseo-deeplink-hash-prompts
