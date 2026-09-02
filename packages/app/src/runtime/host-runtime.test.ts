@@ -3398,6 +3398,80 @@ describe("HostRuntimeStore", () => {
     );
   });
 
+  it("ignores persisted browser connections when booting the VS Code bridge", async () => {
+    const persistedConnection: HostConnection = {
+      id: "direct:127.0.0.1:6767",
+      type: "directTcp",
+      endpoint: "127.0.0.1:6767",
+      password: "browser-password",
+    };
+    const persistedRegistry = JSON.stringify([
+      makeHost({
+        serverId: "srv_browser",
+        connections: [persistedConnection],
+        preferredConnectionId: persistedConnection.id,
+      }),
+    ]);
+    const storage = createMemoryHostRuntimeStorage({
+      "@paseo:daemon-registry": persistedRegistry,
+    });
+
+    await withGlobalWindow(
+      {
+        paseoVscode: {
+          endpoint: "127.0.0.1:6767",
+          hasPassword: true,
+          bridgeProtocol: 1,
+          workspaceFolders: [],
+        },
+        paseoDesktop: { platform: "vscode" },
+      },
+      async () => {
+        const seenConnections: HostConnection[] = [];
+        const store = new HostRuntimeStore({
+          storage,
+          deps: {
+            createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+            connectToDaemon: async ({ connection }) => {
+              seenConnections.push(connection);
+              return {
+                client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+                serverId: "srv_vscode",
+                hostname: "vscode-host",
+              };
+            },
+            getClientId: async () => "cid_test_runtime",
+          },
+        });
+
+        await store.boot();
+
+        expect(seenConnections).toEqual([
+          {
+            id: "bridge:127.0.0.1:6767",
+            type: "directTcpBridge",
+            endpoint: "127.0.0.1:6767",
+          },
+        ]);
+        expect(store.getHosts()).toMatchObject([
+          {
+            serverId: "srv_vscode",
+            connections: [
+              {
+                id: "bridge:127.0.0.1:6767",
+                type: "directTcpBridge",
+                endpoint: "127.0.0.1:6767",
+              },
+            ],
+          },
+        ]);
+        expect(await storage.getItem("@paseo:daemon-registry")).toBe(persistedRegistry);
+
+        store.syncHosts([]);
+      },
+    );
+  });
+
   it("uses the advertised hostname when adding a relay host from a pairing offer", async () => {
     const store = new HostRuntimeStore({
       deps: {
