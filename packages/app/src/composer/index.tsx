@@ -155,12 +155,37 @@ const composerImageAttachmentPersister: Pick<
   persistFromDataUrl: persistAttachmentFromDataUrl,
   persistFromFileUri: persistAttachmentFromFileUri,
 };
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
+import { appendFileMentionPaths } from "@/utils/file-mention-autocomplete";
+import { resolveDroppedFileMentionPath } from "@/workspace/file-drop-mentions";
 
 type QueuedMessage = QueuedComposerMessage;
 
 type AttachmentListUpdater =
   | UserComposerAttachment[]
   | ((prev: UserComposerAttachment[]) => UserComposerAttachment[]);
+
+function splitDroppedItemsForMentions(input: { items: DroppedItem[]; cwd: string }): {
+  mentionPaths: string[];
+  uploadItems: DroppedItem[];
+} {
+  const mentionPaths: string[] = [];
+  const uploadItems: DroppedItem[] = [];
+  for (const item of input.items) {
+    if (item.kind !== "file-uri") {
+      uploadItems.push(item);
+      continue;
+    }
+
+    const relativePath = resolveDroppedFileMentionPath({ path: item.path, cwd: input.cwd });
+    if (relativePath) {
+      mentionPaths.push(relativePath);
+    } else {
+      uploadItems.push({ kind: "desktop-path", path: item.path });
+    }
+  }
+  return { mentionPaths, uploadItems };
+}
 
 const EMPTY_ATTACHMENT_SCOPE_KEYS: readonly string[] = [];
 
@@ -530,6 +555,7 @@ interface DispatchComposerKeyboardActionArgs {
   isAgentRunning: boolean;
   isCancellingAgent: boolean;
   isConnected: boolean;
+  showVoice: boolean;
   handleCancelAgent: () => void;
   focusMessageInputForKeyboardAction: () => void;
 }
@@ -542,10 +568,14 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     isAgentRunning,
     isCancellingAgent,
     isConnected,
+    showVoice,
     handleCancelAgent,
     focusMessageInputForKeyboardAction,
   } = args;
   if (!isPaneFocused) return false;
+
+  if (!showVoice && action.id.startsWith("message-input.dictation")) return false;
+  if (!showVoice && action.id.startsWith("message-input.voice")) return false;
 
   if (action.id === "agent.interrupt") {
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
@@ -573,6 +603,7 @@ function ComposerKeyboardRegistration({
   isAgentRunning,
   isCancellingAgent,
   isConnected,
+  showVoice,
   handleCancelAgent,
   focusMessageInputForKeyboardAction,
   isMessageInputFocused,
@@ -591,6 +622,7 @@ function ComposerKeyboardRegistration({
         isAgentRunning,
         isCancellingAgent,
         isConnected,
+        showVoice,
         handleCancelAgent,
         focusMessageInputForKeyboardAction,
       }),
@@ -602,6 +634,7 @@ function ComposerKeyboardRegistration({
       isCancellingAgent,
       isConnected,
       messageInputRef,
+      showVoice,
     ],
   );
 
@@ -1182,6 +1215,7 @@ function ComposerContentImpl({
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
+  const showVoice = getWorkspaceSurfaceConfig().showVoice;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
@@ -1408,6 +1442,19 @@ function ComposerContentImpl({
   useEffect(() => {
     onFocusInput?.(focusInput);
   }, [focusInput, onFocusInput]);
+
+  const addFileMentions = useCallback(
+    (relativePaths: string[]) => {
+      const nextInput = appendFileMentionPaths({ text: userInput, relativePaths });
+      if (nextInput === userInput) {
+        return;
+      }
+      setUserInput(nextInput);
+      setCursorIndex(nextInput.length);
+      messageInputRef.current?.focus();
+    },
+    [setUserInput, userInput],
+  );
 
   const submitMessage = useCallback(
     async (text: string, submitAttachments: ComposerAttachment[]) => {
@@ -1715,7 +1762,11 @@ function ComposerContentImpl({
   const handleGenericFilesDropped = useCallback(
     async (items: DroppedItem[]) => {
       try {
-        const files = await droppedItemsToPickedFiles(items);
+        const { mentionPaths, uploadItems } = splitDroppedItemsForMentions({ items, cwd });
+        if (mentionPaths.length > 0) {
+          addFileMentions(mentionPaths);
+        }
+        const files = await droppedItemsToPickedFiles(uploadItems);
         if (files.length === 0) return;
         if (!client || !isConnected) {
           toastErrorRef.current(t("composer.errors.daemonClientDisconnected"));
@@ -1729,7 +1780,7 @@ function ComposerContentImpl({
         );
       }
     },
-    [client, isConnected, t, uploadPickedFiles],
+    [addFileMentions, client, cwd, isConnected, t, uploadPickedFiles],
   );
 
   const handleRemoveAttachment = useCallback(
@@ -1917,7 +1968,7 @@ function ComposerContentImpl({
         isAgentRunning={isAgentRunning}
         hasSendableContent={hasSendableContent}
         isCompact={isCompactLayout}
-        showVoice={mode.showVoice}
+        showVoice={showVoice && mode.showVoice}
         buttonIconSize={buttonIconSize}
         handleToggleRealtimeVoice={handleToggleRealtimeVoice}
         isConnected={isConnected}
@@ -1939,6 +1990,7 @@ function ComposerContentImpl({
       isVoiceSwitching,
       mode.showVoice,
       realtimeVoiceButtonStyle,
+      showVoice,
       t,
       voiceToggleKeys,
     ],
@@ -2262,6 +2314,7 @@ function ComposerContentImpl({
         isAgentRunning={isAgentRunning}
         isCancellingAgent={isCancellingAgent}
         isConnected={isConnected}
+        showVoice={showVoice}
         handleCancelAgent={handleCancelAgent}
         focusMessageInputForKeyboardAction={focusMessageInputForKeyboardAction}
         isMessageInputFocused={isMessageInputFocused}
@@ -2310,6 +2363,7 @@ function ComposerContentImpl({
                   onPasteImages={handleNativePasteImages}
                   client={client}
                   isReadyForDictation={isDictationReady}
+                  showVoice={showVoice}
                   placeholder={messagePlaceholder}
                   autoFocus={messageInputAutoFocus}
                   autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}

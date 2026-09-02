@@ -29,6 +29,13 @@ export const DEFAULT_TREE_RAIL_WIDTH = 260;
 export const MIN_TREE_RAIL_WIDTH = 180;
 export const MAX_TREE_RAIL_WIDTH = 600;
 
+export function resolveDefaultAgentListOpen(input: { isWeb: boolean; isVscode: boolean }): boolean {
+  if (input.isVscode) {
+    return false;
+  }
+  return input.isWeb;
+}
+
 export interface PanelLayoutInput {
   isCompact: boolean;
 }

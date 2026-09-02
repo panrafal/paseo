@@ -927,6 +927,7 @@ export const ru: TranslationResources = {
         openIn: "Открыть рабочее пространство в {{target}}",
         openFileIn: "Открыть {{fileName}} в {{target}}",
         failedOpen: "Не удалось открыть рабочее пространство",
+        failedOpenFile: "Не удалось открыть файл",
       },
       pr: {
         actions: {
@@ -1424,6 +1425,11 @@ export const ru: TranslationResources = {
     errorTitle: "Что-то пошло не так",
     errorDescription:
       "Не удалось запустить локальный сервер. Если ошибка повторится, сообщите о ней на GitHub и приложите приведённые ниже журналы.",
+    status: {
+      connecting: "Подключение к демону Paseo…",
+      loadingWorkspaces: "Загрузка ваших рабочих областей…",
+      opening: "Открытие этой папки в Paseo…",
+    },
     logs: {
       loading: "Загрузка журналов демона...",
       unavailable: "Журналы демона отсутствуют.",

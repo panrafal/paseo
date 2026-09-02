@@ -921,6 +921,7 @@ export const en = {
         openIn: "Open workspace in {{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "Failed to open workspace",
+        failedOpenFile: "Failed to open file",
       },
       pr: {
         actions: {
@@ -1408,6 +1409,11 @@ export const en = {
     errorTitle: "Something went wrong",
     errorDescription:
       "The local server failed to start. If this keeps happening, please report the issue on GitHub and include the logs below.",
+    status: {
+      connecting: "Connecting to the Paseo daemon…",
+      loadingWorkspaces: "Loading your workspaces…",
+      opening: "Opening this folder in Paseo…",
+    },
     logs: {
       loading: "Loading daemon logs...",
       unavailable: "No daemon logs available.",
