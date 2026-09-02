@@ -1,7 +1,19 @@
 name: Deploy Website
 
-# Automatic triggers are disabled on the fork; this remains dispatchable by hand.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "CHANGELOG.md"
+      - "public-docs/**"
+      - "packages/website/**"
+      - "packages/protocol/**"
+      - "package.json"
+      - "package-lock.json"
+      - "patches/**"
+      - ".github/workflows/deploy-website.yml"
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:

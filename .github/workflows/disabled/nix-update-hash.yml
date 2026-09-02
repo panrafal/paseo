@@ -1,9 +1,22 @@
 name: Nix Update Hash
 
-# Disabled on the fork: upstream's automatic triggers are removed so pushes
-# and tags here never start a run. Still dispatchable by hand.
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "nix/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "package.json"
+      - "package-lock.json"
+      - "packages/highlight/**"
+      - "packages/plugin/**"
+      - "packages/server/**"
+      - "packages/relay/**"
+      - "packages/cli/**"
+      - "scripts/update-nix.sh"
+      - "scripts/fix-lockfile.mjs"
+      - ".github/workflows/nix-update-hash.yml"
 
 permissions:
   contents: read
