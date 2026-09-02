@@ -1,4 +1,10 @@
 const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
+// A fork stamps its own prerelease shape, e.g.
+// 0.7.2-panrafal.202609022034.g03a28deeb. Upstream's pattern knows only stable
+// and -beta.N, and every Expo config read goes through this file, so an
+// unrecognised version breaks even `expo export --platform web` — which the
+// daemon's bundled web UI build runs.
+const forkVersionPattern = /^(\d+)\.(\d+)\.(\d+)-[0-9A-Za-z-]+\.(\d{12})\.g[0-9a-f]+$/;
 const stableIosBuildSlot = 999;
 const FDROID_ABI_VERSION_CODE_SUFFIXES = {
   "armeabi-v7a": 1,
@@ -8,6 +14,24 @@ const FDROID_ABI_VERSION_CODE_SUFFIXES = {
 };
 
 function getNativeReleaseVersion(version) {
+  const forkMatch = forkVersionPattern.exec(version);
+  if (forkMatch) {
+    const [, majorText, minorText, patchText, stamp] = forkMatch;
+    const versionCode =
+      Number(majorText) * 1_000_000 + Number(minorText) * 1_000 + Number(patchText);
+    return {
+      appVersion: `${Number(majorText)}.${Number(minorText)}.${Number(patchText)}`,
+      // Not for Play Store: every fork build of one upstream version shares a
+      // versionCode. Play requires it to increase per upload; TestFlight, which
+      // is the fork's only mobile target, does not look at it.
+      androidVersionCode: versionCode,
+      // The commit timestamp is already unique and monotonic per build, which
+      // is exactly what App Store Connect wants of CFBundleVersion. Upstream's
+      // 1..999 build slot has no room for it.
+      iosBuildNumber: stamp,
+    };
+  }
+
   const match = versionPattern.exec(version);
   if (!match) {
     throw new Error(`Cannot derive native release version from unsupported version: ${version}`);
