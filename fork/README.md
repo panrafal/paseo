@@ -29,14 +29,16 @@ it spots the integration merge commits — but only once the mistake is made.
 
 ## The quick route
 
-Four `panrafal:` scripts in `paseo.json`, one tap each in the Paseo UI:
+Six `panrafal:` scripts in `paseo.json`, one tap each in the Paseo UI:
 
 | Script                    | Runs                                   | Ends with                                |
 | ------------------------- | -------------------------------------- | ---------------------------------------- |
 | `panrafal: sync`          | `fork/sync.sh --rebase --agent --push` | the rebuilt branch, pushed               |
 | `panrafal: build daemon`  | `fork/build.sh daemon`                 | an `ssh devbox-admin …` command to paste |
 | `panrafal: build desktop` | `fork/build.sh desktop`                | a command to paste on the Mac            |
+| `panrafal: build vscode`  | `fork/build.sh vscode`                 | a command to paste on the laptop         |
 | `panrafal: build ios`     | `fork/build.sh ios`                    | a TestFlight link                        |
+| `panrafal: build ALL`     | `fork/build.sh all`                    | one command that installs all of it      |
 
 Each build command prints the follow-up command and pushes it to your
 terminal's clipboard over OSC 52, so it can usually be pasted straight into a
@@ -221,6 +223,28 @@ version (`0.7.2-panrafal.1`), so the app has to be on the `beta` update channel
 — it reads that from its own settings, not from the version string — and
 `fork-base` points that channel's feed at your fork.
 
+## VS Code and Cursor
+
+`fork/build.sh vscode` exports the web app, packages the extension and leaves
+`paseo-vscode-<version>.vsix` in `~/.paseo-fork/dist`. `packages/vscode` comes
+from the `vscode` patch branch, so a `main` built without it has nothing to
+package: the build warns and exits 0, so `all` can run the step
+unconditionally.
+
+The extension is `extensionKind: ["workspace"]`: in a Remote-SSH window it
+runs on the devbox, next to the daemon, and an install on the laptop alone
+does not reach those windows. The printed command does both halves. It fetches
+the `.vsix` over `sudo cat` rather than `scp` because `~/.paseo-fork` is
+under a home the admin account cannot read, parks it at
+`/tmp/paseo-vscode-<version>.vsix`, and installs it into whichever of `code`
+and `cursor` are on the laptop's PATH — with neither there it installs
+nothing and says nothing, so use Install from VSIX… in the Extensions view.
+The devbox half runs `install-vscode-remote.sh`, shipped next to the `.vsix`,
+as `FORK_DEVBOX_EDITOR_USER` (default: whoever ran the build) because the
+servers' extensions live in that account's home. It needs no root and no
+laptop; the build also prints the form to run from a terminal here. Reload
+open remote windows to pick the new build up.
+
 ## iOS / TestFlight
 
 The fork ships under its own bundle identifier, EAS project and App Store
@@ -244,6 +268,22 @@ Push notifications need your own Firebase `GoogleService-Info.plist` at
 `packages/app/.secrets/` or via `GOOGLE_SERVICE_INFO_PLIST_PROD`. Everything
 else works without it.
 
+## Everything at once
+
+`fork/build.sh all` runs the daemon, desktop, VS Code and iOS builds in turn
+and ends with their install commands folded into one `&&` chain, copied to
+the clipboard like the individual ones. The chain installs the daemon last:
+its restart drops every agent on the devbox, including the one you pasted
+from. An earlier link failing stops the chain before the daemon, so if it dies
+part-way, re-run the daemon command on its own — `all` prints it separately
+too.
+
+The desktop step waits for the Fork Desktop workflow, so the chain is runnable
+the moment it is printed; a red run drops that step from the chain and the
+rest goes on. `vscode` is skipped without `packages/vscode`, `ios` while
+`fork/dist.env` still holds `REPLACE_ME` placeholders. Any other failure
+stops the run.
+
 ## GitHub Actions on the fork
 
 `fork-base` moves every upstream workflow into
@@ -252,8 +292,10 @@ does not recurse, so nothing there can trigger — which is what lets `main` be
 the integration branch at all, since `ci.yml` fires on `push: branches: [main]`
 and force-pushes land there constantly. The files are unchanged and still
 runnable by hand: point the Actions tab at a branch that has them at the top
-level, or copy one back temporarily. Fork Desktop is the one workflow that
-triggers on its own, on `fork-v*` tags.
+level, or copy one back temporarily. Fork Desktop triggers on its own, on
+`fork-v*` tags. Patch branches can bring workflows of their own: `vscode` adds
+`vscode.yml`, which runs on every push to `main`, so each `--push` sync also
+costs a VS Code Extension CI run.
 
 Tags are the gap. A tag-triggered workflow resolves its file from the tagged
 commit, not from `main`, so pushing an upstream `v*` tag to this fork would

@@ -53,8 +53,19 @@ case "$cmd" in
     echo "When it finishes, update the Mac with:"
     echo "    fork/update-macos.sh          # run this on the laptop"
     echo "  or let the app's built-in updater find it — the feed now points at $REPO."
-    exec gh run watch --repo "$REPO" \
-      "$(gh run list --repo "$REPO" --workflow fork-desktop.yml --limit 1 --json databaseId -q '.[0].databaseId')" || true
+    # The run record shows up a few seconds after the tag push. Asking for the
+    # latest run right away returns the previous one, which "watch" reports
+    # as finished at once — so find the run by its tag, then wait for it.
+    run_id=""
+    for _ in $(seq 1 30); do
+      run_id="$(gh run list --repo "$REPO" --workflow fork-desktop.yml --limit 20 \
+        --json databaseId,headBranch -q "[.[] | select(.headBranch == \"$tag\")][0].databaseId // empty")"
+      [ -z "$run_id" ] || break
+      sleep 2
+    done
+    [ -n "$run_id" ] || die "no Fork Desktop run for $tag appeared within a minute — see https://github.com/$REPO/actions"
+    # A red run fails this script, and fork/build.sh with it.
+    gh run watch --repo "$REPO" --exit-status "$run_id"
     ;;
   status)
     gh release list --repo "$REPO" --limit 5
