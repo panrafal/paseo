@@ -11,12 +11,12 @@ not upstream's `main`.** It is an integration branch, rebuilt from scratch on
 every sync as `upstream/main` plus `fork-base` plus a list of patch
 branches, then force-pushed. **Nothing committed directly to `main` survives.**
 
-| Want to...                                  | Do this                                                     |
-| ------------------------------------------- | ----------------------------------------------------------- |
-| Change Paseo itself                         | `fork/new-branch.sh <name>`, then add it to `fork/branches` |
-| Change how the fork builds, ships, or syncs | Commit to `fork-base`                                       |
-| Pull in the latest upstream                 | `fork/sync.sh --rebase --agent --push`                      |
-| Build the daemon, desktop app, or iOS       | `fork/build.sh daemon` / `desktop` / `ios`                  |
+| Want to...                                               | Do this                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Change Paseo itself                                      | `fork/new-branch.sh <name>`, then add it to `fork/branches`                    |
+| Change how the fork builds, ships, or syncs              | Commit to `fork-base`                                                          |
+| Pull in the latest upstream                              | `fork/sync.sh --rebase --agent --push`                                         |
+| Build the daemon, desktop app, VS Code extension, or iOS | `fork/build.sh daemon` / `desktop` / `vscode` / `ios`, or `all` for everything |
 
 **Never start a branch from `main`.** `main` carries the whole patch stack, so
 a branch cut from it is unusable as a PR and has to be rebased by hand before
