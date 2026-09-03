@@ -57,6 +57,29 @@ force-push. Anywhere you consume it, re-sync with a reset, not a pull:
 git fetch origin && git reset --hard origin/panrafal
 ```
 
+### Adding a change
+
+Every change to Paseo itself is its own branch off `upstream/main`, never a
+commit on `panrafal`. That is what keeps it sendable upstream and what lets the
+integration branch be thrown away and rebuilt.
+
+```bash
+git fetch upstream main
+git worktree add ../paseo-my-change -b my-change upstream/main
+# ...work, commit...
+git push -u origin my-change
+```
+
+Then add `origin/my-change` to `fork/branches` on the `fork-tooling` branch,
+commit, and sync. It is in every build from then on, and `gh pr create` sends
+the same branch upstream whenever you want it reviewed.
+
+Two kinds of change do not belong on their own branch:
+
+- Anything about how the fork builds or publishes itself goes on
+  `panrafal-dist` — it is fork-only and would never be accepted upstream.
+- Anything about the fork scripts goes on `fork-tooling`.
+
 ### Changing what gets merged
 
 Edit `fork/branches` on the `fork-tooling` branch, commit, then sync. The list
