@@ -105,7 +105,7 @@ resolve_with_agent() {
   paseo run \
     --cwd "$dir" \
     --provider "$FORK_AGENT_PROVIDER" \
-    --mode bypass \
+    --mode auto \
     --wait-timeout "$FORK_AGENT_TIMEOUT" \
     --title "fork sync: resolve $what" \
     --label fork-sync=1 \
