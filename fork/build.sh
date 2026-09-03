@@ -60,7 +60,7 @@ prepare_checkout() {
     say "Creating build checkout at $BUILD_DIR"
     git worktree add --detach "$BUILD_DIR" "$sha" >/dev/null
   else
-    # Detached, so sync.sh can force-move `panrafal` underneath us freely.
+    # Detached, so sync.sh can force-move `main` underneath us freely.
     git -C "$BUILD_DIR" checkout --detach --force "$sha" >/dev/null 2>&1
     git -C "$BUILD_DIR" clean -fdq -e node_modules -e '**/node_modules' -e '**/dist'
   fi

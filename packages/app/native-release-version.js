@@ -1,9 +1,9 @@
 const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
-// A fork stamps its own prerelease shape, e.g. 0.7.2-fr.7. Upstream's pattern
-// knows only stable and -beta.N, and every Expo config read goes through this
-// file, so an unrecognised version breaks even `expo export --platform web` —
-// which the daemon's bundled web UI build runs.
-const forkVersionPattern = /^(\d+)\.(\d+)\.(\d+)-fr\.(\d+)$/;
+// A fork stamps its own prerelease shape, e.g. 0.7.2-panrafal.7. Upstream's
+// pattern knows only stable and -beta.N, and every Expo config read goes
+// through this file, so an unrecognised version breaks even
+// `expo export --platform web` — which the daemon's bundled web UI build runs.
+const forkVersionPattern = /^(\d+)\.(\d+)\.(\d+)-panrafal\.(\d+)$/;
 const stableIosBuildSlot = 999;
 const FDROID_ABI_VERSION_CODE_SUFFIXES = {
   "armeabi-v7a": 1,
@@ -24,8 +24,10 @@ function getNativeReleaseVersion(version) {
       // versionCode. Play requires it to increase per upload; TestFlight, which
       // is the fork's only mobile target, does not look at it.
       androidVersionCode: versionCode,
-      // The fork build number is already monotonic, which is all App Store
-      // Connect asks of CFBundleVersion. Upstream's 1..999 build slot is a
+      // The fork build number increases within one upstream version and
+      // restarts when that version moves — which is exactly the contract App
+      // Store Connect puts on CFBundleVersion, since appVersion below is the
+      // string it must be unique within. Upstream's 1..999 build slot is a
       // per-release counter and would run out.
       iosBuildNumber: buildNumber,
     };
