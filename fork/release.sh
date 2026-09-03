@@ -2,7 +2,7 @@
 #
 # fork/release.sh — cut a fork build of the desktop app.
 #
-# Tags the current `panrafal` commit as `fork-v<version>` and pushes it, which
+# Tags the current `main` commit as `fork-v<version>` and pushes it, which
 # starts the fork's own Desktop workflow on GitHub. That workflow builds,
 # signs and notarizes the macOS app on a macos runner and publishes it to a
 # GitHub Release on your fork, with an auto-update feed pointing at your fork
