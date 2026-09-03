@@ -17,3 +17,8 @@ origin/add-paseo-deeplink-hash-prompts
 
 # Fork features not yet sent upstream.
 origin/vscode
+
+# Soon to be PRs against getpaseo/paseo.
+origin/paseo-ls/add-labels-filter
+origin/add-search-transcript-terminal
+origin/feat/terminal-close-confirm
