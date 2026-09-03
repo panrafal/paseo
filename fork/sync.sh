@@ -2,7 +2,7 @@
 #
 # fork/sync.sh — rebuild the integration branch.
 #
-#   panrafal = upstream/main + fork-tooling + every ref in fork/branches
+#   main = upstream/main + panrafal-base + every ref in fork/branches
 #
 # The branch is rebuilt from scratch every run, so it is always exactly
 # "latest upstream plus my patches" with no accumulated merge cruft. The
@@ -10,7 +10,7 @@
 #
 # Usage:
 #   fork/sync.sh                 rebuild locally, print the push command
-#   fork/sync.sh --push          rebuild and force-push to origin/panrafal
+#   fork/sync.sh --push          rebuild and force-push to origin/main
 #   fork/sync.sh --agent         hand merge conflicts to a Paseo agent
 #   fork/sync.sh --rebase        also rebase each feature branch onto upstream
 #   fork/sync.sh --no-fetch      use the refs already fetched
@@ -46,18 +46,30 @@ require_repo
 [ "$(git config --get rerere.autoupdate || true)" = "true" ] || git config rerere.autoupdate true
 
 # The build number identifies the commit this sync is about to produce, so it
-# has to be committed to the tooling branch before that branch is merged.
+# has to be committed to the base branch before that branch is merged. Run it
+# after the rebase: panrafal-base is rebased onto upstream/main like any other
+# branch now, and a rebase would replay or drop a bump committed before it.
+#
+# fork/build-number holds the upstream version the counter belongs to and the
+# counter itself ("0.7.2 13"). The counter restarts at 1 whenever the upstream
+# version moves — see fork_version() in config.sh for why that is safe.
 bump_build_number() {
-  local dir="$WORK_ROOT/bump" current next sha
+  local dir="$WORK_ROOT/bump" stored_base stored_number base next sha
   rm -rf "$dir"
   git worktree prune
   git worktree add --detach "$dir" "$TOOLING_REF" >/dev/null
-  current="$(cat "$dir/fork/build-number" 2>/dev/null | tr -d '[:space:]')"
-  [ -n "$current" ] || current=0
-  next=$((current + 1))
-  echo "$next" >"$dir/fork/build-number"
+  read -r stored_base stored_number <<<"$(cat "$dir/fork/build-number" 2>/dev/null)"
+  base="$(node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version' \
+    <"$dir/package.json")"
+  if [ "$stored_base" = "$base" ] && [ -n "$stored_number" ]; then
+    next=$((stored_number + 1))
+  else
+    next=1
+    [ -z "$stored_base" ] || say "upstream is now $base — restarting the fork counter"
+  fi
+  echo "$base $next" >"$dir/fork/build-number"
   git -C "$dir" add fork/build-number
-  git -C "$dir" -c core.hooksPath=/dev/null commit -q -m "fork: build $next"
+  git -C "$dir" -c core.hooksPath=/dev/null commit -q -m "fork: build $base-panrafal.$next"
   sha="$(git -C "$dir" rev-parse HEAD)"
   git worktree remove --force "$dir" >/dev/null 2>&1 || true
   move_branch "$TOOLING_REF" "$sha"
@@ -66,7 +78,7 @@ bump_build_number() {
   # fetch, the lease fails instead of quietly reusing or overwriting a build id.
   [ "$push" -eq 0 ] ||
     git push -q --force-with-lease "$FORK_REMOTE" "$TOOLING_REF:$TOOLING_REF"
-  say "Build $next"
+  say "Build $base-panrafal.$next"
 }
 
 # `git branch -f` refuses to move a branch that is checked out somewhere, and
@@ -108,6 +120,22 @@ publish_branch() {
   fi
   git push --force-with-lease="$branch:$remote_sha" "$FORK_REMOTE" "$branch:$branch"
   say "pushed $branch to $FORK_REMOTE"
+}
+
+# A patch branch is a linear series of commits on top of upstream. Branching off
+# the integration branch instead produces one that also carries the whole patch
+# stack, and the giveaway is a merge commit: upstream's history is linear, and
+# the integration branch is nothing but merges. Catching it here matters more
+# now that the integration branch is called `main`, which is what everyone's
+# fingers type after `git switch -c`.
+assert_forked_from_upstream() {
+  local branch="$1" merges
+  merges="$(git rev-list --merges "$branch" "^$BASE" | head -3)"
+  [ -n "$merges" ] || return 0
+  die "$branch has merge commits above $BASE — it was branched off the integration
+branch, not off upstream. Rebase the real work onto upstream:
+  git rebase --onto $BASE <last-integration-commit> $branch
+Start the next one with fork/new-branch.sh so this cannot happen again."
 }
 
 # A rebase is in progress when git's state directory exists; REBASE_HEAD can
@@ -178,7 +206,7 @@ fi
 BASE="$UPSTREAM_REMOTE/$UPSTREAM_BRANCH"
 git rev-parse --verify -q "$BASE^{commit}" >/dev/null || die "cannot resolve $BASE"
 git rev-parse --verify -q "$TOOLING_REF^{commit}" >/dev/null ||
-  die "tooling branch '$TOOLING_REF' not found — it holds fork/branches and these scripts"
+  die "base branch '$TOOLING_REF' not found — it holds fork/branches and these scripts"
 
 mapfile -t REFS < <(read_branch_list)
 MERGE_REFS=("$TOOLING_REF" ${REFS[@]+"${REFS[@]}"})
@@ -189,24 +217,26 @@ done
 
 say "Base: $BASE ($(git log -1 --format='%h %s' "$BASE"))"
 
-bump_build_number
-
 # --------------------------------------------------------------- rebase ----
 # Optional: move the patch branches themselves onto current upstream, so their
 # PRs stay mergeable and the integration merges stay trivial. Only local
 # branches are rebased; a remote-tracking ref is rebased through its local
 # branch of the same name when one exists.
+#
+# panrafal-base is rebased with the rest: it edits app.config.js, CLAUDE.md and
+# scripts/ci-workflow.test.mjs, so it collides with upstream like any patch.
 
 if [ "$do_rebase" -eq 1 ]; then
-  for ref in ${REFS[@]+"${REFS[@]}"}; do
+  for ref in "$TOOLING_REF" ${REFS[@]+"${REFS[@]}"}; do
     local_branch="${ref#"$FORK_REMOTE"/}"
     git show-ref --verify -q "refs/heads/$local_branch" || {
       warn "no local branch '$local_branch' to rebase — merging $ref as-is"
       continue
     }
+    assert_forked_from_upstream "$local_branch"
     if git merge-base --is-ancestor "$BASE" "$local_branch"; then
       say "rebase $local_branch: already on $BASE"
-      publish_branch "$local_branch"
+      [ "$local_branch" = "$TOOLING_REF" ] || publish_branch "$local_branch"
       continue
     fi
     rb="$WORK_ROOT/rebase"
@@ -228,7 +258,9 @@ if [ "$do_rebase" -eq 1 ]; then
     git worktree remove --force "$rb" >/dev/null 2>&1 || true
     move_branch "$local_branch" "$rebased_sha"
     say "rebased $local_branch onto $BASE"
-    publish_branch "$local_branch"
+    # bump_build_number commits to the base branch and pushes it right after
+    # this loop, so publishing it here would push a half-finished state.
+    [ "$local_branch" = "$TOOLING_REF" ] || publish_branch "$local_branch"
   done
   # Rebased local branches are now ahead of their remote refs; merge those.
   for i in "${!REFS[@]}"; do
@@ -237,6 +269,8 @@ if [ "$do_rebase" -eq 1 ]; then
   done
   MERGE_REFS=("$TOOLING_REF" ${REFS[@]+"${REFS[@]}"})
 fi
+
+bump_build_number
 
 # ---------------------------------------------------------------- build ----
 
