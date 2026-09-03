@@ -1,3 +1,5 @@
+> This is a **very custom** fork of paseo.sh, whatever makes sense I'm pushing upstream as PRs
+
 <p align="center">
   <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
 </p>
