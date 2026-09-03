@@ -6,9 +6,13 @@ UPSTREAM_REMOTE="${FORK_UPSTREAM_REMOTE:-upstream}"
 UPSTREAM_BRANCH="${FORK_UPSTREAM_BRANCH:-main}"
 FORK_REMOTE="${FORK_REMOTE:-origin}"
 
-# The tooling branch (this directory) and the integration branch it builds.
-TOOLING_REF="${FORK_TOOLING_REF:-fork-tooling}"
-TARGET="${FORK_TARGET_BRANCH:-panrafal}"
+# The base branch (this directory, plus the fork's own identity) and the
+# integration branch it builds. The integration branch is this fork's `main`:
+# a clone of the fork is meant to give you the batteries-included build, and
+# upstream's workflows only fire on a branch literally called `main`, so `main`
+# has to be the branch that carries panrafal-base's disabled/ workflow move.
+TOOLING_REF="${FORK_TOOLING_REF:-panrafal-base}"
+TARGET="${FORK_TARGET_BRANCH:-main}"
 
 # Scratch, build and artifact directories. Kept outside the repo so they
 # survive rebuilds and out of `.git/` so agents can be pointed at them.
@@ -59,31 +63,43 @@ offer_command() {
 # The fork version, shared by every artifact so a daemon, a desktop app and a
 # TestFlight build from the same commit all report the same string.
 #
-#   0.7.2-fr.7
-#   ^base   ^build number
+#   0.7.2-panrafal.7
+#   ^upstream base   ^fork build number
 #
-# The build number lives in fork/build-number on the tooling branch and is
-# bumped once per sync, before anything is merged, so it is committed into the
-# `panrafal` commit it identifies. It never resets: it is a build id, not a
-# per-release counter, and semver orders 0.7.3-fr.1 above 0.7.2-fr.99 anyway.
+# fork/build-number lives on the base branch and holds both halves —
+# "0.7.2 7" — because the counter restarts at 1 every time the upstream
+# version moves. Storing the version it was counting for is what makes the
+# restart detectable; a bare integer cannot tell "first build of 0.7.3" from
+# "someone reset the file".
 #
-# Being a plain integer is the point. Semver compares numeric prerelease
-# identifiers numerically, so every build sorts above the one before it and the
-# desktop's in-app updater sees a new fork build as an upgrade. It is also
-# monotonic enough to be the iOS CFBundleVersion, which App Store Connect
-# requires to increase with every upload.
+# The restart is safe, but only under that exact rule — reset when the base
+# moves, never otherwise. Two things depend on it:
+#
+#   - The desktop updater compares semver, and 0.7.3-panrafal.1 sorts above
+#     0.7.2-panrafal.99 because the base dominates. A restart is still an
+#     upgrade.
+#   - App Store Connect requires CFBundleVersion to increase within one
+#     CFBundleShortVersionString. native-release-version.js reports the bare
+#     base as the short version, so the restart lands exactly when that string
+#     changes. Restarting the counter while the base held would be rejected.
+#
+# The number is bumped once per sync, after the rebase and before anything is
+# merged, so it is committed into the `main` commit it identifies.
 fork_version() {
   local ref="${1:-$TARGET}" base number
   base="$(git show "$ref:package.json" |
     node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')"
-  number="$(fork_build_number "$ref")"
-  echo "$base-fr.$number"
+  number="$(fork_build_number "$ref" "$base")"
+  echo "$base-panrafal.$number"
 }
 
 fork_build_number() {
-  local ref="${1:-$TARGET}" number
-  number="$(git show "$ref:fork/build-number" 2>/dev/null | tr -d '[:space:]')"
+  local ref="${1:-$TARGET}" expect_base="${2:-}" stored_base number
+  read -r stored_base number < <(git show "$ref:fork/build-number" 2>/dev/null)
   [ -n "$number" ] || die "no fork/build-number on $ref — run fork/sync.sh first"
+  if [ -n "$expect_base" ] && [ "$stored_base" != "$expect_base" ]; then
+    die "fork/build-number on $ref counts $stored_base, but package.json says $expect_base — run fork/sync.sh"
+  fi
   echo "$number"
 }
 
