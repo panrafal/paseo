@@ -1,18 +1,31 @@
 # The `panrafal` fork
 
-`panrafal` is an integration branch: the latest `getpaseo/paseo` `main` with my
-own patches merged on top. It is what I build and run. It is not a branch I
-commit to — every sync throws the old one away and rebuilds it, so anything
-committed directly to it is lost.
+This fork's `main` is an integration branch: the latest `getpaseo/paseo` `main`
+with my own patches merged on top. It is what I build and run. It is not a
+branch I commit to — every sync throws the old one away and rebuilds it, so
+anything committed directly to it is lost.
+
+`main` is deliberately not a mirror of upstream. Cloning the fork should give
+you the build I actually use, and upstream's workflows only fire on a branch
+literally called `main` (`ci.yml` is `push: branches: [main]`), so mirroring
+upstream into it burned a full CI run on every sync. `panrafal-base` moves
+those workflows into `.github/workflows/disabled/`, which GitHub does not read,
+and `main` carries that move. Upstream's `main` is `upstream/main`; there is no
+fork-side copy of it and nothing needs one.
 
 ## Branches
 
-| Branch           | Base            | Purpose                                                          |
-| ---------------- | --------------- | ---------------------------------------------------------------- |
-| `fork-tooling`   | `upstream/main` | This directory: the branch list and the scripts. No repo code.   |
-| `panrafal-dist`  | `upstream/main` | Repo changes the fork needs: own update feed and app identifiers, upstream workflows disabled, `panrafal:` scripts in `paseo.json`. |
-| PR branches      | `upstream/main` | One per change, sent upstream as a pull request.                 |
-| `panrafal`       | rebuilt         | `upstream/main` + `fork-tooling` + `panrafal-dist` + PR branches. |
+| Branch          | Base            | Purpose                                                          |
+| --------------- | --------------- | ---------------------------------------------------------------- |
+| `panrafal-base` | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, `panrafal:` scripts in `paseo.json`. |
+| PR branches     | `upstream/main` | One per change, sent upstream as a pull request.                  |
+| `main`          | rebuilt         | `upstream/main` + `panrafal-base` + PR branches. Force-pushed.    |
+
+Everything except `main` is based on `upstream/main`, including
+`panrafal-base`. Start one with `fork/new-branch.sh <name>` rather than
+`git switch -c`: `main` is the branch your fingers reach for, and a branch cut
+from it carries the whole patch stack. `fork/sync.sh` refuses such a branch —
+it spots the integration merge commits — but only once the mistake is made.
 
 ## The quick route
 
@@ -41,10 +54,9 @@ are all your call, not the build's.
 2. Rebase every patch branch in `fork/branches` onto current `upstream/main`,
    handing conflicts to a Paseo agent, and force-push each one. This keeps the
    PRs mergeable.
-3. Rebuild `panrafal` from `upstream/main` by merging the tooling branch, the
-   dist branch and every rebased patch branch, again handing conflicts to an
-   agent.
-4. Force-push `panrafal`.
+3. Rebuild `main` from `upstream/main` by merging `panrafal-base` and every
+   rebased patch branch, again handing conflicts to an agent.
+4. Force-push `main`.
 
 Run it from any worktree; it works in a scratch worktree under
 `~/.paseo-fork/sync`, so your checkout is untouched even mid-conflict. Drop
@@ -54,36 +66,36 @@ Because the branch is rebuilt rather than advanced, publishing is a
 force-push. Anywhere you consume it, re-sync with a reset, not a pull:
 
 ```bash
-git fetch origin && git reset --hard origin/panrafal
+git fetch origin && git reset --hard origin/main
 ```
 
 ### Adding a change
 
 Every change to Paseo itself is its own branch off `upstream/main`, never a
-commit on `panrafal`. That is what keeps it sendable upstream and what lets the
+commit on `main`. That is what keeps it sendable upstream and what lets the
 integration branch be thrown away and rebuilt.
 
 ```bash
-git fetch upstream main
-git worktree add ../paseo-my-change -b my-change upstream/main
+fork/new-branch.sh my-change
 # ...work, commit...
 git push -u origin my-change
 ```
 
-Then add `origin/my-change` to `fork/branches` on the `fork-tooling` branch,
-commit, and sync. It is in every build from then on, and `gh pr create` sends
-the same branch upstream whenever you want it reviewed.
+`fork/new-branch.sh` exists because `main` is the wrong base and is also the
+one your fingers type. It fetches upstream and branches off `upstream/main`.
 
-Two kinds of change do not belong on their own branch:
+Then add `origin/my-change` to `fork/branches` on `panrafal-base`, commit, and
+sync. It is in every build from then on, and `gh pr create` sends the same
+branch upstream whenever you want it reviewed.
 
-- Anything about how the fork builds or publishes itself goes on
-  `panrafal-dist` — it is fork-only and would never be accepted upstream.
-- Anything about the fork scripts goes on `fork-tooling`.
+Anything fork-only — how the fork builds, ships, or syncs itself — goes on
+`panrafal-base` instead. None of it would be accepted upstream, and it is the
+one branch that is allowed to know it is a fork.
 
 ### Changing what gets merged
 
-Edit `fork/branches` on the `fork-tooling` branch, commit, then sync. The list
-is read from the `fork-tooling` ref, not from your working tree, so an
+Edit `fork/branches` on `panrafal-base`, commit, then sync. The list
+is read from the `panrafal-base` ref, not from your working tree, so an
 uncommitted edit has no effect. That is deliberate: the list travels with the
 repo.
 
@@ -97,7 +109,7 @@ later syncs rather than re-derived. The agent is told to keep both sides'
 intent and never to drop an upstream change to make a patch apply. Set
 `FORK_AGENT_PROVIDER` to pick the provider.
 
-Rebasing is free here: `panrafal` is rebuilt from the branches every time and
+Rebasing is free here: `main` is rebuilt from the branches every time and
 never remembers their old shape.
 
 ## Versions
@@ -106,29 +118,42 @@ Every fork artifact carries the same stamped version, so a daemon, a desktop
 app and a TestFlight build from one commit all report the same string:
 
 ```
-0.7.2-fr.7
+0.7.2-panrafal.7
 ^^^^^ upstream base
-        ^ build number
+              ^ fork build number
 ```
 
 `paseo --version` on the devbox therefore tells you it is a fork build and
 which build — a plain `0.7.2` is upstream's.
 
-The build number lives in `fork/build-number` on the `fork-tooling` branch.
-`fork/sync.sh` bumps it once per run, before anything is merged, so it is
-committed into the `panrafal` commit it identifies. It never resets: it is a
-build id, not a per-release counter, and semver orders `0.7.3-fr.1` above
-`0.7.2-fr.99` regardless.
+`fork/build-number` on `panrafal-base` holds both halves, `0.7.2 7`, because
+the counter restarts at 1 whenever the upstream version moves. Storing the
+version it counts for is what makes the restart detectable — a bare integer
+cannot tell "first build of 0.7.3" from "someone reset the file".
+`fork/sync.sh` bumps it once per run, after the rebase and before anything is
+merged, so it is committed into the `main` commit it identifies.
 
-Being a plain integer is the point. Semver compares numeric prerelease
-identifiers numerically, so `fr.10` really is newer than `fr.9`, every build
-sorts above the one before it, and the desktop's in-app updater sees a fork
-build as an upgrade. The same number is the iOS `CFBundleVersion`, which App
-Store Connect requires to increase with every upload — upstream's 1..999 build
-slot is a per-release counter and would run out.
+The restart is safe, but only under that rule: reset when the base moves, never
+otherwise. Two things depend on it.
+
+The desktop's in-app updater compares semver, and `0.7.3-panrafal.1` sorts
+above `0.7.2-panrafal.99` because the base dominates — a restart is still an
+upgrade. Within one base, numeric prerelease identifiers compare numerically,
+so `panrafal.10` really is newer than `panrafal.9`.
+
+The same number is the iOS `CFBundleVersion`, which App Store Connect requires
+to increase within one `CFBundleShortVersionString`.
+`packages/app/native-release-version.js` reports the bare base as the short
+version, so a restart lands exactly when that string changes. Restarting while
+the base held would be rejected at upload. Upstream's 1..999 build slot is a
+per-release counter and would run out.
+
+That file also parses the version with a hardcoded pattern. Change the suffix
+and you change the regex, or every Expo config read throws — including
+`expo export --platform web`, which the daemon's bundled web UI build runs.
 
 A fork build sorts below the upstream release of the same base
-(`0.7.2-fr.7` < `0.7.2`), which is correct: it is built from upstream `main`
+(`0.7.2-panrafal.7` < `0.7.2`), which is correct: it is built from upstream `main`
 after that release and before the next. The fork's update feed only lists fork
 builds, so nothing compares the two.
 
@@ -147,7 +172,7 @@ would kill the agent doing it. So the build only packs tarballs into
 
 ```bash
 ssh devbox-admin "sudo npm install -g --prefix /usr --allow-scripts=esbuild,node-pty \
-  /home/paseo/.paseo-fork/dist/getpaseo-{highlight,relay,protocol,client,plugin,server,cli}-0.7.2-fr.2.tgz \
+  /home/paseo/.paseo-fork/dist/getpaseo-{highlight,relay,protocol,client,plugin,server,cli}-0.7.2-panrafal.2.tgz \
   && sudo systemctl restart paseo && sleep 8 && sudo devbox-healthcheck"
 ```
 
@@ -168,9 +193,9 @@ without it esbuild and node-pty install unconfigured.
 
 ## macOS
 
-`fork/build.sh desktop` tags the current `panrafal` as `fork-v<version>` and
+`fork/build.sh desktop` tags the current `main` as `fork-v<version>` and
 pushes it, starting **Fork Desktop** (`.github/workflows/fork-desktop.yml`, on
-`panrafal-dist`). It builds arm64 and x64 on macOS runners, signs and notarizes
+`panrafal-base`). It builds arm64 and x64 on macOS runners, signs and notarizes
 with your Apple credentials, and publishes a release on your fork.
 
 Repo secrets required on the fork:
@@ -191,9 +216,10 @@ gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=panrafal \
   -H 'Accept: application/vnd.github.raw' | bash
 ```
 
-After the first install the app updates itself: fork builds carry a prerelease
-version (`0.7.2-panrafal.1`), which puts the app on the `beta` update channel,
-and `panrafal-dist` points that channel's feed at your fork.
+After the first install the app updates itself. Fork builds carry a prerelease
+version (`0.7.2-panrafal.1`), so the app has to be on the `beta` update channel
+— it reads that from its own settings, not from the version string — and
+`panrafal-base` points that channel's feed at your fork.
 
 ## iOS / TestFlight
 
@@ -212,7 +238,7 @@ npx eas credentials      # let EAS manage iOS signing
 
 Then fill `FORK_IOS_BUNDLE_ID`, `FORK_EAS_OWNER`, `FORK_EAS_PROJECT_ID`,
 `FORK_ASC_APP_ID` and `FORK_APPLE_TEAM_ID` into `fork/dist.env` on
-`fork-tooling` and commit. `fork/ios.sh doctor` checks them without building.
+`panrafal-base` and commit. `fork/ios.sh doctor` checks them without building.
 
 Push notifications need your own Firebase `GoogleService-Info.plist` at
 `packages/app/.secrets/` or via `GOOGLE_SERVICE_INFO_PLIST_PROD`. Everything
@@ -220,11 +246,20 @@ else works without it.
 
 ## GitHub Actions on the fork
 
-Every upstream workflow is disabled on `panrafal-dist`: the automatic triggers
-are stripped and only `workflow_dispatch` remains, so constant force-pushes to
-`panrafal` never start a run. They are all still there and still runnable by
-hand from the Actions tab. Fork Desktop is the one workflow that triggers on
-its own, on `fork-v*` tags.
+`panrafal-base` moves every upstream workflow into
+`.github/workflows/disabled/`. GitHub only reads `.github/workflows/*.yml` and
+does not recurse, so nothing there can trigger — which is what lets `main` be
+the integration branch at all, since `ci.yml` fires on `push: branches: [main]`
+and force-pushes land there constantly. The files are unchanged and still
+runnable by hand: point the Actions tab at a branch that has them at the top
+level, or copy one back temporarily. Fork Desktop is the one workflow that
+triggers on its own, on `fork-v*` tags.
+
+Tags are the gap. A tag-triggered workflow resolves its file from the tagged
+commit, not from `main`, so pushing an upstream `v*` tag to this fork would
+start `deploy-app`, `desktop-release` and `android-apk-release` from upstream's
+enabled copies. Never push upstream tags to `origin` — plain `git push` does
+not, so just avoid `--tags` and `--follow-tags`.
 
 ## A new machine
 
@@ -232,6 +267,6 @@ its own, on `fork-v*` tags.
 git clone https://github.com/panrafal/paseo.git && cd paseo
 git remote add upstream https://github.com/getpaseo/paseo.git
 git fetch upstream main
-git fetch origin fork-tooling:fork-tooling
-git show fork-tooling:fork/sync.sh | bash -s -- --push
+git fetch origin panrafal-base:panrafal-base
+git show panrafal-base:fork/sync.sh | bash -s -- --push
 ```
