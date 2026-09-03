@@ -2,7 +2,7 @@
 #
 # fork/sync.sh — rebuild the integration branch.
 #
-#   main = upstream/main + panrafal-base + every ref in fork/branches
+#   main = upstream/main + fork-base + every ref in fork/branches
 #
 # The branch is rebuilt from scratch every run, so it is always exactly
 # "latest upstream plus my patches" with no accumulated merge cruft. The
@@ -47,7 +47,7 @@ require_repo
 
 # The build number identifies the commit this sync is about to produce, so it
 # has to be committed to the base branch before that branch is merged. Run it
-# after the rebase: panrafal-base is rebased onto upstream/main like any other
+# after the rebase: fork-base is rebased onto upstream/main like any other
 # branch now, and a rebase would replay or drop a bump committed before it.
 #
 # fork/build-number holds the upstream version the counter belongs to and the
@@ -226,7 +226,7 @@ say "Base: $BASE ($(git log -1 --format='%h %s' "$BASE"))"
 # branches are rebased; a remote-tracking ref is rebased through its local
 # branch of the same name when one exists.
 #
-# panrafal-base is rebased with the rest: it edits app.config.js, CLAUDE.md and
+# fork-base is rebased with the rest: it edits app.config.js, CLAUDE.md and
 # scripts/ci-workflow.test.mjs, so it collides with upstream like any patch.
 
 if [ "$do_rebase" -eq 1 ]; then
