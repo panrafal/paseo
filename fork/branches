@@ -14,3 +14,6 @@ origin/panrafal-dist
 # Open PRs against getpaseo/paseo.
 origin/add-daemon-loopback-password-bypass
 origin/add-paseo-deeplink-hash-prompts
+
+# Fork features not yet sent upstream.
+origin/vscode
