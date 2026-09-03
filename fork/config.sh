@@ -10,8 +10,8 @@ FORK_REMOTE="${FORK_REMOTE:-origin}"
 # integration branch it builds. The integration branch is this fork's `main`:
 # a clone of the fork is meant to give you the batteries-included build, and
 # upstream's workflows only fire on a branch literally called `main`, so `main`
-# has to be the branch that carries panrafal-base's disabled/ workflow move.
-TOOLING_REF="${FORK_TOOLING_REF:-panrafal-base}"
+# has to be the branch that carries fork-base's disabled/ workflow move.
+TOOLING_REF="${FORK_TOOLING_REF:-fork-base}"
 TARGET="${FORK_TARGET_BRANCH:-main}"
 
 # Scratch, build and artifact directories. Kept outside the repo so they
