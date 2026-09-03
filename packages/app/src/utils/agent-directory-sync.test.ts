@@ -322,6 +322,7 @@ describe("replaceFetchedAgentDirectory", () => {
           "legacy-workspace",
           {
             id: "legacy-workspace",
+            activityAt: null,
             projectId: "project",
             projectDisplayName: "Project",
             projectRootPath: "/repo",
