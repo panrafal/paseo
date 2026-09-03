@@ -59,8 +59,11 @@ bump_build_number() {
   git worktree prune
   git worktree add --detach "$dir" "$TOOLING_REF" >/dev/null
   read -r stored_base stored_number <<<"$(cat "$dir/fork/build-number" 2>/dev/null)"
-  base="$(node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version' \
-    <"$dir/package.json")"
+  # Read the version off upstream, not off the base branch's worktree: the
+  # counter belongs to the upstream release this build is made from, and
+  # without --rebase the base branch can still be sitting on an older one.
+  base="$(git show "$BASE:package.json" |
+    node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')"
   if [ "$stored_base" = "$base" ] && [ -n "$stored_number" ]; then
     next=$((stored_number + 1))
   else
