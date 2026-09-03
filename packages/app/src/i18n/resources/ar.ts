@@ -1775,6 +1775,15 @@ export const ar: TranslationResources = {
     archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
     archiveFinishedRetry: "إعادة المحاولة ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "بحث",
+    matchPosition: "{{current}} من {{count}}",
+    noResults: "لا توجد نتائج",
+    cappedCount: "أكثر من {{count}} نتيجة",
+    previous: "النتيجة السابقة",
+    next: "النتيجة التالية",
+    close: "إغلاق البحث",
+  },
   panels: {
     draft: {
       newAgent: "وكيل جديد",
@@ -2212,6 +2221,9 @@ export const ar: TranslationResources = {
         closePane: "إغلاق الجزء",
         newTerminal: "محطة جديدة",
         searchFiles: "البحث في الملفات",
+        findInPane: "البحث في اللوحة",
+        findNext: "البحث عن التالي",
+        findPrevious: "البحث عن السابق",
         toggleCommandCenter: "تبديل مركز القيادة",
         showKeyboardShortcuts: "إظهار اختصارات لوحة المفاتيح",
         toggleLeftSidebar: "تبديل الشريط الجانبي الأيسر",
@@ -2231,6 +2243,7 @@ export const ar: TranslationResources = {
         switchProject: "تبديل المشروع",
       },
       helpNotes: {
+        findWhileOpen: "فقط أثناء فتح شريط البحث.",
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",
       },
     },
