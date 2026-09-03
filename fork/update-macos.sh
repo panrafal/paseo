@@ -5,7 +5,7 @@
 # Run this ON THE LAPTOP. It needs only the gh CLI; it does not need a
 # checkout of this repo — copy it over, or run it straight from GitHub:
 #
-#   gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=panrafal-base \
+#   gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=main \
 #     -H 'Accept: application/vnd.github.raw' | bash
 #
 # After the first install the app updates itself: the fork build's auto-update

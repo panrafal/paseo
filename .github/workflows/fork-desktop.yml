@@ -59,7 +59,7 @@ jobs:
               --repo "${{ github.repository }}" \
               --title "Fork build ${FORK_TAG#fork-v}" \
               --prerelease \
-              --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the panrafal-base branch."
+              --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the fork-base branch."
           fi
 
   macos:
