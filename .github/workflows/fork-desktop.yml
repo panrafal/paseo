@@ -2,13 +2,14 @@
 #
 # Upstream's desktop-release.yml publishes to getpaseo/paseo and carries the
 # rollout, changelog and multi-platform machinery a public release needs. This
-# is the fork's own, much smaller path: tag `fork-v<version>` on the `panrafal`
-# integration branch and get a signed, notarized macOS build published to a
-# release on this fork, with the in-app updater pointed here instead of
+# is the fork's own, much smaller path: tag `fork-v<version>` on `main` — this
+# fork's integration branch — and get a signed, notarized macOS build published
+# to a release on this fork, with the in-app updater pointed here instead of
 # upstream.
 #
-# The fork version always carries a prerelease suffix (0.7.2-panrafal.1), so
-# the desktop app runs on the "beta" update channel and looks for
+# The fork version always carries a prerelease suffix (0.7.2-panrafal.1). The
+# desktop app picks its update channel from its own settings, not from the
+# version string, so a fork build has to be on the "beta" channel to look for
 # beta-mac.yml — which is what this workflow uploads.
 #
 # Required repo secrets: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
@@ -58,7 +59,7 @@ jobs:
               --repo "${{ github.repository }}" \
               --title "Fork build ${FORK_TAG#fork-v}" \
               --prerelease \
-              --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the fork-tooling branch."
+              --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the panrafal-base branch."
           fi
 
   macos:
