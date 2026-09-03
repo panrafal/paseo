@@ -8,21 +8,21 @@ anything committed directly to it is lost.
 `main` is deliberately not a mirror of upstream. Cloning the fork should give
 you the build I actually use, and upstream's workflows only fire on a branch
 literally called `main` (`ci.yml` is `push: branches: [main]`), so mirroring
-upstream into it burned a full CI run on every sync. `panrafal-base` moves
+upstream into it burned a full CI run on every sync. `fork-base` moves
 those workflows into `.github/workflows/disabled/`, which GitHub does not read,
 and `main` carries that move. Upstream's `main` is `upstream/main`; there is no
 fork-side copy of it and nothing needs one.
 
 ## Branches
 
-| Branch          | Base            | Purpose                                                          |
-| --------------- | --------------- | ---------------------------------------------------------------- |
-| `panrafal-base` | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, `panrafal:` scripts in `paseo.json`. |
-| PR branches     | `upstream/main` | One per change, sent upstream as a pull request.                  |
-| `main`          | rebuilt         | `upstream/main` + `panrafal-base` + PR branches. Force-pushed.    |
+| Branch      | Base            | Purpose                                                                                                                                                                            |
+| ----------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fork-base` | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, `panrafal:` scripts in `paseo.json`. |
+| PR branches | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                   |
+| `main`      | rebuilt         | `upstream/main` + `fork-base` + PR branches. Force-pushed.                                                                                                                         |
 
 Everything except `main` is based on `upstream/main`, including
-`panrafal-base`. Start one with `fork/new-branch.sh <name>` rather than
+`fork-base`. Start one with `fork/new-branch.sh <name>` rather than
 `git switch -c`: `main` is the branch your fingers reach for, and a branch cut
 from it carries the whole patch stack. `fork/sync.sh` refuses such a branch —
 it spots the integration merge commits — but only once the mistake is made.
@@ -31,12 +31,12 @@ it spots the integration merge commits — but only once the mistake is made.
 
 Four `panrafal:` scripts in `paseo.json`, one tap each in the Paseo UI:
 
-| Script                    | Runs                              | Ends with                                   |
-| ------------------------- | --------------------------------- | ------------------------------------------- |
-| `panrafal: sync`          | `fork/sync.sh --rebase --agent --push` | the rebuilt branch, pushed             |
-| `panrafal: build daemon`  | `fork/build.sh daemon`            | an `ssh devbox-admin …` command to paste    |
-| `panrafal: build desktop` | `fork/build.sh desktop`           | a command to paste on the Mac               |
-| `panrafal: build ios`     | `fork/build.sh ios`               | a TestFlight link                           |
+| Script                    | Runs                                   | Ends with                                |
+| ------------------------- | -------------------------------------- | ---------------------------------------- |
+| `panrafal: sync`          | `fork/sync.sh --rebase --agent --push` | the rebuilt branch, pushed               |
+| `panrafal: build daemon`  | `fork/build.sh daemon`                 | an `ssh devbox-admin …` command to paste |
+| `panrafal: build desktop` | `fork/build.sh desktop`                | a command to paste on the Mac            |
+| `panrafal: build ios`     | `fork/build.sh ios`                    | a TestFlight link                        |
 
 Each build command prints the follow-up command and pushes it to your
 terminal's clipboard over OSC 52, so it can usually be pasted straight into a
@@ -54,7 +54,7 @@ are all your call, not the build's.
 2. Rebase every patch branch in `fork/branches` onto current `upstream/main`,
    handing conflicts to a Paseo agent, and force-push each one. This keeps the
    PRs mergeable.
-3. Rebuild `main` from `upstream/main` by merging `panrafal-base` and every
+3. Rebuild `main` from `upstream/main` by merging `fork-base` and every
    rebased patch branch, again handing conflicts to an agent.
 4. Force-push `main`.
 
@@ -84,18 +84,18 @@ git push -u origin my-change
 `fork/new-branch.sh` exists because `main` is the wrong base and is also the
 one your fingers type. It fetches upstream and branches off `upstream/main`.
 
-Then add `origin/my-change` to `fork/branches` on `panrafal-base`, commit, and
+Then add `origin/my-change` to `fork/branches` on `fork-base`, commit, and
 sync. It is in every build from then on, and `gh pr create` sends the same
 branch upstream whenever you want it reviewed.
 
 Anything fork-only — how the fork builds, ships, or syncs itself — goes on
-`panrafal-base` instead. None of it would be accepted upstream, and it is the
+`fork-base` instead. None of it would be accepted upstream, and it is the
 one branch that is allowed to know it is a fork.
 
 ### Changing what gets merged
 
-Edit `fork/branches` on `panrafal-base`, commit, then sync. The list
-is read from the `panrafal-base` ref, not from your working tree, so an
+Edit `fork/branches` on `fork-base`, commit, then sync. The list
+is read from the `fork-base` ref, not from your working tree, so an
 uncommitted edit has no effect. That is deliberate: the list travels with the
 repo.
 
@@ -126,7 +126,7 @@ app and a TestFlight build from one commit all report the same string:
 `paseo --version` on the devbox therefore tells you it is a fork build and
 which build — a plain `0.7.2` is upstream's.
 
-`fork/build-number` on `panrafal-base` holds both halves, `0.7.2 7`, because
+`fork/build-number` on `fork-base` holds both halves, `0.7.2 7`, because
 the counter restarts at 1 whenever the upstream version moves. Storing the
 version it counts for is what makes the restart detectable — a bare integer
 cannot tell "first build of 0.7.3" from "someone reset the file".
@@ -195,13 +195,13 @@ without it esbuild and node-pty install unconfigured.
 
 `fork/build.sh desktop` tags the current `main` as `fork-v<version>` and
 pushes it, starting **Fork Desktop** (`.github/workflows/fork-desktop.yml`, on
-`panrafal-base`). It builds arm64 and x64 on macOS runners, signs and notarizes
+`fork-base`). It builds arm64 and x64 on macOS runners, signs and notarizes
 with your Apple credentials, and publishes a release on your fork.
 
 Repo secrets required on the fork:
 
 | Secret                       | Where it comes from                            |
-| ---------------------------- | ----------------------------------------------- |
+| ---------------------------- | ---------------------------------------------- |
 | `APPLE_CERTIFICATE`          | base64 of your Developer ID Application `.p12` |
 | `APPLE_CERTIFICATE_PASSWORD` | the `.p12` export password                     |
 | `APPLE_ID`                   | your Apple ID email                            |
@@ -212,14 +212,14 @@ On the Mac, `fork/update-macos.sh` downloads the newest fork build, quits a
 running Paseo, installs it and relaunches. Fetch and run it in one line:
 
 ```bash
-gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=panrafal \
+gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=main \
   -H 'Accept: application/vnd.github.raw' | bash
 ```
 
 After the first install the app updates itself. Fork builds carry a prerelease
 version (`0.7.2-panrafal.1`), so the app has to be on the `beta` update channel
 — it reads that from its own settings, not from the version string — and
-`panrafal-base` points that channel's feed at your fork.
+`fork-base` points that channel's feed at your fork.
 
 ## iOS / TestFlight
 
@@ -238,7 +238,7 @@ npx eas credentials      # let EAS manage iOS signing
 
 Then fill `FORK_IOS_BUNDLE_ID`, `FORK_EAS_OWNER`, `FORK_EAS_PROJECT_ID`,
 `FORK_ASC_APP_ID` and `FORK_APPLE_TEAM_ID` into `fork/dist.env` on
-`panrafal-base` and commit. `fork/ios.sh doctor` checks them without building.
+`fork-base` and commit. `fork/ios.sh doctor` checks them without building.
 
 Push notifications need your own Firebase `GoogleService-Info.plist` at
 `packages/app/.secrets/` or via `GOOGLE_SERVICE_INFO_PLIST_PROD`. Everything
@@ -246,7 +246,7 @@ else works without it.
 
 ## GitHub Actions on the fork
 
-`panrafal-base` moves every upstream workflow into
+`fork-base` moves every upstream workflow into
 `.github/workflows/disabled/`. GitHub only reads `.github/workflows/*.yml` and
 does not recurse, so nothing there can trigger — which is what lets `main` be
 the integration branch at all, since `ci.yml` fires on `push: branches: [main]`
@@ -266,7 +266,6 @@ not, so just avoid `--tags` and `--follow-tags`.
 ```bash
 git clone https://github.com/panrafal/paseo.git && cd paseo
 git remote add upstream https://github.com/getpaseo/paseo.git
-git fetch upstream main
-git fetch origin panrafal-base:panrafal-base
-git show panrafal-base:fork/sync.sh | bash -s -- --push
+git fetch origin fork-base:fork-base
+fork/sync.sh --push
 ```
