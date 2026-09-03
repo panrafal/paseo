@@ -5,7 +5,7 @@
 # Order matters only for conflict resolution — put the branch you want to
 # "win" the base last.
 #
-# panrafal-base is not listed: it is the branch this file lives on, and the
+# fork-base is not listed: it is the branch this file lives on, and the
 # sync always merges it first.
 #
 # When a PR lands upstream, delete its line. The next sync drops it.
