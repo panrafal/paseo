@@ -42,9 +42,17 @@ case "$cmd" in
     sha="$(git rev-parse "$TARGET")"
 
     git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already exists"
-    # The workflow builds whatever the tag points at, so the branch must be
-    # published first or the runner cannot check the commit out.
-    git push --force-with-lease "$FORK_REMOTE" "$TARGET:$TARGET"
+    # main is derived by fork/integrate.sh and published from there. It is
+    # pushed here only when it is ahead of the fork's copy — a run that was
+    # not pushed — and never rewound: the fetch above refreshed the
+    # remote-tracking ref, so a bare --force-with-lease would not stop that.
+    if git rev-parse --verify -q "$FORK_REMOTE/$TARGET^{commit}" >/dev/null &&
+      ! git merge-base --is-ancestor "$FORK_REMOTE/$TARGET" "$TARGET"; then
+      die "$TARGET here ($(git rev-parse --short "$TARGET")) does not contain $FORK_REMOTE/$TARGET — it is behind or has diverged.
+Reset it to the published one (git branch -f $TARGET $FORK_REMOTE/$TARGET, or reset the checkout that has it),
+or publish yours with fork/integrate.sh first."
+    fi
+    git push -q "$FORK_REMOTE" "$TARGET:$TARGET"
     git tag -a "$tag" "$sha" -m "Fork build $version from $TARGET"
     git push "$FORK_REMOTE" "$tag"
     say "Tagged $tag at $(git log -1 --format='%h %s' "$sha")"
