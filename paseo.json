@@ -28,8 +28,14 @@
     "typecheck": {
       "command": "npm run typecheck"
     },
-    "panrafal: sync": {
-      "command": "./fork/sync.sh --rebase --agent --push"
+    "panrafal: rebase integration": {
+      "command": "./fork/integrate.sh rebase --agent --push"
+    },
+    "panrafal: rebuild integration": {
+      "command": "./fork/integrate.sh rebuild --agent --push"
+    },
+    "panrafal: rebase branches": {
+      "command": "./fork/integrate.sh rebase-branches --agent --push"
     },
     "panrafal: build daemon": {
       "command": "./fork/build.sh daemon"
@@ -42,9 +48,6 @@
     },
     "panrafal: build ios": {
       "command": "./fork/build.sh ios"
-    },
-    "panrafal: build ALL": {
-      "command": "./fork/build.sh all"
     }
   }
 }
