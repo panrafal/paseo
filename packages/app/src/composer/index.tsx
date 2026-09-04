@@ -46,7 +46,7 @@ import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
-import type { DroppedItem } from "@/components/file-drop/types";
+import type { DroppedItem, FileDropIntent } from "@/components/file-drop/types";
 import {
   MessageInput,
   type AttachmentMenuItem,
@@ -124,8 +124,8 @@ import type { PickedFile } from "@/attachments/picked-file";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
 import { useWorkspaceAttachmentsForScopes } from "@/attachments/workspace-attachments-store";
-import { droppedItemsToPickedFiles } from "@/composer/attachments/drop";
-import { getFileTypeLabel } from "@/attachments/file-types";
+import { droppedItemsToPickedFiles, splitDroppedImagePaths } from "@/composer/attachments/drop";
+import { getFileTypeLabel, resolveRasterImageMimeType } from "@/attachments/file-types";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { AttachmentLabel, AttachmentPill, AttachmentThumbnail } from "@/components/attachment-pill";
 import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
@@ -159,12 +159,57 @@ const composerImageAttachmentPersister: Pick<
   persistFromDataUrl: persistAttachmentFromDataUrl,
   persistFromFileUri: persistAttachmentFromFileUri,
 };
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
+import { appendFileMentionPaths, formatFileMentionTarget } from "@/utils/file-mention-autocomplete";
+import { resolveDroppedFileMentionPath } from "@/workspace/file-drop-mentions";
+import { useComposerMentionInbox } from "@/composer/mention-inbox";
 
 type QueuedMessage = QueuedComposerMessage;
 
 type AttachmentListUpdater =
   | UserComposerAttachment[]
   | ((prev: UserComposerAttachment[]) => UserComposerAttachment[]);
+
+function splitDroppedItemsForMentions(input: {
+  items: DroppedItem[];
+  cwd: string;
+  intent: FileDropIntent;
+}): {
+  mentionPaths: string[];
+  uploadItems: DroppedItem[];
+} {
+  const mentionPaths: string[] = [];
+  const uploadItems: DroppedItem[] = [];
+  for (const item of input.items) {
+    if (item.kind !== "file-uri") {
+      uploadItems.push(item);
+      continue;
+    }
+
+    // "attach" skips the mention. So does a file outside the agent's cwd, which has no mention
+    // that would resolve — both fall through to the upload below.
+    const relativePath =
+      input.intent === "attach"
+        ? null
+        : resolveDroppedFileMentionPath({ path: item.path, cwd: input.cwd });
+    if (relativePath) {
+      mentionPaths.push(relativePath);
+    } else {
+      uploadItems.push({ kind: "desktop-path", path: item.path });
+    }
+  }
+  return { mentionPaths, uploadItems };
+}
+
+async function persistDroppedImagePaths(paths: readonly string[]): Promise<ImageAttachment[]> {
+  const persisted = await Promise.all(
+    paths.map(async (path) => {
+      const mimeType = resolveRasterImageMimeType({ path });
+      return mimeType ? await persistAttachmentFromFileUri({ uri: path, mimeType }) : null;
+    }),
+  );
+  return persisted.filter((attachment) => attachment !== null);
+}
 
 const EMPTY_ATTACHMENT_SCOPE_KEYS: readonly string[] = [];
 
@@ -534,6 +579,7 @@ interface DispatchComposerKeyboardActionArgs {
   isAgentRunning: boolean;
   isCancellingAgent: boolean;
   isConnected: boolean;
+  showVoice: boolean;
   handleCancelAgent: () => void;
   focusMessageInputForKeyboardAction: () => void;
 }
@@ -546,10 +592,14 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     isAgentRunning,
     isCancellingAgent,
     isConnected,
+    showVoice,
     handleCancelAgent,
     focusMessageInputForKeyboardAction,
   } = args;
   if (!isPaneFocused) return false;
+
+  if (!showVoice && action.id.startsWith("message-input.dictation")) return false;
+  if (!showVoice && action.id.startsWith("message-input.voice")) return false;
 
   if (action.id === "agent.interrupt") {
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
@@ -577,6 +627,7 @@ function ComposerKeyboardRegistration({
   isAgentRunning,
   isCancellingAgent,
   isConnected,
+  showVoice,
   handleCancelAgent,
   focusMessageInputForKeyboardAction,
   isMessageInputFocused,
@@ -595,6 +646,7 @@ function ComposerKeyboardRegistration({
         isAgentRunning,
         isCancellingAgent,
         isConnected,
+        showVoice,
         handleCancelAgent,
         focusMessageInputForKeyboardAction,
       }),
@@ -606,6 +658,7 @@ function ComposerKeyboardRegistration({
       isCancellingAgent,
       isConnected,
       messageInputRef,
+      showVoice,
     ],
   );
 
@@ -1186,6 +1239,7 @@ function ComposerContentImpl({
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
+  const showVoice = getWorkspaceSurfaceConfig().showVoice;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
@@ -1212,6 +1266,7 @@ function ComposerContentImpl({
 
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
 
+  const { isActiveComposer } = useComposerKeyboardScope();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompactLayout = resolveCompactLayout(isCompactLayoutOverride, isCompactFormFactor);
   const isDesktopWebBreakpoint = resolveIsDesktopWebBreakpoint(isCompactFormFactor);
@@ -1439,6 +1494,37 @@ function ComposerContentImpl({
   useEffect(() => {
     onFocusInput?.(focusInput);
   }, [focusInput, onFocusInput]);
+
+  const addFileMentions = useCallback(
+    (relativePaths: string[]) => {
+      // The live snapshot, not the `userInput` prop: a mounted input owns its text and the prop
+      // lags behind whatever the user has typed since the last draft commit.
+      const currentText = messageInputRef.current?.getInputSnapshot().text ?? userInput;
+      const nextInput = appendFileMentionPaths({ text: currentText, relativePaths });
+      if (nextInput === currentText) {
+        return;
+      }
+      // replaceUserInput, never setUserInput. The input is uncontrolled, so a state-only update
+      // reaches the draft and never the field — which is what silently swallowed dropped files.
+      replaceUserInput(nextInput, { start: nextInput.length, end: nextInput.length });
+      setCursorIndex(nextInput.length);
+      messageInputRef.current?.focus();
+    },
+    [replaceUserInput, userInput],
+  );
+
+  // "Send to Paseo" and anything else outside the React tree that wants a file in the prompt.
+  useComposerMentionInbox((references) => {
+    const paths = references.flatMap((reference) => {
+      const mentionPath = resolveDroppedFileMentionPath({ path: reference.path, cwd });
+      return mentionPath ? [formatFileMentionTarget(mentionPath, reference.selection)] : [];
+    });
+    if (paths.length === 0) {
+      return false;
+    }
+    addFileMentions(paths);
+    return true;
+  }, isActiveComposer);
 
   const submitMessage = useCallback(
     async (text: string, submitAttachments: ComposerAttachment[]) => {
@@ -1752,9 +1838,17 @@ function ComposerContentImpl({
   }, [client, pickFiles, t, uploadPickedFiles]);
 
   const handleGenericFilesDropped = useCallback(
-    async (items: DroppedItem[]) => {
+    async (items: DroppedItem[], intent: FileDropIntent) => {
       try {
-        const files = await droppedItemsToPickedFiles(items);
+        const { mentionPaths, uploadItems } = splitDroppedItemsForMentions({ items, cwd, intent });
+        if (mentionPaths.length > 0) {
+          addFileMentions(mentionPaths);
+        }
+        const { imagePaths, otherItems } = splitDroppedImagePaths(uploadItems);
+        if (imagePaths.length > 0) {
+          addImages(await persistDroppedImagePaths(imagePaths));
+        }
+        const files = await droppedItemsToPickedFiles(otherItems);
         if (files.length === 0) return;
         if (!client || !isConnected) {
           toastErrorRef.current(t("composer.errors.daemonClientDisconnected"));
@@ -1768,7 +1862,7 @@ function ComposerContentImpl({
         );
       }
     },
-    [client, isConnected, t, uploadPickedFiles],
+    [addFileMentions, addImages, client, cwd, isConnected, t, uploadPickedFiles],
   );
 
   const handleRemoveAttachment = useCallback(
@@ -1964,7 +2058,7 @@ function ComposerContentImpl({
         isAgentRunning={isAgentRunning}
         hasSendableContent={hasSendableContent}
         isCompact={isCompactLayout}
-        showVoice={mode.showVoice}
+        showVoice={showVoice && mode.showVoice}
         buttonIconSize={buttonIconSize}
         handleToggleRealtimeVoice={handleToggleRealtimeVoice}
         isConnected={isConnected}
@@ -1986,6 +2080,7 @@ function ComposerContentImpl({
       isVoiceSwitching,
       mode.showVoice,
       realtimeVoiceButtonStyle,
+      showVoice,
       t,
       voiceToggleKeys,
     ],
@@ -2278,7 +2373,10 @@ function ComposerContentImpl({
       onGenericFiles: handleGenericFilesDropped,
       onWorkspaceFile: handleWorkspaceFileDropped,
     },
-    { disabled: isSubmitLoadingVisible },
+    // `active`: a workspace mounts several composers (focused pane, the draft behind it,
+    // background tabs). Without this the drop lands in whichever mounted last, whose input may
+    // not even be on screen — the mention then only surfaces when the draft is next rendered.
+    { disabled: isSubmitLoadingVisible, active: isActiveComposer },
   );
 
   const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint;
@@ -2305,6 +2403,7 @@ function ComposerContentImpl({
         isAgentRunning={isAgentRunning}
         isCancellingAgent={isCancellingAgent}
         isConnected={isConnected}
+        showVoice={showVoice}
         handleCancelAgent={handleCancelAgent}
         focusMessageInputForKeyboardAction={focusMessageInputForKeyboardAction}
         isMessageInputFocused={isMessageInputFocused}
@@ -2356,6 +2455,7 @@ function ComposerContentImpl({
                   onPasteImages={handleNativePasteImages}
                   client={client}
                   isReadyForDictation={isDictationReady}
+                  showVoice={showVoice}
                   placeholder={messagePlaceholder}
                   autoFocus={messageInputAutoFocus}
                   autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
