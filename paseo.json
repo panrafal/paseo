@@ -31,10 +31,10 @@
     "🍱 deploy": {
       "command": "./fork/deploy.sh"
     },
-    "🍱 rebase integration": {
+    "🍱 update with upstream": {
       "command": "./fork/integrate.sh rebase --agent --push"
     },
-    "🍱 rebuild integration": {
+    "🍱 re-merge integration": {
       "command": "./fork/integrate.sh rebuild --agent --push"
     },
     "🍱 rebase branches": {
