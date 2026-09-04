@@ -1,4 +1,9 @@
 pre-commit:
+  # Fork: off. The hook runs the whole-repo typecheck on every commit, which
+  # needs node_modules and built declarations in every worktree; the checks
+  # run in CI on the PRs instead. Patch branches do not carry this file — the
+  # worktree setup in paseo.json drops a lefthook-local.yml there.
+  skip: true
   parallel: true
   jobs:
     - name: format
