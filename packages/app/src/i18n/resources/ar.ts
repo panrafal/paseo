@@ -2214,6 +2214,8 @@ export const ar: TranslationResources = {
         findInPane: "البحث في اللوحة",
         findNext: "البحث عن التالي",
         findPrevious: "البحث عن السابق",
+        historyBack: "الرجوع في السجل",
+        historyForward: "التقدم في السجل",
         toggleCommandCenter: "تبديل مركز القيادة",
         showKeyboardShortcuts: "إظهار اختصارات لوحة المفاتيح",
         toggleLeftSidebar: "تبديل الشريط الجانبي الأيسر",

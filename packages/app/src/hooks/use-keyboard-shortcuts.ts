@@ -41,6 +41,7 @@ import {
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { dispatchTopWebOverlayKeyDown } from "@/lib/overlay-root";
+import { navigateRouteHistory } from "@/navigation/route-history";
 
 export function useKeyboardShortcuts({
   enabled,
@@ -196,6 +197,8 @@ export function useKeyboardShortcuts({
         case "router-push":
           router.push(action.route as Parameters<typeof router.push>[0]);
           return true;
+        case "route-history":
+          return navigateRouteHistory(action.direction);
         case "open-project-picker":
           void openProjectPickerAction();
           return true;
