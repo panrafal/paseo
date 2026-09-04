@@ -9,12 +9,62 @@ import {
   isRasterImagePath,
   resolveRasterImageMimeType,
 } from "@/attachments/file-types";
-import { isWeb } from "@/constants/platform";
-import type { DroppedItem, DroppedPathItem, FileDropSink } from "./types";
+import { getIsVscode, isWeb } from "@/constants/platform";
+import {
+  parseDroppedFilePaths,
+  VSCODE_RESOURCES_MIME,
+  VSCODE_URI_LIST_MIME,
+} from "@/workspace/file-drop-mentions";
+import { resolveFileDropIntent } from "./intent";
+import type {
+  DroppedFileUriItem,
+  DroppedItem,
+  DroppedPathItem,
+  FileDropIntent,
+  FileDropSink,
+} from "./types";
 import {
   parseWorkspaceFileDragPayload,
   WORKSPACE_FILE_DRAG_MIME,
 } from "@/attachments/workspace-file-drag";
+
+function canUseFileUriDrop(): boolean {
+  return getDesktopHost() !== null;
+}
+
+function dataTransferHasFileUri(dataTransfer: DataTransfer | null): boolean {
+  if (!canUseFileUriDrop()) {
+    return false;
+  }
+  const types = dataTransfer?.types;
+  if (!types) {
+    return false;
+  }
+  return (
+    types.includes("text/uri-list") ||
+    types.includes(VSCODE_URI_LIST_MIME) ||
+    types.includes(VSCODE_RESOURCES_MIME)
+  );
+}
+
+function getDroppedFileUriItems(dataTransfer: DataTransfer | null): DroppedFileUriItem[] {
+  if (!dataTransfer || !canUseFileUriDrop()) {
+    return [];
+  }
+  return parseDroppedFilePaths({
+    uriList: dataTransfer.getData("text/uri-list"),
+    vscodeUriList: dataTransfer.getData(VSCODE_URI_LIST_MIME),
+    vscodeResources: dataTransfer.getData(VSCODE_RESOURCES_MIME),
+  }).map((path) => ({ kind: "file-uri", path }));
+}
+
+function resolveDropIntent(event: DragEvent): FileDropIntent {
+  return resolveFileDropIntent({
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+    isVscode: getIsVscode(),
+  });
+}
 
 type DesktopDragDropPayload =
   | { type: "enter"; paths: string[] }
@@ -110,6 +160,10 @@ export function useDropListeners({
       if (desktopHost === null) {
         return false;
       }
+      // VS Code does not provide Electron's native file-drop event; use DOM DataTransfer.
+      if (getIsVscode()) {
+        return false;
+      }
 
       const desktopWindow = desktopHost.window?.getCurrentWindow?.();
       if (!desktopWindow || typeof desktopWindow.onDragDropEvent !== "function") {
@@ -145,7 +199,8 @@ export function useDropListeners({
           }));
 
           if (sink.onGenericFiles && items.length > 0) {
-            sink.onGenericFiles(items);
+            // This payload carries no modifier state, so a native desktop drop always references.
+            sink.onGenericFiles(items, "reference");
           }
 
           const imagePaths = payload.paths.filter(isRasterImagePath);
@@ -200,7 +255,7 @@ export function useDropListeners({
         const types = new Set(e.dataTransfer?.types ?? []);
         const acceptsWorkspaceFile =
           types.has(WORKSPACE_FILE_DRAG_MIME) && Boolean(getSink()?.onWorkspaceFile);
-        if (types.has("Files") || acceptsWorkspaceFile) {
+        if (types.has("Files") || acceptsWorkspaceFile || dataTransferHasFileUri(e.dataTransfer)) {
           isDragging.value = true;
         }
       }
@@ -215,7 +270,8 @@ export function useDropListeners({
         const types = new Set(e.dataTransfer.types);
         const acceptsWorkspaceFile =
           types.has(WORKSPACE_FILE_DRAG_MIME) && Boolean(getSink()?.onWorkspaceFile);
-        const acceptsDrop = types.has("Files") || acceptsWorkspaceFile;
+        const acceptsDrop =
+          types.has("Files") || acceptsWorkspaceFile || dataTransferHasFileUri(e.dataTransfer);
         const canAccept = acceptsDrop && !disabledRef.current && !suppressed.value && hasSink.value;
         e.dataTransfer.dropEffect = canAccept ? "copy" : "none";
       }
@@ -252,6 +308,14 @@ export function useDropListeners({
           }
         }
 
+        const intent = resolveDropIntent(e);
+
+        const fileUriItems = getDroppedFileUriItems(e.dataTransfer);
+        if (fileUriItems.length > 0 && sink.onGenericFiles) {
+          sink.onGenericFiles(fileUriItems, intent);
+          return;
+        }
+
         const files = Array.from(e.dataTransfer?.files ?? []);
         const genericItems: DroppedItem[] = files.map((file) => ({
           kind: "web-file",
@@ -259,7 +323,8 @@ export function useDropListeners({
         }));
 
         if (sink.onGenericFiles && genericItems.length > 0) {
-          sink.onGenericFiles(genericItems);
+          // Bytes without a path: there is nothing to reference, so the intent cannot apply.
+          sink.onGenericFiles(genericItems, "attach");
         }
 
         const imageFiles = files.filter(isRasterImageFile);
