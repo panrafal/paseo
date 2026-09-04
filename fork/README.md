@@ -197,8 +197,9 @@ without it esbuild and node-pty install unconfigured.
 
 `fork/build.sh desktop` tags the current `main` as `fork-v<version>` and
 pushes it, starting **Fork Desktop** (`.github/workflows/fork-desktop.yml`, on
-`fork-base`). It builds arm64 and x64 on macOS runners, signs and notarizes
-with your Apple credentials, and publishes a release on your fork.
+`fork-base`). It builds arm64 and x64 on macOS runners, signs with your
+Developer ID certificate, skips notarization, and publishes a release on your
+fork.
 
 Signing runs on a GitHub runner, so these live as repo secrets on the fork:
 
@@ -206,35 +207,26 @@ Signing runs on a GitHub runner, so these live as repo secrets on the fork:
 | ---------------------------- | ---------------------------------------------- |
 | `APPLE_CERTIFICATE`          | base64 of your Developer ID Application `.p12` |
 | `APPLE_CERTIFICATE_PASSWORD` | the `.p12` export password                     |
-| `APPLE_API_KEY_P8`           | the App Store Connect key file, raw text       |
-| `APPLE_API_KEY_ID`           | the Key ID, in that key's row                  |
-| `APPLE_API_ISSUER`           | the Issuer ID, at the top of the same page     |
 
-The last three notarize the build. Make the key in App Store Connect under
-Users and Access → Integrations → App Store Connect API, as a **team** key
-with the **Developer** role — `notarytool` rejects anything lower. The `.p8`
-downloads once and Apple keeps no copy, so store it before you leave the page.
-Make it a separate key from the one EAS holds for TestFlight; revoking either
-then leaves the other alone.
+Store the certificate as base64 without line breaks:
 
 ```bash
-gh secret set APPLE_API_KEY_P8 --repo panrafal/paseo < AuthKey_XXXXXXXXXX.p8
-gh secret set APPLE_API_KEY_ID --repo panrafal/paseo
-gh secret set APPLE_API_ISSUER --repo panrafal/paseo
+base64 < DeveloperIDApplication.p12 | tr -d '\n' | \
+  gh secret set APPLE_CERTIFICATE --repo panrafal/paseo
+gh secret set APPLE_CERTIFICATE_PASSWORD --repo panrafal/paseo
 ```
 
-No Apple ID and no app-specific password are stored anywhere. electron-builder
-switches to the Apple ID path as soon as it sees `APPLE_ID` or
-`APPLE_APP_SPECIFIC_PASSWORD`, so the workflow must not pass them at all, even
-empty — that is also why `APPLE_TEAM_ID` is gone from the secrets. It stays in
-`fork/dist.env` as `FORK_APPLE_TEAM_ID`, which iOS still needs.
+The workflow passes `mac.notarize=false`, so it needs no App Store Connect key,
+Apple ID, app-specific password or Apple team ID. `FORK_APPLE_TEAM_ID` remains
+in `fork/dist.env` because iOS still needs it.
 
 These are the only fork values GitHub holds. The rest are the plain identifiers
 in `fork/dist.env`, committed as they are, and `EXPO_TOKEN`, which a script on
 your own machine needs — see [iOS / TestFlight](#ios--testflight).
 
 On the Mac, `fork/update-macos.sh` downloads the newest fork build, quits a
-running Paseo, installs it and relaunches. Fetch and run it in one line:
+running Paseo, installs it, clears the quarantine flag required for the
+non-notarized build, and relaunches it. Fetch and run it in one line:
 
 ```bash
 gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=main \
