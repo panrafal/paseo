@@ -1,14 +1,19 @@
-# Branches merged into `main`, this fork's integration branch, in order.
+# Branches merged into fork-integration, in order.
 #
 # One git ref per line. Blank lines and `#` comments are ignored.
 # Use `origin/<name>` for branches you push; a bare name means a local branch.
-# Order matters only for conflict resolution — put the branch you want to
-# "win" the base last.
 #
-# fork-base is not listed: it is the branch this file lives on, and the
-# sync always merges it first.
+# `fork/integrate.sh add <branch>` appends a line here and merges the branch
+# in; a line added by hand is merged by the next `fork/integrate.sh rebase`.
+# Removing a line takes effect at the next `fork/integrate.sh rebuild`, which
+# is also the only time the order matters: for conflict resolution, the branch
+# you want to "win" goes last.
 #
-# When a PR lands upstream, delete its line. The next sync drops it.
+# fork-base is not listed: it is the branch this file lives on, and it is
+# always merged first.
+#
+# When a PR lands upstream, delete its line and rebuild. The commits arrive
+# through upstream/main instead.
 
 
 # Open PRs against getpaseo/paseo.
@@ -21,7 +26,6 @@ origin/add-search-transcript-terminal
 origin/feat/terminal-close-confirm
 origin/sidebar-grouping-toggle
 origin/allowedorigins-domain-patterns
-origin/sidebar-grouping-toggle
 origin/history-navigation-shortcuts
 
 # Fork features not yet sent upstream.

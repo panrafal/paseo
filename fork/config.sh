@@ -6,24 +6,33 @@ UPSTREAM_REMOTE="${FORK_UPSTREAM_REMOTE:-upstream}"
 UPSTREAM_BRANCH="${FORK_UPSTREAM_BRANCH:-main}"
 FORK_REMOTE="${FORK_REMOTE:-origin}"
 
-# The base branch (this directory, plus the fork's own identity) and the
-# integration branch it builds. The integration branch is this fork's `main`:
-# a clone of the fork is meant to give you the batteries-included build, and
-# upstream's workflows only fire on a branch literally called `main`, so `main`
-# has to be the branch that carries fork-base's disabled/ workflow move.
+# The three fork branches. fork-base holds this directory and the fork's own
+# identity. fork-integration is upstream plus fork-base plus every patch
+# branch, kept between runs and advanced by fork/integrate.sh. main is
+# derived from it on every run: the same tree as one commit on top of
+# upstream. A clone of the fork is meant to give you the batteries-included
+# build, and upstream's workflows only fire on a branch literally called
+# `main`, so `main` has to be the branch that carries fork-base's disabled/
+# workflow move.
 TOOLING_REF="${FORK_TOOLING_REF:-fork-base}"
+INTEGRATION_REF="${FORK_INTEGRATION_REF:-fork-integration}"
 TARGET="${FORK_TARGET_BRANCH:-main}"
 
 # Scratch, build and artifact directories. Kept outside the repo so they
 # survive rebuilds and out of `.git/` so agents can be pointed at them.
 WORK_ROOT="${FORK_WORK_ROOT:-$HOME/.paseo-fork}"
-SYNC_DIR="$WORK_ROOT/sync"     # throwaway merge worktree
-BUILD_DIR="$WORK_ROOT/build"   # persistent build checkout (keeps node_modules)
-DIST_DIR="$WORK_ROOT/dist"     # packed npm tarballs
+INTEGRATE_DIR="$WORK_ROOT/integrate" # scratch worktree the merges happen in
+BUILD_DIR="$WORK_ROOT/build"         # persistent build checkout (keeps node_modules)
+DIST_DIR="$WORK_ROOT/dist"           # packed npm tarballs and the .vsix
+DEPLOY_DIR="$WORK_ROOT/deploy"       # fork/deploy.sh logs
 
-# How the laptop reaches this machine to install a daemon build. The scripts
-# never run these themselves; they print the command for you to paste.
+# The devbox, as fork/deploy.sh reaches it from the laptop. FORK_DEVBOX_SSH is
+# the admin account (sudo, no password); FORK_DEVBOX_USER owns the repo
+# checkout, the build directory and the editors' server installs.
 FORK_DEVBOX_SSH="${FORK_DEVBOX_SSH:-devbox-admin}"
+FORK_DEVBOX_USER="${FORK_DEVBOX_USER:-paseo}"
+FORK_DEVBOX_REPO="${FORK_DEVBOX_REPO:-/home/$FORK_DEVBOX_USER/projects/paseo}"
+FORK_DEVBOX_WORK_ROOT="${FORK_DEVBOX_WORK_ROOT:-/home/$FORK_DEVBOX_USER/.paseo-fork}"
 FORK_DEVBOX_NPM_PREFIX="${FORK_DEVBOX_NPM_PREFIX:-/usr}"
 FORK_DEVBOX_SERVICE="${FORK_DEVBOX_SERVICE:-paseo}"
 # Run after the restart to confirm the new daemon actually came up. The pause
@@ -32,13 +41,17 @@ FORK_DEVBOX_SERVICE="${FORK_DEVBOX_SERVICE:-paseo}"
 FORK_DEVBOX_SETTLE="${FORK_DEVBOX_SETTLE:-8}"
 FORK_DEVBOX_HEALTHCHECK="${FORK_DEVBOX_HEALTHCHECK:-sudo devbox-healthcheck}"
 # The devbox account VS Code and Cursor SSH in as. The VS Code extension goes
-# into that account's ~/.vscode-server and ~/.cursor-server, which the build
-# reaches through FORK_DEVBOX_SSH and sudo. Defaults to whoever runs the build.
-FORK_DEVBOX_EDITOR_USER="${FORK_DEVBOX_EDITOR_USER:-$(id -un)}"
+# into that account's ~/.vscode-server and ~/.cursor-server.
+FORK_DEVBOX_EDITOR_USER="${FORK_DEVBOX_EDITOR_USER:-$FORK_DEVBOX_USER}"
 
 # Fork identity lives in fork/dist.env; config.sh only needs the owner for
 # version stamping, so default it and let dist.env override.
 FORK_GH_OWNER="${FORK_GH_OWNER:-panrafal}"
+
+# The workspaces that make up the daemon install, dependency-first: npm has
+# to see a package on disk before the one that requires it. build.sh packs
+# them, deploy.sh installs them in this order.
+FORK_DAEMON_PACKAGES=(highlight relay protocol client plugin server cli)
 
 # Agent used by `--agent` conflict resolution.
 FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-claude}"
@@ -55,19 +68,6 @@ warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
 die() {
   printf '\033[31merror:\033[0m %s\n' "$*" >&2
   exit 1
-}
-
-# Print the command to paste locally, and push it to the terminal's clipboard
-# with OSC 52 so it can be pasted without selecting it. Terminals that do not
-# support OSC 52 ignore the sequence, so the printed block is the contract.
-offer_command() {
-  local label="$1" command="$2"
-  printf '\n\033[1m%s\033[0m\n' "$label"
-  printf '\033[36m%s\033[0m\n\n' "$command"
-  if [ -t 1 ]; then
-    printf '\033]52;c;%s\a' "$(printf '%s' "$command" | base64 | tr -d '\n')"
-    printf '(copied to your clipboard, if the terminal allows it)\n'
-  fi
 }
 
 # ------------------------------------------------------------- secrets ----
@@ -94,8 +94,9 @@ fork_key_files() {
 
 # Decrypted values can only reach a script that has already started by way of
 # a new process, so this re-execs its caller under `dotenvx run`. The guard is
-# exported: the re-exec, and anything it spawns — including ios.sh running
-# `"$0" build` — passes straight through on the second visit.
+# exported because the re-exec runs this same script again: a non-exported
+# guard would be lost across the exec and the script would loop. The second
+# visit returns at once.
 #
 # Call it as `load_fork_secrets "$HERE/thescript.sh" "$@"`, guarded by a test
 # for the variable you actually need, so an already-exported value wins and no
@@ -164,8 +165,9 @@ should also be in your password manager. See fork/README.md."
 #     base as the short version, so the restart lands exactly when that string
 #     changes. Restarting the counter while the base held would be rejected.
 #
-# The number is bumped once per sync, after the rebase and before anything is
-# merged, so it is committed into the `main` commit it identifies.
+# fork/integrate.sh bumps the number once per run that changes the
+# integration, after the merges and before main is derived, so it is inside
+# the commit it identifies.
 fork_version() {
   local ref="${1:-$TARGET}" base number
   base="$(git show "$ref:package.json" |
@@ -177,9 +179,9 @@ fork_version() {
 fork_build_number() {
   local ref="${1:-$TARGET}" expect_base="${2:-}" stored_base number
   read -r stored_base number < <(git show "$ref:fork/build-number" 2>/dev/null)
-  [ -n "$number" ] || die "no fork/build-number on $ref — run fork/sync.sh first"
+  [ -n "$number" ] || die "no fork/build-number on $ref — run fork/integrate.sh rebuild first"
   if [ -n "$expect_base" ] && [ "$stored_base" != "$expect_base" ]; then
-    die "fork/build-number on $ref counts $stored_base, but package.json says $expect_base — run fork/sync.sh"
+    die "fork/build-number on $ref counts $stored_base, but package.json says $expect_base — run fork/integrate.sh rebase"
   fi
   echo "$number"
 }
@@ -195,5 +197,5 @@ require_repo() {
 # the scripts behave the same no matter which branch you invoke them from.
 read_branch_list() {
   git show "$TOOLING_REF:fork/branches" |
-    sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^$/d'
+    sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'
 }

@@ -6,9 +6,11 @@
 # Connect record. Those live in fork/dist.env; nothing here is hardcoded.
 #
 # Commands:
-#   fork/ios.sh build      EAS production build (waits for it)
-#   fork/ios.sh submit     submit the latest build to TestFlight
-#   fork/ios.sh ship       build then submit
+#   fork/ios.sh ship       EAS production build that submits itself to
+#                          TestFlight; waits for the build
+#   fork/ios.sh trigger    the same, but returns once the build is queued
+#   fork/ios.sh build      EAS production build only (waits for it)
+#   fork/ios.sh submit     submit the latest finished build to TestFlight
 #   fork/ios.sh doctor     check credentials and identifiers without building
 #
 # EXPO_TOKEN is what lets `eas` run non-interactively. It comes from the
@@ -53,9 +55,13 @@ $(printf '  %s\n' "${missing[@]}")"
     die "FORK_IOS_BUNDLE_ID must differ from upstream's sh.paseo"
 }
 
-# The fork-dist branch makes app.config.js read these; eas.json is plain JSON
-# with no interpolation, so the submit profile is rewritten in the disposable
-# build checkout instead of being patched on a branch.
+# fork-base makes app.config.js read these. They have to be set twice: here,
+# for the eas CLI evaluating the config on this machine, and in eas.json's
+# build profile, for the EAS worker evaluating it again on the build machine.
+# Without the second, the worker sees upstream's project id and refuses the
+# build as belonging to another project. eas.json is plain JSON with no
+# interpolation, so it is rewritten in the disposable build checkout instead
+# of being patched on a branch.
 export APP_PACKAGE_ID="$FORK_IOS_BUNDLE_ID"
 export EAS_OWNER="$FORK_EAS_OWNER"
 export EAS_PROJECT_ID="$FORK_EAS_PROJECT_ID"
@@ -85,9 +91,17 @@ prepare_app_dir() {
       ascAppId: process.env.FORK_ASC_APP_ID,
       appleTeamId: process.env.FORK_APPLE_TEAM_ID,
     };
+    eas.build ??= {};
+    eas.build.production ??= {};
+    eas.build.production.env = {
+      ...eas.build.production.env,
+      APP_PACKAGE_ID: process.env.APP_PACKAGE_ID,
+      EAS_OWNER: process.env.EAS_OWNER,
+      EAS_PROJECT_ID: process.env.EAS_PROJECT_ID,
+    };
     fs.writeFileSync(p, JSON.stringify(eas, null, 2) + "\n");
   ' "$APP_DIR/eas.json"
-  say "eas.json in the build checkout points at ASC app $FORK_ASC_APP_ID"
+  say "eas.json in the build checkout points at EAS project $FORK_EAS_PROJECT_ID and ASC app $FORK_ASC_APP_ID"
 }
 
 case "$cmd" in
@@ -123,8 +137,16 @@ or log in once in $APP_DIR. See fork/README.md."
     (cd "$APP_DIR" && eas_cli submit --platform ios --profile production --latest --non-interactive)
     ;;
   ship)
-    "$0" build
-    "$0" submit
+    check_identifiers
+    prepare_app_dir
+    say "EAS iOS production build, submitting to TestFlight when done"
+    (cd "$APP_DIR" && eas_cli build --platform ios --profile production --non-interactive --wait --auto-submit)
+    ;;
+  trigger)
+    check_identifiers
+    prepare_app_dir
+    say "Queueing an EAS iOS production build; it submits itself to TestFlight when done"
+    (cd "$APP_DIR" && eas_cli build --platform ios --profile production --non-interactive --no-wait --auto-submit)
     ;;
   *) die "unknown command: $cmd" ;;
 esac
