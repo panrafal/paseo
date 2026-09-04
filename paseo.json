@@ -28,26 +28,17 @@
     "typecheck": {
       "command": "npm run typecheck"
     },
-    "panrafal: rebase integration": {
+    "🍱 deploy": {
+      "command": "./fork/deploy.sh"
+    },
+    "🍱 rebase integration": {
       "command": "./fork/integrate.sh rebase --agent --push"
     },
-    "panrafal: rebuild integration": {
+    "🍱 rebuild integration": {
       "command": "./fork/integrate.sh rebuild --agent --push"
     },
-    "panrafal: rebase branches": {
+    "🍱 rebase branches": {
       "command": "./fork/integrate.sh rebase-branches --agent --push"
-    },
-    "panrafal: build daemon": {
-      "command": "./fork/build.sh daemon"
-    },
-    "panrafal: build desktop": {
-      "command": "./fork/build.sh desktop"
-    },
-    "panrafal: build vscode": {
-      "command": "./fork/build.sh vscode"
-    },
-    "panrafal: build ios": {
-      "command": "./fork/build.sh ios"
     }
   }
 }
