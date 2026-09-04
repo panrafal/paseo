@@ -4,6 +4,44 @@ Paseo is a mobile app for monitoring and controlling your local AI coding agents
 
 **Supported agents:** Claude Code, Codex, GitHub Copilot, OpenCode, and Pi.
 
+## You are on a fork
+
+This is `panrafal/paseo`, a personal fork of `getpaseo/paseo`. **`main` here is
+not upstream's `main`.** It is an integration branch, rebuilt from scratch on
+every sync as `upstream/main` plus `fork-base` plus a list of patch
+branches, then force-pushed. **Nothing committed directly to `main` survives.**
+
+| Want to...                                               | Do this                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Change Paseo itself                                      | `fork/new-branch.sh <name>`, then add it to `fork/branches`                    |
+| Change how the fork builds, ships, or syncs              | Commit to `fork-base`                                                          |
+| Pull in the latest upstream                              | `fork/sync.sh --rebase --agent --push`                                         |
+| Build the daemon, desktop app, VS Code extension, or iOS | `fork/build.sh daemon` / `desktop` / `vscode` / `ios`, or `all` for everything |
+
+**Never start a branch from `main`.** `main` carries the whole patch stack, so
+a branch cut from it is unusable as a PR and has to be rebased by hand before
+the sync will take it. Use `fork/new-branch.sh`, which branches off
+`upstream/main`; `fork/sync.sh` refuses a branch that was cut from the wrong
+place, but only after the mistake is already committed.
+
+**Never set a git identity yourself.** No `-c user.name`/`user.email`, no
+`--author`, no `GIT_AUTHOR_*` or `GIT_COMMITTER_*`, no `git config user.*` —
+not even to match what earlier commits look like. The devbox derives the
+identity from the remote URL: in this fork every commit is authored
+`Rafał Lindemann <1268900+panrafal@users.noreply.github.com>` automatically,
+and that must hold in scratch clones and worktrees too, so make them from
+`origin`, not from a local path. Any `capitally-dev[bot]` author in the history
+was a bug and has been rewritten; if you see one, say so instead of copying it.
+
+[fork/README.md](fork/README.md) owns all of it: the branch layout, the sync
+loop and its agent-assisted conflict resolution, version stamping, where builds
+land, and how to install one on the devbox, the Mac, or a phone. Read it before
+touching anything under `fork/`, and prefer the `panrafal:` scripts in
+`paseo.json` for the routine paths.
+
+Everything below this section is upstream's documentation and applies
+unchanged.
+
 ## Repository map
 
 This is an npm workspace monorepo:
@@ -108,6 +146,7 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
 
 ## Critical rules
 
+- **NEVER commit to `main`, and never branch off it.** On this fork `main` is a rebuilt integration branch, not upstream: a commit on it is lost at the next `fork/sync.sh`, and a branch cut from it carries the whole patch stack. Start work with `fork/new-branch.sh <name>`. See [fork/README.md](fork/README.md) for where a change belongs.
 - **NEVER restart the main Paseo daemon on port 6767 without permission** — it manages all running agents. If you're an agent, restarting it kills your own process.
 - **NEVER assume a timeout means the service needs restarting** — timeouts can be transient.
 - **NEVER add auth checks to tests** — agent providers handle their own auth.

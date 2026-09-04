@@ -27,6 +27,24 @@
     },
     "typecheck": {
       "command": "npm run typecheck"
+    },
+    "panrafal: sync": {
+      "command": "./fork/sync.sh --rebase --agent --push"
+    },
+    "panrafal: build daemon": {
+      "command": "./fork/build.sh daemon"
+    },
+    "panrafal: build desktop": {
+      "command": "./fork/build.sh desktop"
+    },
+    "panrafal: build vscode": {
+      "command": "./fork/build.sh vscode"
+    },
+    "panrafal: build ios": {
+      "command": "./fork/build.sh ios"
+    },
+    "panrafal: build ALL": {
+      "command": "./fork/build.sh all"
     }
   }
 }
