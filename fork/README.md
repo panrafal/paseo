@@ -505,6 +505,20 @@ start `deploy-app`, `desktop-release` and `android-apk-release` from upstream's
 enabled copies. Never push upstream tags to `origin` — plain `git push` does
 not, so just avoid `--tags` and `--follow-tags`.
 
+## Commit hooks
+
+Upstream's `lefthook.yml` runs the formatter, the linter and the whole-repo
+typecheck on every commit, which needs `node_modules` and built declarations
+in every worktree and takes about twenty seconds. `fork-base` sets the
+pre-commit hook to `skip: true`, so commits on `fork-base` and on anything
+derived from `main` pass straight through. A patch branch is cut from
+`upstream/main` and does not have that change; the worktree setup in
+`paseo.json` covers those by writing a `lefthook-local.yml` with the same
+skip into the new worktree and listing it in the repository's
+`.git/info/exclude`, which every worktree shares and no branch carries.
+Anywhere else, `LEFTHOOK=0` in the environment turns the hook off; the
+installed hook script checks it before it looks for node.
+
 ## A new machine
 
 ```bash
