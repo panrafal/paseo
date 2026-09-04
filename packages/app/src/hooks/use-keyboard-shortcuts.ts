@@ -30,6 +30,7 @@ import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { isNative } from "@/constants/platform";
 import { keyboardShortcutsAvailable } from "@/keyboard/availability";
+import { isFindOpenForActiveSurface } from "@/find/surface-registry";
 import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
@@ -40,6 +41,7 @@ import {
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { dispatchTopWebOverlayKeyDown } from "@/lib/overlay-root";
+import { navigateRouteHistory } from "@/navigation/route-history";
 
 export function useKeyboardShortcuts({
   enabled,
@@ -195,6 +197,8 @@ export function useKeyboardShortcuts({
         case "router-push":
           router.push(action.route as Parameters<typeof router.push>[0]);
           return true;
+        case "route-history":
+          return navigateRouteHistory(action.direction);
         case "open-project-picker":
           void openProjectPickerAction();
           return true;
@@ -265,6 +269,9 @@ export function useKeyboardShortcuts({
           isDesktop: isDesktopApp,
           focusScope: input.focusScope,
           commandCenterOpen: store.commandCenterOpen,
+          // Read at keydown time: which surface owns Cmd+F depends on DOM focus and
+          // the last pointerdown, neither of which this hook re-renders for.
+          findOpen: isFindOpenForActiveSurface(),
         },
         chordState: chordStateRef.current,
         onChordReset: () => {
