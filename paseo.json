@@ -1,8 +1,6 @@
 {
   "worktree": {
     "setup": [
-      "grep -qxF lefthook-local.yml \"$(git rev-parse --git-common-dir)/info/exclude\" 2>/dev/null || echo lefthook-local.yml >> \"$(git rev-parse --git-common-dir)/info/exclude\"",
-      "printf 'pre-commit:\\n  skip: true\\n' > lefthook-local.yml",
       "npm ci",
       "node ./scripts/seed-ios-native-cache.mjs",
       "node ./scripts/seed-worktree-dev-state.mjs",
