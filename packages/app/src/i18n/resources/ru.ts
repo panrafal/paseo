@@ -2252,6 +2252,8 @@ export const ru: TranslationResources = {
         findInPane: "Поиск в панели",
         findNext: "Найти далее",
         findPrevious: "Найти ранее",
+        historyBack: "Назад по истории",
+        historyForward: "Вперёд по истории",
         toggleCommandCenter: "Переключить командный центр",
         showKeyboardShortcuts: "Показать сочетания клавиш",
         toggleLeftSidebar: "Переключить левую боковую панель",

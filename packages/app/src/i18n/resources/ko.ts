@@ -2224,6 +2224,8 @@ export const ko: TranslationResources = {
         findInPane: "창에서 찾기",
         findNext: "다음 찾기",
         findPrevious: "이전 찾기",
+        historyBack: "기록 뒤로",
+        historyForward: "기록 앞으로",
         toggleCommandCenter: "명령 센터 토글",
         showKeyboardShortcuts: "키보드 단축키 표시",
         toggleLeftSidebar: "왼쪽 사이드바 토글",

@@ -2232,6 +2232,8 @@ export const ja: TranslationResources = {
         findInPane: "ペイン内を検索",
         findNext: "次を検索",
         findPrevious: "前を検索",
+        historyBack: "履歴を戻る",
+        historyForward: "履歴を進む",
         toggleCommandCenter: "コマンドセンターを切り替え",
         showKeyboardShortcuts: "キーボードショートカットを表示",
         toggleLeftSidebar: "左サイドバーを切り替え",

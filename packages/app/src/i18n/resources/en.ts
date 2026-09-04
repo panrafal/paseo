@@ -2312,6 +2312,8 @@ export const en = {
         findInPane: "Find in pane",
         findNext: "Find next",
         findPrevious: "Find previous",
+        historyBack: "History back",
+        historyForward: "History forward",
         toggleCommandCenter: "Toggle command center",
         showKeyboardShortcuts: "Show keyboard shortcuts",
         toggleLeftSidebar: "Toggle left sidebar",

@@ -2188,6 +2188,8 @@ export const zhCN: TranslationResources = {
         findInPane: "在窗格中查找",
         findNext: "查找下一个",
         findPrevious: "查找上一个",
+        historyBack: "后退历史记录",
+        historyForward: "前进历史记录",
         toggleCommandCenter: "切换命令中心",
         showKeyboardShortcuts: "显示键盘快捷键",
         toggleLeftSidebar: "切换左侧边栏",
