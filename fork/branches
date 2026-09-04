@@ -21,6 +21,7 @@ origin/add-search-transcript-terminal
 origin/feat/terminal-close-confirm
 origin/sidebar-grouping-toggle
 origin/allowedorigins-domain-patterns
+origin/sidebar-grouping-toggle
 
 # Fork features not yet sent upstream.
 origin/vscode
