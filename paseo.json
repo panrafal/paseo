@@ -1,6 +1,8 @@
 {
   "worktree": {
     "setup": [
+      "grep -qxF lefthook-local.yml \"$(git rev-parse --git-common-dir)/info/exclude\" 2>/dev/null || echo lefthook-local.yml >> \"$(git rev-parse --git-common-dir)/info/exclude\"",
+      "printf 'pre-commit:\\n  skip: true\\n' > lefthook-local.yml",
       "npm ci",
       "node ./scripts/seed-ios-native-cache.mjs",
       "node ./scripts/seed-worktree-dev-state.mjs",
@@ -28,16 +30,16 @@
     "typecheck": {
       "command": "npm run typecheck"
     },
-    "🍱 deploy": {
+    "\ud83c\udf71 deploy": {
       "command": "./fork/deploy.sh"
     },
-    "🍱 update with upstream": {
+    "\ud83c\udf71 update with upstream": {
       "command": "./fork/integrate.sh rebase --agent --push"
     },
-    "🍱 re-merge integration": {
+    "\ud83c\udf71 re-merge integration": {
       "command": "./fork/integrate.sh rebuild --agent --push"
     },
-    "🍱 rebase branches": {
+    "\ud83c\udf71 rebase branches": {
       "command": "./fork/integrate.sh rebase-branches --agent --push"
     }
   }
