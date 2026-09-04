@@ -1,8 +1,8 @@
 # The `panrafal` fork
 
-This fork's `main` is an integration branch: the latest `getpaseo/paseo` `main`
-with my own patches merged on top. It is what I build and run. It is not a
-branch I commit to — every sync throws the old one away and rebuilds it, so
+This fork's `main` is the latest `getpaseo/paseo` `main` with my own patches
+on top. It is what I build and run. It is not a branch I commit to — it is
+derived from `fork-integration` on every run of `fork/integrate.sh`, so
 anything committed directly to it is lost.
 
 `main` is deliberately not a mirror of upstream. Cloning the fork should give
@@ -15,104 +15,181 @@ fork-side copy of it and nothing needs one.
 
 ## Branches
 
-| Branch      | Base            | Purpose                                                                                                                                                                            |
-| ----------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fork-base` | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, `panrafal:` scripts in `paseo.json`. |
-| PR branches | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                   |
-| `main`      | rebuilt         | `upstream/main` + `fork-base` + PR branches. Force-pushed.                                                                                                                         |
+| Branch             | Base            | Purpose                                                                                                                                                                            |
+| ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fork-base`        | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, `panrafal:` scripts in `paseo.json`. |
+| PR branches        | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                   |
+| `fork-integration` | kept            | `upstream/main` + `fork-base` + the PR branches, as merges. Advanced by `fork/integrate.sh`; rebuilt only on request.                                                              |
+| `main`             | derived         | `fork-integration`'s tree as one commit on top of the newest upstream commit it contains. Force-pushed on every run.                                                               |
 
-Everything except `main` is based on `upstream/main`, including
-`fork-base`. Start one with `fork/new-branch.sh <name>` rather than
+Everything except the last two is based on `upstream/main`, including
+`fork-base`. Start a change with `fork/new-branch.sh <name>` rather than
 `git switch -c`: `main` is the branch your fingers reach for, and a branch cut
-from it carries the whole patch stack. `fork/sync.sh` refuses such a branch —
-it spots the integration merge commits — but only once the mistake is made.
+from it carries the whole patch stack. `fork/integrate.sh` refuses such a
+branch — it spots `fork/branches` in it — but only once the mistake is made.
 
 ## The quick route
 
-Six `panrafal:` scripts in `paseo.json`, one tap each in the Paseo UI:
+`panrafal:` scripts in `paseo.json`, one tap each in the Paseo UI, all run on
+the devbox:
 
-| Script                    | Runs                                   | Ends with                                |
-| ------------------------- | -------------------------------------- | ---------------------------------------- |
-| `panrafal: sync`          | `fork/sync.sh --rebase --agent --push` | the rebuilt branch, pushed               |
-| `panrafal: build daemon`  | `fork/build.sh daemon`                 | an `ssh devbox-admin …` command to paste |
-| `panrafal: build desktop` | `fork/build.sh desktop`                | a command to paste on the Mac            |
-| `panrafal: build vscode`  | `fork/build.sh vscode`                 | a command to paste on the laptop         |
-| `panrafal: build ios`     | `fork/build.sh ios`                    | a TestFlight link                        |
-| `panrafal: build ALL`     | `fork/build.sh all`                    | one command that installs all of it      |
+| Script                          | Runs                                               | When                                                                |
+| ------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| `panrafal: rebase integration`  | `fork/integrate.sh rebase --agent --push`          | every day: latest upstream in, `main` published                     |
+| `panrafal: rebuild integration` | `fork/integrate.sh rebuild --agent --push`         | after removing a branch from `fork/branches`, or to start over      |
+| `panrafal: rebase branches`     | `fork/integrate.sh rebase-branches --agent --push` | when the PR branches need to sit on current upstream; rewrites them |
+| `panrafal: build daemon`        | `fork/build.sh daemon`                             | tarballs in `~/.paseo-fork/dist`                                    |
+| `panrafal: build desktop`       | `fork/build.sh desktop`                            | a GitHub release with the macOS app                                 |
+| `panrafal: build vscode`        | `fork/build.sh vscode`                             | a `.vsix` in `~/.paseo-fork/dist`                                   |
+| `panrafal: build ios`           | `fork/build.sh ios`                                | an EAS build that lands in TestFlight                               |
 
-Each build command prints the follow-up command and pushes it to your
-terminal's clipboard over OSC 52, so it can usually be pasted straight into a
-local terminal without selecting it.
+Building never installs anything. `fork/deploy.sh`, run from the laptop, is
+what builds every target and puts each one where it runs — see
+[Deploying](#deploying).
 
-Building never runs anything. It produces artifacts and tells you how to
-install them; starting a daemon, installing a launcher and writing a config
-are all your call, not the build's.
+## Integrating
 
-## Syncing
+`fork-integration` is kept between runs, so the routine update is one merge:
 
-`fork/sync.sh --rebase --agent --push` is the whole loop in one go:
+```bash
+fork/integrate.sh rebase --agent --push
+```
 
-1. Fetch upstream and the fork.
-2. Rebase every patch branch in `fork/branches` onto current `upstream/main`,
-   handing conflicts to a Paseo agent, and force-push each one. This keeps the
-   PRs mergeable.
-3. Rebuild `main` from `upstream/main` by merging `fork-base` and every
-   rebased patch branch, again handing conflicts to an agent.
-4. Force-push `main`.
+1. Fetch upstream and the fork. A `fork-base` or `fork-integration` that
+   another checkout advanced and pushed is fast-forwarded first; one that has
+   diverged stops the run with the two ways out.
+2. Merge `upstream/main` into `fork-integration`. Every patch meets the new
+   upstream in this one merge, so a conflict shows up once, in one place,
+   whatever the number of branches.
+3. Merge any listed branch whose tip is not in the integration yet: one that
+   gained commits merges trivially; one that was rewritten (amended, rebased)
+   is merged through a link to the tip that was merged before, so only the
+   difference between the two versions lands rather than every amended line
+   conflicting.
+4. Bump the build number on `fork-base` and merge it in, so the number is
+   inside the commit it identifies. A run that merged nothing bumps nothing.
+5. Derive `main`: `fork-integration`'s tree as one commit on the newest
+   upstream commit it contains, with a message naming the integration commit
+   and every branch tip that went in. Push `fork-base`, `fork-integration`
+   and `main` together.
 
-Run it from any worktree; it works in a scratch worktree under
-`~/.paseo-fork/sync`, so your checkout is untouched even mid-conflict. Drop
-`--agent` to stop on conflicts instead, `--push` to keep everything local.
+Run it from any worktree. The merges happen in a scratch worktree under
+`~/.paseo-fork/integrate`, so a run that stops on a conflict leaves your
+checkout alone. A checkout sitting on `main`, `fork-base` or
+`fork-integration` is hard-reset to the result when the run succeeds, and
+one with uncommitted changes to tracked files stops the run before any work
+is done — stash or discard them first; do not commit them on `main`, the
+next publish drops the commit. Drop `--agent` to stop on conflicts instead,
+`--push` to keep everything local — it prints the push to run.
 
-Because the branch is rebuilt rather than advanced, publishing is a
-force-push. Anywhere you consume it, re-sync with a reset, not a pull:
+It also reports what it cannot fix: a listed branch it cannot resolve, a
+branch that looks merged upstream (every commit has an equivalent on
+`upstream/main`), and a branch that is in the integration but no longer in
+the list. The last two are the same instruction: delete the line and rebuild.
+
+`main` is a rewrite every time. Anywhere you consume it, re-sync with a reset,
+not a pull:
 
 ```bash
 git fetch origin && git reset --hard origin/main
 ```
 
+### The other three
+
+`fork/integrate.sh rebuild` starts over: a fresh worktree at `upstream/main`,
+`fork-base` merged first, then every line of `fork/branches` in order, then
+the build number. It is the only thing that drops a branch, and the only time
+the order of the list matters. It also discards the old integration, and with
+it any adaptation that lived only in its upstream merges — a fix that belongs
+to a patch should be pushed down into the patch branch, not left in the
+integration. The run ends with a diff stat against the previous integration
+in the files the patches touch, so a lost adaptation shows up as a difference
+nobody made on a branch.
+
+`fork/integrate.sh rebase-branches` rebases `fork-base` and every listed
+branch that has a local branch of the same name onto `upstream/main`,
+force-pushes them, then rebuilds. A local branch that is behind its published
+copy is fast-forwarded first; one that has diverged is rebased as it is, with
+a warning, and the push drops what only the published copy had. A checkout
+sitting on one of those branches is reset like one on `main`. Do this when
+the PRs need to be mergeable again or when the routine merge is conflicting
+badly. It rewrites the commits your open PRs point at, and its cost grows
+with the time since the last one:
+`rerere` replays a resolution only when the conflict looks the same, and a
+branch resolved against the whole stack in an integration merge looks
+different when replayed one commit at a time.
+
+`fork/integrate.sh add <branch>` — also `fork/add-branch.sh <branch>` — lists
+a branch and merges it in, without touching anything else. See
+[Adding a change](#adding-a-change).
+
 ### Adding a change
 
 Every change to Paseo itself is its own branch off `upstream/main`, never a
-commit on `main`. That is what keeps it sendable upstream and what lets the
-integration branch be thrown away and rebuilt.
+commit on `main`. That is what keeps it sendable upstream and what lets it be
+merged on its own.
 
 ```bash
 fork/new-branch.sh my-change
 # ...work, commit...
 git push -u origin my-change
+fork/integrate.sh add my-change --push
 ```
 
-`fork/new-branch.sh` exists because `main` is the wrong base and is also the
-one your fingers type. It fetches upstream and branches off `upstream/main`.
+`add` appends `origin/my-change` to `fork/branches` on `fork-base`, merges
+the branch into `fork-integration`, bumps the number and publishes `main`.
+The list line and the bump are committed only once the merge has succeeded,
+so a run that stops on a conflict leaves `fork-base` untouched. Later pushes
+to the branch are picked up by the next `rebase`; `gh pr create` sends the
+same branch upstream whenever you want it reviewed.
 
-Then add `origin/my-change` to `fork/branches` on `fork-base`, commit, and
-sync. It is in every build from then on, and `gh pr create` sends the same
-branch upstream whenever you want it reviewed.
+The branch brings its own base along: one cut from today's upstream pulls
+those upstream commits into the integration with it.
 
 Anything fork-only — how the fork builds, ships, or syncs itself — goes on
 `fork-base` instead. None of it would be accepted upstream, and it is the
-one branch that is allowed to know it is a fork.
+one branch that is allowed to know it is a fork. The next `rebase` merges it
+in.
 
 ### Changing what gets merged
 
-Edit `fork/branches` on `fork-base`, commit, then sync. The list
-is read from the `fork-base` ref, not from your working tree, so an
-uncommitted edit has no effect. That is deliberate: the list travels with the
-repo.
+`fork/branches` is read from the `fork-base` ref, not from your working tree,
+so an uncommitted edit has no effect. A line added by hand is merged by the
+next `rebase`. A line removed by hand takes effect at the next `rebuild`, and
+`rebase` says so until then.
 
-When a PR lands upstream, delete its line and sync. The commits arrive through
-`upstream/main` instead. Do not try to unmerge anything.
+When a PR lands upstream, delete its line and rebuild. The commits arrive
+through `upstream/main` instead; `rebase` flags the branch as merged upstream
+once every one of its commits has an equivalent there. Do not try to unmerge
+anything by hand.
 
 ### Conflicts
 
-`rerere` is enabled, so a resolution — yours or the agent's — is replayed on
-later syncs rather than re-derived. The agent is told to keep both sides'
-intent and never to drop an upstream change to make a patch apply. Set
+A merge that conflicts is handed to a Paseo agent with `--agent`, told which
+listed branches touch each conflicted file so it can read a patch's intent
+from the patch's own commits, and told never to drop an upstream change to
+make a patch apply nor a patch's feature because its lines no longer fit. Set
 `FORK_AGENT_PROVIDER` to pick the provider.
 
-Rebasing is free here: `main` is rebuilt from the branches every time and
-never remembers their old shape.
+Without `--agent`, or when the agent gives up, the run stops and leaves the
+scratch worktree in place. Resolve there, commit, and re-run the same
+command: it continues from the merge you committed, so a fix made outside
+the conflict hunks — an import, a call site — is kept too. A re-run whose
+integration moved in the meantime starts over and says so.
+
+`rerere` is on. It replays a resolution when the same conflict comes back,
+which is what makes `rebase-branches` after a hand-resolved rebase bearable.
+On the routine path the agent is the mechanism, not `rerere`: the next
+upstream merge starts from the resolved text, so the conflict does not come
+back in the same shape.
+
+### Tests
+
+`fork/integrate.test.sh` runs every command against scratch repositories
+under a temp directory: rebuild, the routine rebase, branch drift, add,
+conflicts and re-runs, rebase-branches, seeding a fresh clone, diverged
+branches, dirty checkouts. Nothing touches this repository or
+`~/.paseo-fork`. Run it after changing `fork/integrate.sh`.
 
 ## Versions
 
@@ -132,8 +209,10 @@ which build — a plain `0.7.2` is upstream's.
 the counter restarts at 1 whenever the upstream version moves. Storing the
 version it counts for is what makes the restart detectable — a bare integer
 cannot tell "first build of 0.7.3" from "someone reset the file".
-`fork/sync.sh` bumps it once per run, after the rebase and before anything is
-merged, so it is committed into the `main` commit it identifies.
+`fork/integrate.sh` bumps it once per run that changes the integration,
+after the merges — the number has to count the version the merged tree
+carries, and an upstream merge can move it — and merges it in as the last
+commit, so it is inside the `main` commit it identifies.
 
 The restart is safe, but only under that rule: reset when the base moves, never
 otherwise. Two things depend on it.
@@ -159,18 +238,88 @@ A fork build sorts below the upstream release of the same base
 after that release and before the next. The fork's update feed only lists fork
 builds, so nothing compares the two.
 
-`fork/build.sh daemon` stamps the version after `npm install` (so the install
-still resolves against the committed lockfile) and before `npm pack` (so the
-tarballs and their `@getpaseo/*` cross-dependency ranges all carry it), using
-the repo's own `scripts/sync-workspace-versions.mjs`.
+`fork/build.sh` stamps the version after `npm install` (so the install
+still resolves against the committed lockfile) and before anything is packed
+(so the tarballs and their `@getpaseo/*` cross-dependency ranges all carry
+it), using the repo's own `scripts/sync-workspace-versions.mjs`.
 
-## Updating the devbox daemon
+## Building
+
+`fork/build.sh <target>` builds one thing and installs nothing:
+
+| Target    | Produces                                                           |
+| --------- | ------------------------------------------------------------------ |
+| `prepare` | the build checkout at `~/.paseo-fork/build`, installed and stamped |
+| `daemon`  | `~/.paseo-fork/dist/getpaseo-*-<version>.tgz`, seven tarballs      |
+| `desktop` | a `fork-v<version>` tag, and a GitHub release once Actions is done |
+| `vscode`  | `~/.paseo-fork/dist/paseo-vscode-<version>.vsix`                   |
+| `ios`     | an EAS build that submits itself to TestFlight                     |
+
+`daemon`, `vscode` and `ios` build `main` as it is in the local repository —
+they do not fetch — in the build checkout, which is a detached worktree so
+`fork/integrate.sh` can move `main` underneath it. `prepare` happens once per
+`main` commit and is remembered in `.fork-prepared`; after that the three can
+run at the same time, and a lock keeps two of them from both running
+`npm install` into the checkout. `--clean` wipes `node_modules` and `dist`
+first.
+
+`desktop` builds nothing here. It pushes the local `main` to the fork when
+that is a fast-forward — a `main` behind the published one stops it, so a
+stale checkout cannot rewind the branch — pushes a `fork-v<version>` tag, and
+waits for the Actions run.
+
+`vscode` needs `packages/vscode`, which arrives through the `vscode` patch
+branch; a `main` built without it makes the target a warning and exit 0.
+`ios` waits for the EAS build unless told `--no-wait`.
+
+## Deploying
+
+```bash
+fork/deploy.sh                # everything
+fork/deploy.sh vscode daemon  # only these
+```
+
+Run it on the laptop. It resets `main` to `origin/main` here and on the
+devbox — a `main` checkout with uncommitted changes stops it — so every
+target comes from the same commit, then runs all four at once:
+
+| Target    | Built                                     | Installed                                                                            |
+| --------- | ----------------------------------------- | ------------------------------------------------------------------------------------ |
+| `daemon`  | on the devbox, over ssh                   | `npm install -g` on the devbox, `systemctl restart paseo`, then the healthcheck      |
+| `desktop` | by GitHub Actions, from a tag pushed here | `/Applications/Paseo.app` on the Mac, by `fork/update-macos.sh`, which relaunches it |
+| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox     |
+| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it    |
+
+One target failing does not stop the others. Each target's output goes to
+`~/.paseo-fork/deploy/<target>.log`, and the summary at the end says what was
+built, where it went, and where a failed one stopped. A re-run of the same
+version skips the desktop build when its release already exists; everything
+else is idempotent.
+
+It has to run off the devbox: installing the desktop app needs macOS, and
+restarting the daemon kills every agent on the devbox, including one that
+would be running this. `--no-update` builds whatever `main` is at now.
+
+The laptop needs:
+
+- bash 4 or newer (`brew install bash`; the scripts use `#!/usr/bin/env bash`),
+  `gh`, `node`.
+- An ssh alias for the devbox's admin account, `devbox-admin` by default
+  (`FORK_DEVBOX_SSH`), with passwordless `sudo` there. The repo checkout, the
+  build directory and the editors' server installs belong to `paseo`
+  (`FORK_DEVBOX_USER`), at `/home/paseo/projects/paseo` (`FORK_DEVBOX_REPO`)
+  and `/home/paseo/.paseo-fork` (`FORK_DEVBOX_WORK_ROOT`); the daemon is the
+  `paseo` unit under `/usr` (`FORK_DEVBOX_SERVICE`, `FORK_DEVBOX_NPM_PREFIX`).
+- For `ios`, the key that opens `fork/.env.fork` — see
+  [EXPO_TOKEN](#expo_token).
+
+### The daemon, by hand
 
 The devbox runs the daemon from a global npm install driven by the `paseo`
 systemd unit. It cannot be updated from inside a Paseo agent — `/usr` and
 `/etc` are read-only there and there is no root — and restarting the service
-would kill the agent doing it. So the build only packs tarballs into
-`~/.paseo-fork/dist`, and you run the install from your laptop:
+would kill the agent doing it. This is what the `daemon` target runs, from
+the laptop:
 
 ```bash
 ssh devbox-admin "sudo npm install -g --prefix /usr --allow-scripts=esbuild,node-pty \
@@ -178,26 +327,19 @@ ssh devbox-admin "sudo npm install -g --prefix /usr --allow-scripts=esbuild,node
   && sudo systemctl restart paseo && sleep 8 && sudo devbox-healthcheck"
 ```
 
-`fork/build.sh daemon` prints that line with the current version filled in.
-Override the pieces with `FORK_DEVBOX_SSH`, `FORK_DEVBOX_NPM_PREFIX`,
-`FORK_DEVBOX_SERVICE`, `FORK_DEVBOX_SETTLE` and `FORK_DEVBOX_HEALTHCHECK`.
-
-The brace expansion runs in `devbox-admin`'s login shell, so that account needs
-bash or zsh; under dash npm would receive a literal path with braces in it. The
-package order is dependency-first — npm has to see a package on disk before the
-one that requires it.
-
-`systemctl restart` returns as soon as the unit is started, not when the daemon
-is serving, which is what the pause before the healthcheck is for.
-
-`--allow-scripts` is needed because npm blocks install scripts by default;
-without it esbuild and node-pty install unconfigured.
+The package order is dependency-first — npm has to see a package on disk
+before the one that requires it. `systemctl restart` returns as soon as the
+unit is started, not when the daemon is serving, which is what the pause
+before the healthcheck is for. `--allow-scripts` is needed because npm blocks
+install scripts by default; without it esbuild and node-pty install
+unconfigured. `~/.paseo-fork` is under a home the admin account cannot read,
+so the tarballs are read by `sudo`.
 
 ## macOS
 
 `fork/build.sh desktop` tags the current `main` as `fork-v<version>` and
-pushes it, starting **Fork Desktop** (`.github/workflows/fork-desktop.yml`, on
-`fork-base`). It builds arm64 and x64 on macOS runners, signs with your
+pushes the branch and the tag, starting **Fork Desktop**
+(`.github/workflows/fork-desktop.yml`, on `fork-base`). It builds arm64 and x64 on macOS runners, signs with your
 Developer ID certificate, skips notarization, and publishes a release on your
 fork.
 
@@ -224,9 +366,10 @@ These are the only fork values GitHub holds. The rest are the plain identifiers
 in `fork/dist.env`, committed as they are, and `EXPO_TOKEN`, which a script on
 your own machine needs — see [iOS / TestFlight](#ios--testflight).
 
-On the Mac, `fork/update-macos.sh` downloads the newest fork build, quits a
-running Paseo, installs it, clears the quarantine flag required for the
-non-notarized build, and relaunches it. Fetch and run it in one line:
+On the Mac, `fork/update-macos.sh [fork-v<version>]` downloads that build
+(the newest without an argument), quits a running Paseo, installs it, clears
+the quarantine flag required for the non-notarized build, and relaunches it.
+Fetch and run it in one line:
 
 ```bash
 gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=main \
@@ -241,24 +384,19 @@ version (`0.7.2-panrafal.1`), so the app has to be on the `beta` update channel
 ## VS Code and Cursor
 
 `fork/build.sh vscode` exports the web app, packages the extension and leaves
-`paseo-vscode-<version>.vsix` in `~/.paseo-fork/dist`. `packages/vscode` comes
-from the `vscode` patch branch, so a `main` built without it has nothing to
-package: the build warns and exits 0, so `all` can run the step
-unconditionally.
+`paseo-vscode-<version>.vsix` in `~/.paseo-fork/dist`.
 
 The extension is `extensionKind: ["workspace"]`: in a Remote-SSH window it
 runs on the devbox, next to the daemon, and an install on the laptop alone
-does not reach those windows. The printed command does both halves. It fetches
-the `.vsix` over `sudo cat` rather than `scp` because `~/.paseo-fork` is
-under a home the admin account cannot read, parks it at
-`/tmp/paseo-vscode-<version>.vsix`, and installs it into whichever of `code`
-and `cursor` are on the laptop's PATH — with neither there it installs
-nothing and says nothing, so use Install from VSIX… in the Extensions view.
-The devbox half runs `install-vscode-remote.sh`, shipped next to the `.vsix`,
-as `FORK_DEVBOX_EDITOR_USER` (default: whoever ran the build) because the
-servers' extensions live in that account's home. It needs no root and no
-laptop; the build also prints the form to run from a terminal here. Reload
-open remote windows to pick the new build up.
+does not reach those windows. So the `vscode` deploy target installs it four
+times: into `code` and `cursor` on the laptop, and into the VS Code Server and
+Cursor Server on the devbox, by copying the `.vsix` and
+`fork/install-vscode-remote.sh` there and running the installer as
+`FORK_DEVBOX_EDITOR_USER`, because the servers' extensions live in that
+account's home. An editor that is not on the laptop's PATH, or one of the two
+servers that has never connected to the devbox, is reported as skipped; a
+devbox with neither server fails the target, with the installer's output in
+the job log. Reload open remote windows to pick the new build up.
 
 ## iOS / TestFlight
 
@@ -291,6 +429,14 @@ Then fill `FORK_IOS_BUNDLE_ID`, `FORK_EAS_OWNER`, `FORK_EAS_PROJECT_ID`,
 `FORK_ASC_APP_ID` and `FORK_APPLE_TEAM_ID` into `fork/dist.env` on
 `fork-base` and commit. `fork/ios.sh doctor` checks them without building.
 
+`app.config.js` on `fork-base` reads the identity from `APP_PACKAGE_ID`,
+`EAS_PROJECT_ID` and `EAS_OWNER`, and the config is evaluated twice: by the
+`eas` CLI here, and again by the EAS worker on the build machine. `fork/ios.sh`
+sets the variables for the first and writes them into the `production` build
+profile's `env` in the build checkout's `eas.json` for the second. Without
+the second the worker sees upstream's project id and refuses the build as
+belonging to another project.
+
 ### EXPO_TOKEN
 
 `eas build` and `eas submit` run `--non-interactive`, which needs an access
@@ -311,7 +457,7 @@ in your password manager, because nothing else has a copy.
 
 `fork/ios.sh` re-execs itself under `dotenvx run` to get the token into
 `eas`, so it works the same from a terminal, from `fork/build.sh ios` and from
-`fork/build.sh all`. It looks for the key in `fork/.env.keys`, the repo root,
+`fork/deploy.sh`. It looks for the key in `fork/.env.keys`, the repo root,
 and `~/.paseo-fork/.env.keys`, or in a `DOTENV_PRIVATE_KEY_FORK` environment
 variable. Only the last two survive a git worktree, which gets no copy of a
 gitignored file — put the key in `~/.paseo-fork/.env.keys` and every checkout
@@ -340,34 +486,18 @@ npx eas env:create production --name GOOGLE_SERVICE_INFO_PLIST_PROD \
 
 Everything else works without it.
 
-## Everything at once
-
-`fork/build.sh all` runs the daemon, desktop, VS Code and iOS builds in turn
-and ends with their install commands folded into one `&&` chain, copied to
-the clipboard like the individual ones. The chain installs the daemon last:
-its restart drops every agent on the devbox, including the one you pasted
-from. An earlier link failing stops the chain before the daemon, so if it dies
-part-way, re-run the daemon command on its own — `all` prints it separately
-too.
-
-The desktop step waits for the Fork Desktop workflow, so the chain is runnable
-the moment it is printed; a red run drops that step from the chain and the
-rest goes on. `vscode` is skipped without `packages/vscode`, `ios` while
-`fork/dist.env` still holds `REPLACE_ME` placeholders. Any other failure
-stops the run.
-
 ## GitHub Actions on the fork
 
 `fork-base` moves every upstream workflow into
 `.github/workflows/disabled/`. GitHub only reads `.github/workflows/*.yml` and
 does not recurse, so nothing there can trigger — which is what lets `main` be
-the integration branch at all, since `ci.yml` fires on `push: branches: [main]`
-and force-pushes land there constantly. The files are unchanged and still
-runnable by hand: point the Actions tab at a branch that has them at the top
-level, or copy one back temporarily. Fork Desktop triggers on its own, on
-`fork-v*` tags. Patch branches can bring workflows of their own: `vscode` adds
-`vscode.yml`, which runs on every push to `main`, so each `--push` sync also
-costs a VS Code Extension CI run.
+the published integration at all, since `ci.yml` fires on
+`push: branches: [main]` and force-pushes land there on every run. The files
+are unchanged and still runnable by hand: point the Actions tab at a branch
+that has them at the top level, or copy one back temporarily. Fork Desktop
+triggers on its own, on `fork-v*` tags. Patch branches can bring workflows of
+their own: `vscode` adds `vscode.yml`, which runs on every push to `main`, so
+each `--push` also costs a VS Code Extension CI run.
 
 Tags are the gap. A tag-triggered workflow resolves its file from the tagged
 commit, not from `main`, so pushing an upstream `v*` tag to this fork would
@@ -381,5 +511,10 @@ not, so just avoid `--tags` and `--follow-tags`.
 git clone https://github.com/panrafal/paseo.git && cd paseo
 git remote add upstream https://github.com/getpaseo/paseo.git
 git fetch origin fork-base:fork-base
-fork/sync.sh --push
+fork/integrate.sh rebase --push
 ```
+
+The first `rebase` starts the local `fork-integration` from
+`origin/fork-integration`. A clone that has only `main` — the published
+copy is gone — rebuilds the integration's ancestry from `main`'s commit
+message, which names every branch tip that went in.
