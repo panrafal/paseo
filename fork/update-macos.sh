@@ -65,8 +65,8 @@ fi
 say "Installing to $APP"
 rm -rf "$APP"
 cp -R "$mount_point/Paseo.app" /Applications/
-# Signed and notarized builds pass Gatekeeper on their own; this only clears
-# the download quarantine flag so the first launch skips the extra prompt.
+# This fork signs but does not notarize the app. Clearing quarantine allows the
+# signed build to launch without a Gatekeeper prompt.
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
 say "Installed $(defaults read "$APP/Contents/Info" CFBundleShortVersionString)"
