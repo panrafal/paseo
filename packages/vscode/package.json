@@ -45,7 +45,9 @@
     "@types/ws": "^8.18.1",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.6.2",
+    "buffer-crc32": "0.2.13",
     "esbuild": "^0.25.12",
+    "pend": "1.2.0",
     "typescript": "5.9.3",
     "vitest": "^4.1.6",
     "ws": "^8.20.0"
