@@ -24,6 +24,15 @@ the sync will take it. Use `fork/new-branch.sh`, which branches off
 `upstream/main`; `fork/sync.sh` refuses a branch that was cut from the wrong
 place, but only after the mistake is already committed.
 
+**Never set a git identity yourself.** No `-c user.name`/`user.email`, no
+`--author`, no `GIT_AUTHOR_*` or `GIT_COMMITTER_*`, no `git config user.*` —
+not even to match what earlier commits look like. The devbox derives the
+identity from the remote URL: in this fork every commit is authored
+`Rafał Lindemann <1268900+panrafal@users.noreply.github.com>` automatically,
+and that must hold in scratch clones and worktrees too, so make them from
+`origin`, not from a local path. Any `capitally-dev[bot]` author in the history
+was a bug and has been rewritten; if you see one, say so instead of copying it.
+
 [fork/README.md](fork/README.md) owns all of it: the branch layout, the sync
 loop and its agent-assisted conflict resolution, version stamping, where builds
 land, and how to install one on the devbox, the Mac, or a phone. Read it before
