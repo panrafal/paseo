@@ -150,16 +150,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: mac-manifest-*
-      # One update feed has to describe both architectures, or whichever arch
-      # uploads last wins and the other stops seeing updates.
-      - name: Merge and upload the update feed
+      - name: Upload the update feed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/merge-mac-manifest.mjs \
-            "mac-manifest-arm64/${RELEASE_CHANNEL}-mac.yml" \
-            "mac-manifest-x64/${RELEASE_CHANNEL}-mac.yml" \
+          cp "mac-manifest-arm64/${RELEASE_CHANNEL}-mac.yml" \
             "${RELEASE_CHANNEL}-mac.yml"
           gh release upload "$FORK_TAG" --repo "${{ github.repository }}" --clobber \
             "${RELEASE_CHANNEL}-mac.yml"
