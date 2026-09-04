@@ -5,8 +5,8 @@
 #   fork/new-branch.sh my-change
 #
 # Every change to Paseo itself belongs on its own branch off upstream, so it
-# stays sendable upstream and the integration branch can be thrown away and
-# rebuilt. `main` in this fork is the integration branch, so the reflex
+# stays sendable upstream and merges into the integration branch on its own.
+# `main` in this fork is the published integration, so the reflex
 # `git switch -c my-change` bases the work on the whole patch stack instead.
 #
 # See fork/README.md.
@@ -27,4 +27,4 @@ BASE="$UPSTREAM_REMOTE/$UPSTREAM_BRANCH"
 git fetch --prune "$UPSTREAM_REMOTE" "$UPSTREAM_BRANCH"
 git switch -c "$branch" "$BASE"
 say "'$branch' started on $BASE ($(git log -1 --format='%h %s' "$BASE"))"
-say "Add it to fork/branches on $TOOLING_REF when you want it in every build."
+say "When it is pushed, put it in every build with: fork/integrate.sh add $branch --push"

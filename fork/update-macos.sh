@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 #
-# fork/update-macos.sh — install the newest fork desktop build on a Mac.
+# fork/update-macos.sh — install a fork desktop build on a Mac.
+#
+#   fork/update-macos.sh                      the newest fork-v* release
+#   fork/update-macos.sh fork-v0.7.2-panrafal.9   that one
 #
 # Run this ON THE LAPTOP. It needs only the gh CLI; it does not need a
 # checkout of this repo — copy it over, or run it straight from GitHub:
@@ -32,13 +35,23 @@ case "$arch" in
   *) die "unsupported architecture: $arch" ;;
 esac
 
-tag="$(gh release list --repo "$REPO" --limit 20 --json tagName,isDraft \
-  -q '[.[] | select(.isDraft == false) | .tagName | select(startswith("fork-v"))][0]')"
-[ -n "$tag" ] && [ "$tag" != "null" ] || die "no fork-v* release found on $REPO"
+tag="${1:-}"
+case "$tag" in
+  "") ;;
+  fork-v*) ;;
+  *) tag="fork-v$tag" ;;
+esac
+if [ -n "$tag" ]; then
+  gh release view "$tag" --repo "$REPO" >/dev/null 2>&1 || die "no release $tag on $REPO"
+else
+  tag="$(gh release list --repo "$REPO" --limit 20 --json tagName,isDraft \
+    -q '[.[] | select(.isDraft == false) | .tagName | select(startswith("fork-v"))][0]')"
+  [ -n "$tag" ] && [ "$tag" != "null" ] || die "no fork-v* release found on $REPO"
+fi
 
 installed=""
 [ -d "$APP" ] && installed="$(defaults read "$APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || true)"
-say "latest: $tag   installed: ${installed:-none}"
+say "wanted: $tag   installed: ${installed:-none}"
 if [ -n "$installed" ] && [ "$tag" = "fork-v$installed" ]; then
   say "Already up to date."
   exit 0
