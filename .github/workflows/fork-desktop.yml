@@ -13,7 +13,9 @@
 # beta-mac.yml — which is what this workflow uploads.
 #
 # Required repo secrets: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
-# APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID.
+# APPLE_API_KEY_P8, APPLE_API_KEY_ID, APPLE_API_ISSUER. No Apple ID and no
+# app-specific password: notarization goes through an App Store Connect API
+# key, which is revocable on its own and carries no account login.
 
 name: Fork Desktop
 
@@ -101,15 +103,27 @@ jobs:
             fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + "\n");
           '
 
+      # electron-builder takes the Apple ID notarization path the moment
+      # APPLE_ID or APPLE_APP_SPECIFIC_PASSWORD is set, and then demands the
+      # whole trio, so neither may appear here even empty. APPLE_TEAM_ID is
+      # read only by that path; CSC_LINK signing does not need it.
       - name: Build, sign and notarize
         env:
           CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY: ${{ runner.temp }}/asc-api-key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           set -euo pipefail
+          # APPLE_API_KEY is a path, not the key, so the .p8 has to reach disk.
+          # It travels through the environment rather than an argument, which
+          # would be readable in `ps`, and umask makes the file 0600 from the
+          # moment it exists. Outside the repo tree so no later step can pack
+          # it into an artifact.
+          (umask 077 && printf '%s\n' "$APPLE_API_KEY_P8" >"$APPLE_API_KEY")
+
           # publish.owner/repo are what the shipped app-update.yml records, so
           # this is the line that makes the installed app update from the fork.
           npm run build:desktop -- --publish never --mac --${{ matrix.electron_arch }} \
@@ -117,6 +131,12 @@ jobs:
             "-c.publish.owner=${{ github.repository_owner }}" \
             "-c.publish.repo=${{ github.event.repository.name }}" \
             "-c.publish.channel=${RELEASE_CHANNEL}"
+
+      # The runner is ephemeral, but the key is gone the moment it stops being
+      # needed rather than whenever the VM is torn down.
+      - name: Remove the App Store Connect key
+        if: always()
+        run: rm -f "${{ runner.temp }}/asc-api-key.p8"
 
       - name: Upload artifacts to the release
         env:
