@@ -27,6 +27,7 @@ origin/feat/terminal-close-confirm
 origin/sidebar-grouping-toggle
 origin/allowedorigins-domain-patterns
 origin/history-navigation-shortcuts
+origin/host-selection-pill-color
 
 # Fork features not yet sent upstream.
 origin/vscode
