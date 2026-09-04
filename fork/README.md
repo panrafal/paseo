@@ -200,7 +200,7 @@ pushes it, starting **Fork Desktop** (`.github/workflows/fork-desktop.yml`, on
 `fork-base`). It builds arm64 and x64 on macOS runners, signs and notarizes
 with your Apple credentials, and publishes a release on your fork.
 
-Repo secrets required on the fork:
+Signing runs on a GitHub runner, so these live as repo secrets on the fork:
 
 | Secret                       | Where it comes from                            |
 | ---------------------------- | ---------------------------------------------- |
@@ -209,6 +209,10 @@ Repo secrets required on the fork:
 | `APPLE_ID`                   | your Apple ID email                            |
 | `APPLE_PASSWORD`             | an app-specific password for notarization      |
 | `APPLE_TEAM_ID`              | Apple Developer team id                        |
+
+They are the only fork values GitHub holds. The rest are the plain identifiers
+in `fork/dist.env`, committed as they are, and `EXPO_TOKEN`, which a script on
+your own machine needs — see [iOS / TestFlight](#ios--testflight).
 
 On the Mac, `fork/update-macos.sh` downloads the newest fork build, quits a
 running Paseo, installs it and relaunches. Fetch and run it in one line:
@@ -251,22 +255,79 @@ The fork ships under its own bundle identifier, EAS project and App Store
 Connect record — `sh.paseo` belongs to upstream's app record and cannot be
 reused.
 
-One-time setup:
+### One-time setup
+
+Create the EAS project on [expo.dev](https://expo.dev) first, with the slug
+`voice-mobile`. It has to match `expo.slug` in `packages/app/app.config.js`;
+`eas` refuses a project whose slug disagrees. Then, in the build checkout:
 
 ```bash
 cd ~/.paseo-fork/build/packages/app
 npx eas login
-npx eas init --id        # creates the fork's EAS project
-npx eas credentials      # let EAS manage iOS signing
+npx eas init --id=<project id>   # link the project you just made
+npx eas credentials -p ios       # registers the bundle id, then creates the
+                                 # distribution certificate and provisioning
+                                 # profile, and stores an App Store Connect
+                                 # API key so `submit` needs no password
 ```
+
+If `npx eas` installs a package called `eas` and then reports no binary, your
+`npx` is resolving against the registry instead of the checkout. Run
+`~/.paseo-fork/build/node_modules/.bin/eas` directly; `fork/ios.sh` already
+prefers it.
 
 Then fill `FORK_IOS_BUNDLE_ID`, `FORK_EAS_OWNER`, `FORK_EAS_PROJECT_ID`,
 `FORK_ASC_APP_ID` and `FORK_APPLE_TEAM_ID` into `fork/dist.env` on
 `fork-base` and commit. `fork/ios.sh doctor` checks them without building.
 
-Push notifications need your own Firebase `GoogleService-Info.plist` at
-`packages/app/.secrets/` or via `GOOGLE_SERVICE_INFO_PLIST_PROD`. Everything
-else works without it.
+### EXPO_TOKEN
+
+`eas build` and `eas submit` run `--non-interactive`, which needs an access
+token from [expo.dev/settings/access-tokens](https://expo.dev/settings/access-tokens).
+Nothing in Actions builds the iOS app; `fork/ios.sh` does it here. So the token
+is committed to `fork-base` encrypted with [dotenvx](https://dotenvx.com)
+rather than kept in GitHub secrets:
+
+```bash
+dotenvx set EXPO_TOKEN '<token>' -f fork/.env.fork   # from the repo root
+git add fork/.env.fork && git commit -m 'fork: expo token'
+```
+
+That writes two files. `fork/.env.fork` holds the ciphertext and the public
+key and is committed. `.env.keys` holds the private key, lands in the
+directory you ran the command from, and is gitignored everywhere — back it up
+in your password manager, because nothing else has a copy.
+
+`fork/ios.sh` re-execs itself under `dotenvx run` to get the token into
+`eas`, so it works the same from a terminal, from `fork/build.sh ios` and from
+`fork/build.sh all`. It looks for the key in `fork/.env.keys`, the repo root,
+and `~/.paseo-fork/.env.keys`, or in a `DOTENV_PRIVATE_KEY_FORK` environment
+variable. Only the last two survive a git worktree, which gets no copy of a
+gitignored file — put the key in `~/.paseo-fork/.env.keys` and every checkout
+on the machine finds it.
+
+Without `fork/.env.fork` nothing breaks; `eas` falls back to the interactive
+login in `~/.expo` and the scripts warn once. With the file but no key they
+stop, rather than handing `eas` the ciphertext.
+
+### Push notifications
+
+They need your own Firebase `GoogleService-Info.plist`. `packages/app` reads
+the path from `GOOGLE_SERVICE_INFO_PLIST_PROD` and falls back to
+`packages/app/.secrets/GoogleService-Info.prod.plist`, but that fallback is
+local-only: `.secrets/` is gitignored and EAS does not upload gitignored files
+to its build workers. For an EAS build, make it a file-type environment
+variable instead, which EAS writes to a path on the worker and points the
+variable at:
+
+```bash
+cd ~/.paseo-fork/build/packages/app
+npx eas env:create production --name GOOGLE_SERVICE_INFO_PLIST_PROD \
+  --type file --value ./GoogleService-Info.plist \
+  --visibility secret --scope project
+```
+
+Everything else works without it.
 
 ## Everything at once
 

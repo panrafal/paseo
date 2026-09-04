@@ -44,6 +44,12 @@ FORK_GH_OWNER="${FORK_GH_OWNER:-panrafal}"
 FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-claude}"
 FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
 
+# Where this directory is, resolved from config.sh itself so the secret helper
+# below finds fork/.env.fork no matter which directory a script is run from.
+FORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FORK_ENV_FILE="${FORK_ENV_FILE:-$FORK_DIR/.env.fork}"
+FORK_DOTENVX_VERSION="${FORK_DOTENVX_VERSION:-2}"
+
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
 die() {
@@ -62,6 +68,77 @@ offer_command() {
     printf '\033]52;c;%s\a' "$(printf '%s' "$command" | base64 | tr -d '\n')"
     printf '(copied to your clipboard, if the terminal allows it)\n'
   fi
+}
+
+# ------------------------------------------------------------- secrets ----
+# The fork's own secrets — today just EXPO_TOKEN, which fork/ios.sh hands to
+# `eas` — live encrypted in fork/.env.fork, committed on the tooling branch.
+# The private key that opens it never is: dotenvx keeps it in a .env.keys that
+# .gitignore covers at every depth, or you export DOTENV_PRIVATE_KEY_FORK.
+#
+# Apple's signing secrets are not here. Those are GitHub repo secrets, because
+# the thing that needs them is a workflow; EXPO_TOKEN is here because the thing
+# that needs it is a script on this machine.
+
+# `dotenvx set -f fork/.env.fork` writes .env.keys to the working directory,
+# but `dotenvx run` looks for it next to the env file. So the key can be in
+# either place depending on where you ran `set`, and neither survives a git
+# worktree, which gets its own checkout of a gitignored file — that is, none.
+# All three are offered; dotenvx takes the first that opens the file.
+fork_key_files() {
+  printf '%s\n' \
+    "$FORK_DIR/.env.keys" \
+    "$(dirname "$FORK_DIR")/.env.keys" \
+    "$WORK_ROOT/.env.keys"
+}
+
+# Decrypted values can only reach a script that has already started by way of
+# a new process, so this re-execs its caller under `dotenvx run`. The guard is
+# exported: the re-exec, and anything it spawns — including ios.sh running
+# `"$0" build` — passes straight through on the second visit.
+#
+# Call it as `load_fork_secrets "$HERE/thescript.sh" "$@"`, guarded by a test
+# for the variable you actually need, so an already-exported value wins and no
+# key is demanded for a run that does not need one.
+load_fork_secrets() {
+  local script="$1"
+  shift
+
+  [ -z "${FORK_SECRETS_LOADED:-}" ] || return 0
+  export FORK_SECRETS_LOADED=1
+
+  if [ ! -f "$FORK_ENV_FILE" ]; then
+    warn "no $FORK_ENV_FILE — secrets have to come from the environment. See fork/README.md."
+    return 0
+  fi
+
+  local key_file have_key=0
+  local keys=()
+  while IFS= read -r key_file; do
+    [ -f "$key_file" ] || continue
+    have_key=1
+    keys+=(-fk "$key_file")
+  done < <(fork_key_files)
+
+  if [ "$have_key" -eq 0 ] && [ -z "${DOTENV_PRIVATE_KEY_FORK:-}" ]; then
+    die "$FORK_ENV_FILE is encrypted and nothing here can open it.
+Put the private key in one of:
+$(fork_key_files | sed 's/^/  /')
+or export DOTENV_PRIVATE_KEY_FORK. It is printed by \`dotenvx keypair\` and
+should also be in your password manager. See fork/README.md."
+  fi
+
+  # Prefer a dotenvx on PATH; npx is the fallback so this never has to be a
+  # dependency of the repo — package.json and the lockfile churn on every sync.
+  local runner=(npx --yes "@dotenvx/dotenvx@$FORK_DOTENVX_VERSION")
+  if command -v dotenvx >/dev/null 2>&1; then
+    runner=(dotenvx)
+  fi
+
+  # --strict matters: without it a key that cannot decrypt is a warning on
+  # stderr and an exit status of 0, and the ciphertext is handed to `eas` as
+  # if it were the token.
+  exec "${runner[@]}" run -f "$FORK_ENV_FILE" ${keys[@]+"${keys[@]}"} --strict -- "$script" "$@"
 }
 
 # The fork version, shared by every artifact so a daemon, a desktop app and a
