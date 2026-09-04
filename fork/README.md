@@ -15,12 +15,12 @@ fork-side copy of it and nothing needs one.
 
 ## Branches
 
-| Branch             | Base            | Purpose                                                                                                                                                                            |
-| ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fork-base`        | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, `panrafal:` scripts in `paseo.json`. |
-| PR branches        | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                   |
-| `fork-integration` | kept            | `upstream/main` + `fork-base` + the PR branches, as merges. Advanced by `fork/integrate.sh`; rebuilt only on request.                                                              |
-| `main`             | derived         | `fork-integration`'s tree as one commit on top of the newest upstream commit it contains. Force-pushed on every run.                                                               |
+| Branch             | Base            | Purpose                                                                                                                                                                         |
+| ------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fork-base`        | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, the `🍱` scripts in `paseo.json`. |
+| PR branches        | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                |
+| `fork-integration` | kept            | `upstream/main` + `fork-base` + the PR branches, as merges. Advanced by `fork/integrate.sh`; rebuilt only on request.                                                           |
+| `main`             | derived         | `fork-integration`'s tree as one commit on top of the newest upstream commit it contains. Force-pushed on every run.                                                            |
 
 Everything except the last two is based on `upstream/main`, including
 `fork-base`. Start a change with `fork/new-branch.sh <name>` rather than
@@ -30,22 +30,20 @@ branch — it spots `fork/branches` in it — but only once the mistake is made.
 
 ## The quick route
 
-`panrafal:` scripts in `paseo.json`, one tap each in the Paseo UI, all run on
-the devbox:
+Four `🍱` scripts in `paseo.json`, one tap each in the Paseo UI. They run on
+whichever daemon hosts the workspace: the first three belong on the devbox,
+`deploy` needs the laptop.
 
-| Script                          | Runs                                               | When                                                                |
-| ------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
-| `panrafal: rebase integration`  | `fork/integrate.sh rebase --agent --push`          | every day: latest upstream in, `main` published                     |
-| `panrafal: rebuild integration` | `fork/integrate.sh rebuild --agent --push`         | after removing a branch from `fork/branches`, or to start over      |
-| `panrafal: rebase branches`     | `fork/integrate.sh rebase-branches --agent --push` | when the PR branches need to sit on current upstream; rewrites them |
-| `panrafal: build daemon`        | `fork/build.sh daemon`                             | tarballs in `~/.paseo-fork/dist`                                    |
-| `panrafal: build desktop`       | `fork/build.sh desktop`                            | a GitHub release with the macOS app                                 |
-| `panrafal: build vscode`        | `fork/build.sh vscode`                             | a `.vsix` in `~/.paseo-fork/dist`                                   |
-| `panrafal: build ios`           | `fork/build.sh ios`                                | an EAS build that lands in TestFlight                               |
+| Script                    | Runs                                               | When                                                                |
+| ------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| `🍱 update with upstream` | `fork/integrate.sh rebase --agent --push`          | every day: latest upstream in, `main` published                     |
+| `🍱 re-merge integration` | `fork/integrate.sh rebuild --agent --push`         | after removing a branch from `fork/branches`, or to start over      |
+| `🍱 rebase branches`      | `fork/integrate.sh rebase-branches --agent --push` | when the PR branches need to sit on current upstream; rewrites them |
+| `🍱 deploy`               | `fork/deploy.sh`                                   | from the laptop: build every target and install each where it runs  |
 
-Building never installs anything. `fork/deploy.sh`, run from the laptop, is
-what builds every target and puts each one where it runs — see
-[Deploying](#deploying).
+Single targets are built by hand with `fork/build.sh daemon`, `desktop`,
+`vscode` or `ios` — see [Building](#building). Building never installs
+anything; `fork/deploy.sh` does, see [Deploying](#deploying).
 
 ## Integrating
 
