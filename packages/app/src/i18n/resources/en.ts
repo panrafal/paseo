@@ -1066,12 +1066,6 @@ export const en = {
     display: {
       trigger: "Display preferences",
       heading: "Display",
-      grouping: {
-        label: "Grouping",
-        project: "Project",
-        status: "Status",
-        labels: "Labels",
-      },
       titleSource: {
         label: "Title",
         title: "Title",
