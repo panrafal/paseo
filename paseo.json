@@ -27,6 +27,18 @@
     },
     "typecheck": {
       "command": "npm run typecheck"
+    },
+    "\ud83c\udf71 deploy": {
+      "command": "./fork/deploy.sh"
+    },
+    "\ud83c\udf71 update with upstream": {
+      "command": "./fork/integrate.sh rebase --agent --push"
+    },
+    "\ud83c\udf71 re-merge integration": {
+      "command": "./fork/integrate.sh rebuild --agent --push"
+    },
+    "\ud83c\udf71 rebase branches": {
+      "command": "./fork/integrate.sh rebase-branches --agent --push"
     }
   }
 }

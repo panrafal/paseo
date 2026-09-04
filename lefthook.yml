@@ -1,4 +1,9 @@
 pre-commit:
+  # Fork: off on fork-base and main. The hook runs the whole-repo typecheck
+  # on every commit, which needs node_modules and built declarations in the
+  # checkout. Patch branches are cut from upstream/main, do not carry this
+  # change, and keep the hooks: they are PRs and get upstream's checks.
+  skip: true
   parallel: true
   jobs:
     - name: format
