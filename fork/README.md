@@ -269,7 +269,7 @@ reused.
 ### One-time setup
 
 Create the EAS project on [expo.dev](https://expo.dev) first, with the slug
-`voice-mobile`. It has to match `expo.slug` in `packages/app/app.config.js`;
+`panrafal-paseo`. It has to match `expo.slug` in `packages/app/app.config.js`;
 `eas` refuses a project whose slug disagrees. Then, in the build checkout:
 
 ```bash
