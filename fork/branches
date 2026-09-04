@@ -22,6 +22,7 @@ origin/feat/terminal-close-confirm
 origin/sidebar-grouping-toggle
 origin/allowedorigins-domain-patterns
 origin/sidebar-grouping-toggle
+origin/history-navigation-shortcuts
 
 # Fork features not yet sent upstream.
 origin/vscode
