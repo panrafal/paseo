@@ -3,10 +3,10 @@
 # fork/release.sh — cut a fork build of the desktop app.
 #
 # Tags the current `main` commit as `fork-v<version>` and pushes it, which
-# starts the fork's own Desktop workflow on GitHub. That workflow builds,
-# signs and notarizes the macOS app on a macos runner and publishes it to a
-# GitHub Release on your fork, with an auto-update feed pointing at your fork
-# rather than upstream.
+# starts the fork's own Desktop workflow on GitHub. That workflow builds and
+# signs the macOS app on a macos runner, skips notarization, and publishes it
+# to a GitHub Release on your fork, with an auto-update feed pointing at your
+# fork rather than upstream.
 #
 # Commands:
 #   fork/release.sh desktop [<version>]   tag + push, then watch the build
