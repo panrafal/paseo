@@ -206,11 +206,30 @@ Signing runs on a GitHub runner, so these live as repo secrets on the fork:
 | ---------------------------- | ---------------------------------------------- |
 | `APPLE_CERTIFICATE`          | base64 of your Developer ID Application `.p12` |
 | `APPLE_CERTIFICATE_PASSWORD` | the `.p12` export password                     |
-| `APPLE_ID`                   | your Apple ID email                            |
-| `APPLE_PASSWORD`             | an app-specific password for notarization      |
-| `APPLE_TEAM_ID`              | Apple Developer team id                        |
+| `APPLE_API_KEY_P8`           | the App Store Connect key file, raw text       |
+| `APPLE_API_KEY_ID`           | the Key ID, in that key's row                  |
+| `APPLE_API_ISSUER`           | the Issuer ID, at the top of the same page     |
 
-They are the only fork values GitHub holds. The rest are the plain identifiers
+The last three notarize the build. Make the key in App Store Connect under
+Users and Access → Integrations → App Store Connect API, as a **team** key
+with the **Developer** role — `notarytool` rejects anything lower. The `.p8`
+downloads once and Apple keeps no copy, so store it before you leave the page.
+Make it a separate key from the one EAS holds for TestFlight; revoking either
+then leaves the other alone.
+
+```bash
+gh secret set APPLE_API_KEY_P8 --repo panrafal/paseo < AuthKey_XXXXXXXXXX.p8
+gh secret set APPLE_API_KEY_ID --repo panrafal/paseo
+gh secret set APPLE_API_ISSUER --repo panrafal/paseo
+```
+
+No Apple ID and no app-specific password are stored anywhere. electron-builder
+switches to the Apple ID path as soon as it sees `APPLE_ID` or
+`APPLE_APP_SPECIFIC_PASSWORD`, so the workflow must not pass them at all, even
+empty — that is also why `APPLE_TEAM_ID` is gone from the secrets. It stays in
+`fork/dist.env` as `FORK_APPLE_TEAM_ID`, which iOS still needs.
+
+These are the only fork values GitHub holds. The rest are the plain identifiers
 in `fork/dist.env`, committed as they are, and `EXPO_TOKEN`, which a script on
 your own machine needs — see [iOS / TestFlight](#ios--testflight).
 
