@@ -4,6 +4,48 @@ Paseo is a mobile app for monitoring and controlling your local AI coding agents
 
 **Supported agents:** Claude Code, Codex, GitHub Copilot, OpenCode, and Pi.
 
+## You are on a fork
+
+This is `panrafal/paseo`, a personal fork of `getpaseo/paseo`. **`main` here is
+not upstream's `main`.** It is derived on every run of `fork/integrate.sh`
+from `fork-integration` — `upstream/main` plus `fork-base` plus a list of
+patch branches, kept as merges — as one commit on top of upstream, then
+force-pushed. **Nothing committed directly to `main` survives.**
+
+| Want to...                                               | Do this                                                                |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Change Paseo itself                                      | `fork/new-branch.sh <name>`, push, then `fork/integrate.sh add <name>` |
+| Change how the fork builds, ships, or syncs              | Commit to `fork-base`                                                  |
+| Pull in the latest upstream                              | `fork/integrate.sh rebase --agent --push`                              |
+| Drop a branch, or start the integration over             | `fork/integrate.sh rebuild --agent --push`                             |
+| Put the patch branches back on current upstream          | `fork/integrate.sh rebase-branches --agent --push` (rewrites them)     |
+| Build the daemon, desktop app, VS Code extension, or iOS | `fork/build.sh daemon` / `desktop` / `vscode` / `ios`                  |
+| Build everything and install it where it runs            | `fork/deploy.sh`, from the laptop                                      |
+
+**Never start a branch from `main`.** `main` carries the whole patch stack, so
+a branch cut from it is unusable as a PR and has to be rebased by hand before
+the integration will take it. Use `fork/new-branch.sh`, which branches off
+`upstream/main`; `fork/integrate.sh` refuses a branch that was cut from the
+wrong place, but only after the mistake is already committed.
+
+**Never set a git identity yourself.** No `-c user.name`/`user.email`, no
+`--author`, no `GIT_AUTHOR_*` or `GIT_COMMITTER_*`, no `git config user.*` —
+not even to match what earlier commits look like. The devbox derives the
+identity from the remote URL: in this fork every commit is authored
+`Rafał Lindemann <1268900+panrafal@users.noreply.github.com>` automatically,
+and that must hold in scratch clones and worktrees too, so make them from
+`origin`, not from a local path. Any `capitally-dev[bot]` author in the history
+was a bug and has been rewritten; if you see one, say so instead of copying it.
+
+[fork/README.md](fork/README.md) owns all of it: the branch layout, the sync
+loop and its agent-assisted conflict resolution, version stamping, where builds
+land, and how to install one on the devbox, the Mac, or a phone. Read it before
+touching anything under `fork/`, and prefer the `panrafal:` scripts in
+`paseo.json` for the routine paths.
+
+Everything below this section is upstream's documentation and applies
+unchanged.
+
 ## Repository map
 
 This is an npm workspace monorepo:
@@ -13,6 +55,7 @@ This is an npm workspace monorepo:
 - `packages/cli` — Docker-style CLI (`paseo run/ls/logs/wait`)
 - `packages/relay` — E2E encrypted relay for remote access
 - `packages/desktop` — Electron desktop wrapper
+- `packages/vscode` — VS Code extension and webview bridge
 - `packages/website` — Marketing site (paseo.sh)
 
 ## Docs
@@ -36,6 +79,7 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/floating-panels.md](docs/floating-panels.md)                   | Anchored popovers — Portal/Modal escape for Android, lifecycle gates, keyboard-shared-value, status-bar offset, the flash      |
 | [docs/menus.md](docs/menus.md)                                       | The menu engine — popover vs sheet, submenu pages, hover intent, when a decision earns a submenu                               |
 | [docs/expo-router.md](docs/expo-router.md)                           | Expo Router route ownership, startup restore, and native blank-screen gotchas                                                  |
+| [docs/find.md](docs/find.md)                                         | Find in pane — who owns Cmd+F across panes, model-indexed transcript search, xterm/CodeMirror/CSS-highlight gotchas            |
 | [docs/file-icons.md](docs/file-icons.md)                             | Material icon theme integration for the file explorer                                                                          |
 | [docs/providers.md](docs/providers.md)                               | Adding a new agent provider end-to-end                                                                                         |
 | [docs/forge-providers.md](docs/forge-providers.md)                   | Adding a git forge: registry/manifest, drop-in checklist, self-host/GHES, the two facts tiers                                  |
@@ -43,6 +87,8 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/plugins.md](docs/plugins.md)                                   | Local plugin manifest, directory source config, RPCs, native surfaces, and attachment sources                                  |
 | [docs/service-proxy.md](docs/service-proxy.md)                       | Service proxy: exposing workspace scripts at public URLs, DNS setup, reverse proxy config                                      |
 | [docs/development.md](docs/development.md)                           | Dev server, build sync gotchas, CLI reference, agent state, Playwright MCP                                                     |
+| [docs/vscode-extension.md](docs/vscode-extension.md)                 | VS Code extension install, daemon discovery, bridge security, limitations, and debugging                                       |
+| [docs/vscode-ci.md](docs/vscode-ci.md)                               | VS Code extension CI, smoke tests, bridge round-trip, and CDP tests                                                            |
 | [docs/rpc-namespacing.md](docs/rpc-namespacing.md)                   | WebSocket RPC naming convention — dotted namespaces and `.request`/`.response` pairs                                           |
 | [docs/protocol-compatibility.md](docs/protocol-compatibility.md)     | Why app/daemon versions drift, protocol vs feature contract, capability gating, COMPAT tagging                                 |
 | [docs/protocol-validation.md](docs/protocol-validation.md)           | zod-aot generated inbound WebSocket validation, patched compiler regressions, schema-purity rules                              |
@@ -108,6 +154,7 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
 
 ## Critical rules
 
+- **NEVER commit to `main`, and never branch off it.** On this fork `main` is derived from the integration branch, not upstream: a commit on it is lost at the next `fork/integrate.sh` run, and a branch cut from it carries the whole patch stack. Start work with `fork/new-branch.sh <name>`. See [fork/README.md](fork/README.md) for where a change belongs.
 - **NEVER restart the main Paseo daemon on port 6767 without permission** — it manages all running agents. If you're an agent, restarting it kills your own process.
 - **NEVER assume a timeout means the service needs restarting** — timeouts can be transient.
 - **NEVER add auth checks to tests** — agent providers handle their own auth.

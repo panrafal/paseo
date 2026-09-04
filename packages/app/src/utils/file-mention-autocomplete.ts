@@ -40,6 +40,24 @@ export function findActiveFileMention(input: FindActiveFileMentionInput): FileMe
   return null;
 }
 
+/**
+ * Appends an editor selection to a mention path as `:line:column-line:column`. Matches the
+ * suffix the assistant file-link parser reads back (`assistant-file-links/parse.ts`), so a
+ * mention Paseo writes stays a link Paseo can open. A selection inside one line keeps both
+ * columns; a caret with no selection never gets here.
+ */
+export function formatFileMentionTarget(
+  path: string,
+  selection?: { startLine: number; startColumn: number; endLine: number; endColumn: number },
+): string {
+  if (!selection) {
+    return path;
+  }
+  const start = `${selection.startLine}:${selection.startColumn}`;
+  const end = `${selection.endLine}:${selection.endColumn}`;
+  return `${path}:${start}-${end}`;
+}
+
 export function formatQuotedFileMentionPath(relativePath: string): string {
   const safePath = relativePath.replace(/"/g, '\\"');
   return `"${safePath}"`;
@@ -49,4 +67,19 @@ export function applyFileMentionReplacement(input: ApplyFileMentionReplacementIn
   const before = input.text.slice(0, input.mention.start);
   const after = input.text.slice(input.mention.end);
   return `${before}${formatQuotedFileMentionPath(input.relativePath)}${after}`;
+}
+
+export function appendFileMentionPaths(input: {
+  text: string;
+  relativePaths: readonly string[];
+}): string {
+  const mentions = input.relativePaths
+    .filter((path) => path.trim().length > 0)
+    .map(formatQuotedFileMentionPath)
+    .join(" ");
+  if (!mentions) {
+    return input.text;
+  }
+  const separator = input.text.length === 0 || /\s$/.test(input.text) ? "" : " ";
+  return `${input.text}${separator}${mentions}`;
 }
