@@ -1,7 +1,7 @@
 # The `panrafal` fork
 
 This fork's `main` is the latest `getpaseo/paseo` `main` with my own patches
-on top. It is what I build and run. It is not a branch I commit to — it is
+and selected upstream PRs on top. It is what I build and run. It is not a branch I commit to — it is
 derived from `fork-integration` on every run of `fork/integrate.sh`, so
 anything committed directly to it is lost.
 
@@ -15,12 +15,13 @@ fork-side copy of it and nothing needs one.
 
 ## Branches
 
-| Branch             | Base            | Purpose                                                                                                                                                                         |
-| ------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fork-base`        | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, the `🍱` scripts in `paseo.json`. |
-| PR branches        | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                |
-| `fork-integration` | kept            | `upstream/main` + `fork-base` + the PR branches, as merges. Advanced by `fork/integrate.sh`; rebuilt only on request.                                                           |
-| `main`             | derived         | `fork-integration`'s tree as one commit on top of the newest upstream commit it contains. Force-pushed on every run.                                                            |
+| Branch               | Base            | Purpose                                                                                                                                                                         |
+| -------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fork-base`          | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, the `🍱` scripts in `paseo.json`. |
+| PR branches          | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                |
+| External PR branches | author's fork   | Listed as `owner:branch`; fetched from the author, never rebased or pushed by us.                                                                                               |
+| `fork-integration`   | kept            | `upstream/main` + `fork-base` + the PR branches, as merges. Advanced by `fork/integrate.sh`; rebuilt only on request.                                                           |
+| `main`               | derived         | `fork-integration`'s tree as one commit on top of the newest upstream commit it contains. Force-pushed on every run.                                                            |
 
 Everything except the last two is based on `upstream/main`, including
 `fork-base`. Start a change with `fork/new-branch.sh <name>` rather than
@@ -53,7 +54,8 @@ anything; `fork/deploy.sh` does, see [Deploying](#deploying).
 fork/integrate.sh rebase --agent --push
 ```
 
-1. Fetch upstream and the fork. A `fork-base` or `fork-integration` that
+1. Fetch upstream, the fork, and every listed `owner:branch` from its author's
+   GitHub fork, accepting author force-pushes. A `fork-base` or `fork-integration` that
    another checkout advanced and pushed is fast-forwarded first; one that has
    diverged stops the run with the two ways out.
 2. Merge `upstream/main` into `fork-integration`. Every patch meets the new
@@ -105,7 +107,7 @@ in the files the patches touch, so a lost adaptation shows up as a difference
 nobody made on a branch.
 
 `fork/integrate.sh rebase-branches` rebases `fork-base` and every listed
-branch that has a local branch of the same name onto `upstream/main`,
+branch we own that has a local branch of the same name onto `upstream/main`,
 force-pushes them, then rebuilds. A local branch that is behind its published
 copy is fast-forwarded first; one that has diverged is rebased as it is, with
 a warning, and the push drops what only the published copy had. A checkout
@@ -116,6 +118,9 @@ with the time since the last one:
 `rerere` replays a resolution only when the conflict looks the same, and a
 branch resolved against the whole stack in an integration merge looks
 different when replayed one commit at a time.
+
+External `owner:branch` entries are fetched and merged as authored during
+this command. A local branch with the same name does not change their ownership.
 
 `fork/integrate.sh add <branch>` — also `fork/add-branch.sh <branch>` — lists
 a branch and merges it in, without touching anything else. See
@@ -151,6 +156,24 @@ in.
 
 ### Changing what gets merged
 
+To include someone else's PR from a GitHub fork named `paseo`:
+
+```bash
+fork/integrate.sh add colonelpanic8:codex-astra-support --push
+```
+
+The `owner:branch` entry records the source in `fork/branches`; no remote
+setup or local branch is needed, including on a fresh clone. The normal
+`🍱 update with upstream` action fetches the latest author tip and merges
+its changes. Author rebases, amendments, and withdrawn commits are reflected
+in the integration. We never rebase these branches or push to their forks.
+Resolve any conflicts in the integration; source fixes belong with the author.
+
+If fetching an author branch fails or the author deletes it, the command
+stops before integrating. Remove its entry and rebuild when the PR lands or
+you stop using it. `--no-fetch` deliberately uses cached tips and fails if
+an external branch has never been fetched.
+
 `fork/branches` is read from the `fork-base` ref, not from your working tree,
 so an uncommitted edit has no effect. A line added by hand is merged by the
 next `rebase`. A line removed by hand takes effect at the next `rebuild`, and
@@ -185,8 +208,8 @@ back in the same shape.
 
 `fork/integrate.test.sh` runs every command against scratch repositories
 under a temp directory: rebuild, the routine rebase, branch drift, add,
-conflicts and re-runs, rebase-branches, seeding a fresh clone, diverged
-branches, dirty checkouts. Nothing touches this repository or
+conflicts and re-runs, rebase-branches, author-owned PR updates and force-pushes,
+seeding a fresh clone, diverged branches, dirty checkouts. Nothing touches this repository or
 `~/.paseo-fork`. Run it after changing `fork/integrate.sh`.
 
 ## Versions
