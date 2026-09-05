@@ -391,7 +391,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.spacing[2],
   },
   outcomeText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 16,
     fontWeight: "600",
   },
