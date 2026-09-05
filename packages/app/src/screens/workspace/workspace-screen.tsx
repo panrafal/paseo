@@ -969,7 +969,7 @@ function WorkspaceHeaderProjectRow({
     return null;
   }
   return (
-    <View style={styles.headerProjectRow}>
+    <View style={styles.headerProjectRow} testID="workspace-header-project-row">
       {showProject ? (
         <Text
           testID="workspace-header-subtitle"
