@@ -277,22 +277,32 @@ fork/deploy.sh                # everything
 fork/deploy.sh vscode daemon  # only these
 ```
 
-Run it on the laptop. It resets `main` to `origin/main` here and on the
+Run it inside Paseo on the laptop. The `🍱 deploy` action fetches and resets
+the laptop's `main`, then runs the script inside Paseo so you can follow its
+logs and build links. The script resets `main` to `origin/main` here and on the
 devbox — a `main` checkout with uncommitted changes stops it — so every
 target comes from the same commit, then runs all four at once:
 
-| Target    | Built                                     | Installed                                                                            |
-| --------- | ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| `daemon`  | on the devbox, over ssh                   | `npm install -g` on the devbox, `systemctl restart paseo`, then the healthcheck      |
-| `desktop` | by GitHub Actions, from a tag pushed here | `/Applications/Paseo.app` on the Mac, by `fork/update-macos.sh`, which relaunches it |
-| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox     |
-| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it    |
+| Target    | Built                                     | Installed                                                                                          |
+| --------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `daemon`  | on the devbox, over ssh                   | `npm install -g` on the devbox, `systemctl restart paseo`, then the healthcheck                    |
+| `desktop` | by GitHub Actions, from a tag pushed here | After every job finishes, Terminal runs `fork/update-macos.sh` to install and relaunch the Mac app |
+| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                   |
+| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                  |
 
 One target failing does not stop the others. Each target's output goes to
 `~/.paseo-fork/deploy/<target>.log`, and the summary at the end says what was
 built, where it went, and where a failed one stopped. A re-run of the same
 version skips the desktop build when its release already exists; everything
 else is idempotent.
+
+The Mac update is the last step because it stops Paseo's local daemon and
+the deploy script running inside it. Desktop builds alongside the other
+targets; once all jobs have finished, including any failures, a successful
+desktop build is handed to a separate Terminal window for installation.
+The summary reports the desktop as built, with installation pending. Follow
+the update in Terminal or `~/.paseo-fork/deploy/desktop-update.log`.
+iOS only needs to be queued before this handoff; its cloud build continues.
 
 It has to run off the devbox: installing the desktop app needs macOS, and
 restarting the daemon kills every agent on the devbox, including one that
