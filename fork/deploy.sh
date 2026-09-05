@@ -15,8 +15,8 @@
 #
 #   daemon    built on the devbox over ssh, installed there with npm, the
 #             service restarted, the healthcheck run
-#   desktop   tagged from here; GitHub Actions builds the macOS app; installed
-#             here with fork/update-macos.sh, which relaunches it
+#   desktop   built by GitHub Actions; installed in Terminal after every job
+#             finishes, since updating the Mac app stops the hosting daemon
 #   vscode    built here; the .vsix installed into VS Code and Cursor here and
 #             into their servers on the devbox
 #   ios       EAS build queued from here; it submits itself to TestFlight
@@ -125,8 +125,7 @@ job_desktop() {
     FORK_BUILD_LINKS_FILE="$RESULT_FILE" "$HERE/build.sh" desktop
     note "built by GitHub Actions: https://github.com/$REPO/releases/tag/$tag"
   fi
-  "$HERE/update-macos.sh" "$tag"
-  note "installed /Applications/Paseo.app and relaunched it"
+  note "desktop build ready; installation waits until every job finishes"
 }
 
 # The local checkout was prepared — and, with --clean, wiped — once by the
@@ -352,7 +351,9 @@ failed=0
 echo
 say "Deploy of $VERSION"
 for t in "${targets[@]}"; do
-  if [ "${STATUS[$t]}" = 0 ]; then
+  if [ "$t" = desktop ] && [ "${STATUS[$t]}" = 0 ]; then
+    printf '  \033[32m%-8s\033[0m built; installation pending in Terminal\n' "$t"
+  elif [ "${STATUS[$t]}" = 0 ]; then
     printf '  \033[32m%-8s\033[0m ok\n' "$t"
   else
     failed=1
@@ -361,4 +362,21 @@ for t in "${targets[@]}"; do
   sed 's/^/           /' "$DEPLOY_DIR/$t.result"
   [ "${STATUS[$t]}" = 0 ] || printf '           stopped after the last line above\n'
 done
+
+# Terminal owns the updater process so it survives Paseo and its daemon quitting.
+if wants desktop && [ "${STATUS[desktop]}" = 0 ]; then
+  updater="$DEPLOY_DIR/update-macos.command"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'export PATH=%s\n' "$(sq "$PATH")"
+    printf 'export FORK_REPO=%s\n' "$(sq "$REPO")"
+    printf '%s %s %s 2>&1 | tee %s\n' \
+      "$(sq "$BASH")" "$(sq "$HERE/update-macos.sh")" "$(sq "fork-v$VERSION")" \
+      "$(sq "$DEPLOY_DIR/desktop-update.log")"
+  } >"$updater"
+  chmod +x "$updater"
+  say "All jobs finished. Opening Terminal for the Mac update; Paseo will restart."
+  say "Mac update log: $DEPLOY_DIR/desktop-update.log"
+  open -a Terminal "$updater"
+fi
 [ "$failed" -eq 0 ] || exit 1
