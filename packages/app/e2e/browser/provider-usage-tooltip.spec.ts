@@ -1,7 +1,10 @@
 import { expect, test, type Page } from "../support/fixtures";
 import { expectComposerVisible } from "../support/helpers/composer";
+import { openCommandCenter } from "../support/helpers/command-center";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { installProviderUsageFixture } from "../support/helpers/provider-usage";
+import { getServerId } from "../support/helpers/server-id";
+import { buildSettingsHostSectionRoute } from "../../src/utils/host-routes";
 
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
@@ -19,6 +22,58 @@ async function openMockAgent(page: Page) {
 }
 
 test.describe("provider usage tooltip", () => {
+  test("compact single taps open the tooltip; double taps and long presses open host usage", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const session = await openMockAgent(page);
+    const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+    try {
+      const agentUrl = page.url();
+      const meter = page.getByTestId("context-window-meter");
+      await meter.click();
+      await expect(page.getByText("Context window", { exact: true })).toBeVisible();
+      await expect(page).toHaveURL(agentUrl);
+
+      await page.mouse.move(0, 0);
+      await expect(page.getByText("Context window", { exact: true })).toBeHidden();
+      await meter.dblclick({ delay: 80 });
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+      await expect(page.getByText("Context window", { exact: true })).toBeHidden();
+
+      await openAgentRoute(page, session);
+      await expect(meter).toBeVisible();
+      await meter.click({ delay: 600 });
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+      await expect(page.getByText("Context window", { exact: true })).toBeHidden();
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  test("desktop clicks and the Usage command open the current host's usage settings", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const session = await openMockAgent(page);
+    const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.getByTestId("context-window-meter").click();
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+
+      await openAgentRoute(page, session);
+      const panel = await openCommandCenter(page);
+      await panel.getByTestId("command-center-input").fill("Usage");
+      await expect(panel.getByText("Usage", { exact: true })).toBeVisible();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+      await expect(panel).toBeHidden();
+    } finally {
+      await session.cleanup();
+    }
+  });
+
   test("fetches usage when the context tooltip opens and renders the active provider", async ({
     page,
   }) => {
