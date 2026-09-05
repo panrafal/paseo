@@ -120,7 +120,7 @@ job_desktop() {
   if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
     note "release $tag already exists — not building it again"
   else
-    "$HERE/build.sh" desktop
+    FORK_BUILD_LINKS_FILE="$RESULT_FILE" "$HERE/build.sh" desktop
     note "built by GitHub Actions: https://github.com/$REPO/releases/tag/$tag"
   fi
   "$HERE/update-macos.sh" "$tag"
@@ -178,7 +178,7 @@ job_ios() {
   done
   "$HERE/build.sh" ios --no-wait
   local url
-  url="$(grep -oE 'https://expo\.dev/[^ ]+/builds/[^ ]+' "$LOG_FILE" | head -1 || true)"
+  url="$(grep -aoE 'https://expo\.dev/[^[:space:][:cntrl:]]+/builds/[[:alnum:]-]+' "$LOG_FILE" | head -1 || true)"
   note "EAS build queued${url:+: $url}; it submits itself to TestFlight when done"
 }
 
@@ -309,7 +309,26 @@ done
 # Jobs report through their exit files; a process table check cannot tell a
 # finished job from one waiting to be reaped.
 declare -A STATUS=()
+declare -A PRINTED_BUILD_LINKS=()
+print_new_build_links() {
+  local target result url
+  for target in "${targets[@]}"; do
+    result="$DEPLOY_DIR/$target.result"
+    [ -f "$result" ] || continue
+    while IFS= read -r url; do
+      [ -z "${PRINTED_BUILD_LINKS[$url]:-}" ] || continue
+      PRINTED_BUILD_LINKS[$url]=1
+      say "$target: monitor in browser: $url"
+    done < <(
+      grep -aoE \
+        'https://github\.com/[^[:space:][:cntrl:]]+/actions/runs/[0-9]+|https://expo\.dev/[^[:space:][:cntrl:]]+/builds/[[:alnum:]-]+' \
+        "$result" || true
+    )
+  done
+}
+
 while [ "${#EXIT_FILES[@]}" -gt 0 ]; do
+  print_new_build_links
   for t in "${!EXIT_FILES[@]}"; do
     [ -s "${EXIT_FILES[$t]}" ] || continue
     STATUS[$t]="$(cat "${EXIT_FILES[$t]}")"
@@ -320,6 +339,7 @@ while [ "${#EXIT_FILES[@]}" -gt 0 ]; do
       warn "$t: failed (exit ${STATUS[$t]}) — see $DEPLOY_DIR/$t.log"
     fi
   done
+  print_new_build_links
   [ "${#EXIT_FILES[@]}" -eq 0 ] || sleep 3
 done
 wait
