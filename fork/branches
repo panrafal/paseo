@@ -31,3 +31,4 @@ origin/host-selection-pill-color
 
 # Fork features not yet sent upstream.
 origin/vscode
+origin/fix/plugin-host-react-free-sdk-import
