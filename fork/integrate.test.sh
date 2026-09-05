@@ -296,6 +296,110 @@ scenario_add() {
   assert_eq "recorded as origin/feat-e" "$(git -C "$R" show fork-base:fork/branches | tail -1)" "origin/feat-e"
 }
 
+scenario_external() {
+  fixture external
+  run rebuild --push
+  git clone -q --bare "$F/upstream.git" "$F/author.git"
+  git clone -q "$F/author.git" "$F/author" 2>/dev/null
+  (
+    cd "$F/author"
+    git switch -q -c fix/details
+    echo first >external.txt
+    git add external.txt && git commit -q -m "author: details"
+    git push -q origin fix/details
+  )
+  # Exercise the real fetch with a local Git transport, without GitHub access.
+  git -C "$R" config url."$F/author.git".insteadOf https://github.com/contributor/paseo.git
+  assert "add an author's branch" run add contributor:fix/details --push
+  assert_eq "source is portable" "$(git -C "$R" show fork-base:fork/branches | tail -1)" "contributor:fix/details"
+  assert_eq "author's change is integrated" "$(git -C "$R" show main:external.txt)" first
+  assert "build records author tip" grep -qE '^  contributor:fix/details [0-9a-f]{40}$' <(git -C "$R" log -1 --format=%B main)
+  assert_fails "duplicate external add refused" run add contributor:fix/details
+  assert_log "already listed"
+
+  (
+    cd "$F/author"
+    echo second >external.txt
+    git commit -q -am "author: extend details" && git push -q origin fix/details
+  )
+  assert "routine update fetches author commits" run rebase --push
+  assert_eq "new author content" "$(git -C "$R" show main:external.txt)" second
+  assert_log "gained commits"
+  upstream_commit upstream.txt new "upstream: advance"
+  (
+    cd "$F/author"
+    git fetch -q "$F/upstream.git" main
+    git rebase FETCH_HEAD >/dev/null 2>&1
+    echo rewritten >external.txt
+    git commit -q -am "author: revised details" --amend
+    git push -q --force origin fix/details
+  )
+  local author_tip
+  author_tip="$(git -C "$F/author" rev-parse HEAD)"
+  assert "routine update accepts author rebase and amend" run rebase --push
+  assert_eq "rewritten content replaces old version" "$(git -C "$R" show main:external.txt)" rewritten
+  assert_log "was rewritten"
+  assert "author commit remains unchanged in integration" git -C "$R" merge-base --is-ancestor "$author_tip" fork-integration
+  (
+    cd "$F/author"
+    git reset -q --hard HEAD^
+    git push -q --force origin fix/details
+  )
+  assert "author can withdraw commits by rewinding" run rebase --push
+  assert_eq "withdrawn content is removed" "$(git -C "$R" show main:external.txt)" first
+  (
+    cd "$F/author"
+    git reset -q --hard "$author_tip"
+    git push -q --force origin fix/details
+  )
+  assert "author can restore a previously integrated tip" run rebase --push
+  assert_eq "restored content is applied" "$(git -C "$R" show main:external.txt)" rewritten
+  # Local branches, including a name matching the cache, must never take
+  # ownership of the imported source during rebase-branches.
+  git -C "$R" branch fix/details "$author_tip"
+  git -C "$R" branch refs/remotes/fork-pr/contributor/fix/details "$author_tip"
+  git -C "$R" worktree add -q "$F/local-author" fix/details
+  echo local >>"$F/local-author/external.txt"
+  upstream_commit newer.txt newer "upstream: advance again"
+  assert "rebase-branches leaves external branches alone" run rebase-branches --push
+  assert_log "author-owned"
+  assert_eq "local namesake untouched" "$(at fix/details)" "$author_tip"
+  assert_eq "local cache namesake untouched" "$(at refs/heads/refs/remotes/fork-pr/contributor/fix/details)" "$author_tip"
+  assert_eq "author remote untouched" "$(git -C "$F/author.git" rev-parse refs/heads/fix/details)" "$author_tip"
+  assert_fails "external branch not pushed to our fork" git -C "$F/origin.git" show-ref --verify refs/heads/fix/details
+  assert_eq "external content survives rebuild" "$(git -C "$R" show main:external.txt)" rewritten
+  git -C "$R" worktree remove --force "$F/local-author"
+
+  # A fresh clone resolves portable entries without configuring author remotes.
+  git clone -q "$F/origin.git" "$F/fresh" 2>/dev/null
+  git -C "$F/fresh" remote add upstream "$F/upstream.git"
+  git -C "$F/fresh" fetch -q upstream
+  git -C "$F/fresh" config url."$F/author.git".insteadOf https://github.com/contributor/paseo.git
+  git -C "$F/fresh" fetch -q origin fork-base:fork-base
+  local saved="$R"
+  R="$F/fresh"
+  export FORK_WORK_ROOT="$F/fresh-work"
+  assert_fails "no-fetch needs a cached author tip" run rebuild --no-fetch
+  assert_log "no fetched tip"
+  assert "fresh clone fetches external branch" run rebase --push
+  assert_eq "fresh clone preserves the feature" "$(git -C "$R" show main:external.txt)" rewritten
+  R="$saved"
+  export FORK_WORK_ROOT="$F/work"
+
+  git -C "$F/author" push -q origin --delete fix/details
+  local before
+  before="$(at fork-integration)"
+  assert_fails "missing author branch stops instead of using stale cache" run rebase --push
+  assert_log "could not fetch contributor:fix/details"
+  assert_eq "failed fetch leaves integration untouched" "$(at fork-integration)" "$before"
+  assert "explicit offline rebuild uses cache" run rebuild --no-fetch
+  assert_eq "cached content retained" "$(git -C "$R" show main:external.txt)" rewritten
+  assert_fails "malformed owner refused" run add '../bad:fix/details' --no-fetch
+  assert_log "invalid external branch"
+  assert_fails "malformed branch refused" run add 'contributor:fix/../details' --no-fetch
+  assert_log "invalid external branch"
+}
+
 scenario_conflict() {
   fixture conflict
   patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
@@ -536,7 +640,7 @@ scenario_args() {
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebuild rebase drift add conflict conflict_add rebase_branches seed diverged dirty args)
+all=(rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"
