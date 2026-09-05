@@ -1828,6 +1828,7 @@ export const fr: TranslationResources = {
   find: {
     placeholder: "Rechercher",
     matchPosition: "{{current}} sur {{count}}",
+    matchPositionCapped: "{{current}} sur plus de {{count}}",
     noResults: "Aucun résultat",
     cappedCount: "Plus de {{count}} occurrences",
     previous: "Occurrence précédente",
