@@ -655,6 +655,8 @@ export const ptBR: TranslationResources = {
         reloadedAgent: "Agente recarregado",
         failedToReloadAgent: "Falha ao recarregar agente",
         failedToCloseAgent: "Falha ao fechar agente",
+        failedToSaveClosePreference:
+          "Não foi possível salvar sua preferência de fechamento do terminal",
       },
       confirmations: {
         unsavedTitle: "Alterações não salvas",
