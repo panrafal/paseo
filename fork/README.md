@@ -376,7 +376,9 @@ your own machine needs — see [iOS / TestFlight](#ios--testflight).
 
 On the Mac, `fork/update-macos.sh [fork-v<version>]` downloads that build
 (the newest without an argument), quits a running Paseo, installs it, clears
-the quarantine flag required for the non-notarized build, and relaunches it.
+the quarantine flag required for the non-notarized build, restarts the local
+daemon through the installed app's bundled CLI, and relaunches Paseo. Running
+it again for the installed version still restarts the daemon.
 Fetch and run it in one line:
 
 ```bash
