@@ -1810,6 +1810,7 @@ export const ru: TranslationResources = {
   find: {
     placeholder: "Поиск",
     matchPosition: "{{current}} из {{count}}",
+    matchPositionCapped: "{{current}} из более чем {{count}}",
     noResults: "Нет результатов",
     cappedCount: "Более {{count}} совпадений",
     previous: "Предыдущее совпадение",

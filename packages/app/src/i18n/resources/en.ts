@@ -1790,6 +1790,7 @@ export const en = {
   find: {
     placeholder: "Find",
     matchPosition: "{{current}} of {{count}}",
+    matchPositionCapped: "{{current}} of {{count}}+",
     noResults: "No results",
     cappedCount: "{{count}}+ matches",
     previous: "Previous match",
