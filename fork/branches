@@ -1,7 +1,9 @@
 # Branches merged into fork-integration, in order.
 #
-# One git ref per line. Blank lines and `#` comments are ignored.
+# One git ref or owner:branch per line. Blank lines and `#` comments are ignored.
 # Use `origin/<name>` for branches you push; a bare name means a local branch.
+# Use `owner:branch` for someone else's github.com/owner/paseo branch. Each
+# update fetches the author's tip, including force-pushes; we never rebase it.
 #
 # `fork/integrate.sh add <branch>` appends a line here and merges the branch
 # in; a line added by hand is merged by the next `fork/integrate.sh rebase`.
@@ -19,6 +21,13 @@
 # Open PRs against getpaseo/paseo.
 origin/add-daemon-loopback-password-bypass
 origin/add-paseo-deeplink-hash-prompts
+
+# PRs maintained by their authors; fetched from their GitHub forks.
+colonelpanic8:codex-astra-support
+ragokan:fix/claude-native-tool-details
+stackia:fix/cursor-usage-official-display
+cleiter:plan-visible-after-answer
+fidelix:fix/cursor-per-model-thinking
 
 # Soon to be PRs against getpaseo/paseo.
 origin/paseo-ls/add-labels-filter

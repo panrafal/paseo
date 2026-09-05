@@ -14,7 +14,7 @@
 #   fork/integrate.sh rebase            merge current upstream/main in, publish main
 #   fork/integrate.sh add <branch>      list <branch> in fork/branches and merge it in
 #   fork/integrate.sh rebuild           rebuild from upstream/main + fork-base + fork/branches
-#   fork/integrate.sh rebase-branches   rebase fork-base and every patch branch onto
+#   fork/integrate.sh rebase-branches   rebase fork-base and our patch branches onto
 #                                       upstream/main, then rebuild
 #
 # Flags:
@@ -23,6 +23,8 @@
 #   --no-fetch   use the refs already fetched
 #
 # See fork/README.md. Settings live in fork/config.sh.
+# External PRs: add owner:branch to fetch from https://github.com/owner/paseo.git.
+# These branches follow their authors, including force-pushes; we never rebase them.
 
 set -euo pipefail
 
@@ -77,6 +79,50 @@ unmerged() { git -C "$1" diff --name-only --diff-filter=U; }
 
 short() { git rev-parse --short "$1"; }
 
+# Keep author-owned tips outside local branches and configured remotes. The
+# portable owner:branch entry remains in fork/branches and build manifests.
+EXTERNAL_PREFIX="refs/remotes/fork-pr/"
+is_external_ref() { [[ "$1" == "$EXTERNAL_PREFIX"* ]]; }
+
+branch_ref() {
+  local entry="$1" owner branch
+  if [[ "$entry" != *:* ]]; then
+    echo "$entry"
+    return 0
+  fi
+  owner="${entry%%:*}"
+  branch="${entry#*:}"
+  [[ "$owner" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*$ ]] &&
+    git check-ref-format "refs/heads/$branch" ||
+    die "invalid external branch '$entry' — expected owner:branch"
+  echo "$EXTERNAL_PREFIX$owner/$branch"
+}
+
+branch_entry() {
+  local ref="$1" path
+  if is_external_ref "$ref"; then
+    path="${ref#"$EXTERNAL_PREFIX"}"
+    echo "${path%%/*}:${path#*/}"
+  else
+    echo "$ref"
+  fi
+}
+
+fetch_external_ref() {
+  local ref="$1" path owner branch
+  is_external_ref "$ref" || return 0
+  path="${ref#"$EXTERNAL_PREFIX"}"
+  owner="${path%%/*}"
+  branch="${path#*/}"
+  if [ "$fetch" -eq 1 ]; then
+    say "Fetching $owner:$branch from its author"
+    git fetch --no-tags "https://github.com/$owner/paseo.git" "+refs/heads/$branch:$ref" ||
+      die "could not fetch $owner:$branch — check the author's branch or remove its entry and rebuild; cached tips are used only with --no-fetch"
+  fi
+  git rev-parse --verify -q "$ref^{commit}" >/dev/null ||
+    die "no fetched tip for $owner:$branch — run without --no-fetch"
+}
+
 # The worktree that has branch $1 checked out, if any.
 worktree_of() {
   git worktree list --porcelain |
@@ -117,6 +163,7 @@ assert_movable() {
 local_patch_branches() {
   local ref name
   for ref in ${REFS[@]+"${REFS[@]}"}; do
+    is_external_ref "$ref" && continue
     name="${ref#"$FORK_REMOTE"/}"
     git show-ref --verify -q "refs/heads/$name" && echo "$name"
   done
@@ -222,8 +269,23 @@ merged_tip_of() {
   # first parent.
   case "$(git log -1 --format=%s "$tip")" in
     "fork: link "*) git rev-parse "$tip^1" ;;
+    "fork: replay "*) git log -1 --format=%s "$tip" | cut -d' ' -f3 ;;
     *) echo "$tip" ;;
   esac
+}
+
+# An author can force-push back to a commit already in the integration's
+# ancestry. Compare the last imported version, not just commit containment.
+branch_is_integrated() {
+  local ref="$1" tip="$2" merged
+  if is_external_ref "$ref"; then
+    merged="$(merged_tip_of "$ref" || true)"
+    if [ -n "$merged" ]; then
+      [ "$merged" = "$(git rev-parse "$ref")" ]
+      return
+    fi
+  fi
+  git merge-base --is-ancestor "$ref" "$tip"
 }
 
 # Every branch the integration's own merges brought in, newest first.
@@ -307,7 +369,7 @@ ADD_REF="" ADD_NAME=""
 list_branch_in() {
   local dir="$1" file="$1/fork/branches"
   [ ! -s "$file" ] || [ -z "$(tail -c1 "$file")" ] || echo >>"$file"
-  printf '%s\n' "$ADD_REF" >>"$file"
+  branch_entry "$ADD_REF" >>"$file"
   git -C "$dir" add fork/branches
   tooling_commit "$dir" "fork: add $ADD_NAME branch"
 }
@@ -491,13 +553,18 @@ $out"
 # two versions lands.
 merge_branch() {
   local ref="$1" merged target="$1"
-  if git merge-base --is-ancestor "$ref" "$(worktree_head)"; then
+  if branch_is_integrated "$ref" "$(worktree_head)"; then
     say "$ref ($(short "$ref")) is already in"
     return 0
   fi
   assert_patch_branch "$ref"
   merged="$(merged_tip_of "$ref" || true)"
-  if [ -n "$merged" ] && ! git merge-base --is-ancestor "$merged" "$ref"; then
+  if is_external_ref "$ref" && [ -n "$merged" ] && git merge-base --is-ancestor "$ref" "$(worktree_head)"; then
+    # Both versions are already ancestors, so linking the author tip would
+    # let Git choose that tip as the base and discard the requested change.
+    target="$(git commit-tree "$ref^{tree}" -p "$merged" \
+      -m "fork: replay $(git rev-parse "$ref") over $merged for $ref")"
+  elif [ -n "$merged" ] && ! git merge-base --is-ancestor "$merged" "$ref"; then
     target="$(git commit-tree "$ref^{tree}" -p "$ref" -p "$merged" \
       -m "fork: link $ref to its previous tip $merged")"
   fi
@@ -561,15 +628,16 @@ publish_target() {
 # Full ids, not short ones: ensure_integration reads them back to rebuild the
 # integration's ancestry from a clone that only has main.
 target_message() {
-  local tip="$1" base="$2" ref merged
+  local tip="$1" base="$2" ref entry merged
   echo "fork: build $(git show "$tip:fork/build-number" | awk '{print $1 "-panrafal." $2}')"
   echo
   echo "$BASE: $base $(git log -1 --format=%s "$base")"
   echo "$INTEGRATION_REF: $tip"
   echo "$TOOLING_REF: $(merged_tip_of "$TOOLING_REF" || git rev-parse "$TOOLING_REF")"
   echo "branches:"
-  while read -r ref; do
-    [ -n "$ref" ] || continue
+  while read -r entry; do
+    [ -n "$entry" ] || continue
+    ref="$(branch_ref "$entry")"
     if merged="$(merged_tip_of "$ref")"; then
       :
     elif git rev-parse --verify -q "$ref^{commit}" >/dev/null && git merge-base --is-ancestor "$ref" "$tip"; then
@@ -577,7 +645,7 @@ target_message() {
     else
       merged="not merged"
     fi
-    echo "  $ref $merged"
+    echo "  $entry $merged"
   done < <(git show "$tip:fork/branches" | sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d')
 }
 
@@ -701,7 +769,7 @@ report_drift() {
     if landed_upstream "$ref"; then
       warn "$ref looks merged upstream (every commit has an equivalent on $BASE) — delete its line from fork/branches and run: fork/integrate.sh rebuild"
     fi
-    git merge-base --is-ancestor "$ref" "$tip" && continue
+    branch_is_integrated "$ref" "$tip" && continue
     merged="$(merged_tip_of "$ref" || true)"
     if [ -z "$merged" ]; then
       say "$ref is listed but not in $INTEGRATION_REF — merging it"
@@ -750,6 +818,10 @@ cmd_rebase() {
 # otherwise, or any other ref that resolves.
 resolve_add_ref() {
   local arg="$1" name remote
+  if [[ "$arg" == *:* ]]; then
+    branch_ref "$arg"
+    return 0
+  fi
   name="${arg#"$FORK_REMOTE"/}"
   remote="$FORK_REMOTE/$name"
   if git rev-parse --verify -q "$remote^{commit}" >/dev/null; then
@@ -776,13 +848,13 @@ cmd_add() {
   assert_movable "$TOOLING_REF" "$INTEGRATION_REF" "$TARGET"
   ensure_integration
   ADD_REF="$(resolve_add_ref "$branch_arg")"
-  ADD_NAME="${ADD_REF#"$FORK_REMOTE"/}"
+  ADD_NAME="$(branch_entry "${ADD_REF#"$FORK_REMOTE"/}")"
   assert_patch_branch "$ADD_REF"
   local before listed=0
   before="$(git rev-parse "$INTEGRATION_REF")"
   if is_listed "$ADD_REF"; then
     listed=1
-    git merge-base --is-ancestor "$ADD_REF" "$before" &&
+    branch_is_integrated "$ADD_REF" "$before" &&
       die "$ADD_REF is already listed in fork/branches and merged into $INTEGRATION_REF"
     say "$ADD_REF is already listed in fork/branches — merging it"
   fi
@@ -924,6 +996,10 @@ catch_up_branch() {
 rebase_patch_branches() {
   local ref local_branch i
   for ref in "$TOOLING_REF" ${REFS[@]+"${REFS[@]}"}; do
+    if is_external_ref "$ref"; then
+      say "$(branch_entry "$ref"): author-owned — merging fetched tip without rebasing or pushing"
+      continue
+    fi
     local_branch="${ref#"$FORK_REMOTE"/}"
     git show-ref --verify -q "refs/heads/$local_branch" || {
       warn "no local branch '$local_branch' to rebase — merging $ref as-is"
@@ -940,6 +1016,7 @@ rebase_patch_branches() {
   done
   # Rebased local branches are now ahead of their remote refs; merge those.
   [ "${#REFS[@]}" -eq 0 ] || for i in "${!REFS[@]}"; do
+    is_external_ref "${REFS[$i]}" && continue
     local_branch="${REFS[$i]#"$FORK_REMOTE"/}"
     if git show-ref --verify -q "refs/heads/$local_branch"; then
       REFS[$i]="$local_branch"
@@ -972,9 +1049,19 @@ git rev-parse --verify -q "$TOOLING_REF^{commit}" >/dev/null ||
   die "base branch '$TOOLING_REF' not found — it holds fork/branches and these scripts"
 adopt_remote "$TOOLING_REF"
 mapfile -t REFS < <(read_branch_list)
+for i in "${!REFS[@]}"; do
+  REFS[$i]="$(branch_ref "${REFS[$i]}")"
+done
 dup="$(printf '%s\n' ${REFS[@]+"${REFS[@]}"} | sort | uniq -d)"
 [ -z "$dup" ] || die "fork/branches lists these more than once:
 $dup"
+for ref in ${REFS[@]+"${REFS[@]}"}; do
+  fetch_external_ref "$ref"
+done
+if [ "$cmd" = add ]; then
+  add_ref="$(branch_ref "$branch_arg")"
+  is_listed "$add_ref" || fetch_external_ref "$add_ref"
+fi
 say "Base: $BASE ($(git log -1 --format='%h %s' "$BASE"))"
 
 case "$cmd" in
