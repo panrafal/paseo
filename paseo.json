@@ -29,7 +29,7 @@
       "command": "npm run typecheck"
     },
     "\ud83c\udf71 deploy": {
-      "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && open -a Terminal ./fork/deploy.sh"
+      "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh"
     },
     "\ud83c\udf71 update with upstream": {
       "command": "./fork/integrate.sh rebase --agent --push"
