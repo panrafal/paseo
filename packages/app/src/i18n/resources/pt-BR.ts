@@ -668,6 +668,8 @@ export const ptBR: TranslationResources = {
         closeTerminalTitle: "Fechar terminal?",
         closeTerminalMessage:
           "Qualquer processo em execução neste terminal será interrompido imediatamente.",
+        rememberChoice: "Lembrar desta escolha",
+        closeAndDontAskAgain: "Fechar e não perguntar novamente",
         archiveRunningAgentTitle: "Arquivar agente em execução?",
         archiveRunningAgentMessage:
           "Este agente ainda está em execução. Arquivá-lo interromperá o agente e fechará a aba.",
@@ -955,6 +957,7 @@ export const ptBR: TranslationResources = {
         openIn: "Abrir workspace em {{target}}",
         openFileIn: "Abrir {{fileName}} em {{target}}",
         failedOpen: "Falha ao abrir workspace",
+        failedOpenFile: "Falha ao abrir arquivo",
       },
       pr: {
         actions: {
@@ -1074,12 +1077,6 @@ export const ptBR: TranslationResources = {
     display: {
       trigger: "Preferências de exibição",
       heading: "Exibição",
-      grouping: {
-        label: "Agrupamento",
-        project: "Projeto",
-        status: "Status",
-        labels: "Etiquetas",
-      },
       titleSource: {
         label: "Título",
         title: "Título",
@@ -1449,6 +1446,11 @@ export const ptBR: TranslationResources = {
     errorTitle: "Algo deu errado",
     errorDescription:
       "O servidor local falhou ao iniciar. Se isso continuar acontecendo, reporte o problema no GitHub e inclua os logs abaixo.",
+    status: {
+      connecting: "Conectando ao daemon do Paseo…",
+      loadingWorkspaces: "Carregando workspaces…",
+      opening: "Abrindo esta pasta no Paseo…",
+    },
     logs: {
       loading: "Carregando logs do daemon...",
       unavailable: "Nenhum log do daemon disponível.",
@@ -1798,6 +1800,15 @@ export const ptBR: TranslationResources = {
     archiveFinishedAction: "Arquivar subagentes concluídos",
     archiveFinishedRetry: "Tentar novamente ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "Localizar",
+    matchPosition: "{{current}} de {{count}}",
+    noResults: "Nenhum resultado",
+    cappedCount: "Mais de {{count}} ocorrências",
+    previous: "Ocorrência anterior",
+    next: "Próxima ocorrência",
+    close: "Fechar localizar",
+  },
   panels: {
     draft: {
       newAgent: "Novo Agente",
@@ -2042,6 +2053,10 @@ export const ptBR: TranslationResources = {
         description: "Linhas mantidas no buffer do terminal integrado",
         accessibilityLabel: "Linhas do scrollback do terminal",
       },
+      confirmTerminalClose: {
+        label: "Confirmar o fechamento de terminais",
+        description: "Perguntar antes de fechar uma aba de terminal",
+      },
       autoExpandReasoning: {
         label: "Sempre expandir raciocínio",
         description:
@@ -2236,6 +2251,11 @@ export const ptBR: TranslationResources = {
         closePane: "Fechar painel",
         newTerminal: "Novo terminal",
         searchFiles: "Pesquisar arquivos",
+        findInPane: "Localizar no painel",
+        findNext: "Localizar próxima",
+        findPrevious: "Localizar anterior",
+        historyBack: "Voltar no histórico",
+        historyForward: "Avançar no histórico",
         toggleCommandCenter: "Alternar central de comandos",
         showKeyboardShortcuts: "Mostrar atalhos de teclado",
         toggleLeftSidebar: "Alternar barra lateral esquerda",
@@ -2255,6 +2275,7 @@ export const ptBR: TranslationResources = {
         switchProject: "Trocar projeto",
       },
       helpNotes: {
+        findWhileOpen: "Apenas enquanto a barra de busca estiver aberta.",
         showKeyboardShortcuts:
           "Disponível quando o foco não está em um campo de texto ou terminal.",
       },

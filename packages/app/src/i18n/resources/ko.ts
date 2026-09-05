@@ -665,6 +665,8 @@ export const ko: TranslationResources = {
           "{{count}} 탭에 저장되지 않은 변경 사항이 있습니다. 종료하면 해당 초안이 삭제됩니다.",
         closeTerminalTitle: "터미널을 닫을까요?",
         closeTerminalMessage: "이 터미널에서 실행 중인 프로세스가 즉시 중지됩니다.",
+        rememberChoice: "이 선택 기억하기",
+        closeAndDontAskAgain: "닫고 다시 묻지 않기",
         archiveRunningAgentTitle: "실행 중인 에이전트를 보관할까요?",
         archiveRunningAgentMessage:
           "이 에이전트는 아직 실행 중입니다. 보관하면 에이전트가 중지되고 탭이 닫힙니다.",
@@ -940,6 +942,7 @@ export const ko: TranslationResources = {
         openIn: "{{target}}에서 워크스페이스 열기",
         openFileIn: "{{target}}에서 {{fileName}} 열기",
         failedOpen: "워크스페이스를 열지 못했습니다",
+        failedOpenFile: "파일을 열지 못했습니다",
       },
       pr: {
         actions: {
@@ -1056,12 +1059,6 @@ export const ko: TranslationResources = {
     display: {
       trigger: "표시 설정",
       heading: "표시",
-      grouping: {
-        label: "그룹화",
-        project: "프로젝트",
-        status: "상태",
-        labels: "레이블",
-      },
       titleSource: {
         label: "제목",
         title: "제목",
@@ -1429,6 +1426,11 @@ export const ko: TranslationResources = {
     errorTitle: "문제가 발생했습니다",
     errorDescription:
       "로컬 서버를 시작하지 못했습니다. 이 문제가 계속되면 아래 로그를 포함하여 GitHub에 문제를 보고해 주세요.",
+    status: {
+      connecting: "Paseo 데몬에 연결 중…",
+      loadingWorkspaces: "워크스페이스를 불러오는 중…",
+      opening: "Paseo에서 이 폴더를 여는 중…",
+    },
     logs: {
       loading: "데몬 로그 불러오는 중...",
       unavailable: "사용 가능한 데몬 로그가 없습니다.",
@@ -1776,6 +1778,15 @@ export const ko: TranslationResources = {
     archiveFinishedAction: "완료된 하위 에이전트 보관",
     archiveFinishedRetry: "다시 시도 ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "찾기",
+    matchPosition: "{{count}}개 중 {{current}}번째",
+    noResults: "결과 없음",
+    cappedCount: "{{count}}개 이상",
+    previous: "이전 일치 항목",
+    next: "다음 일치 항목",
+    close: "찾기 닫기",
+  },
   panels: {
     draft: {
       newAgent: "새 에이전트",
@@ -2020,6 +2031,10 @@ export const ko: TranslationResources = {
         description: "내장 터미널 버퍼에 보관되는 줄 수",
         accessibilityLabel: "터미널 스크롤백 줄 수",
       },
+      confirmTerminalClose: {
+        label: "터미널 닫기 전 확인",
+        description: "터미널 탭을 닫기 전에 물어봅니다",
+      },
       autoExpandReasoning: {
         label: "추론 항상 펼치기",
         description: "에이전트의 사고 및 추론 블록을 기본적으로 모두 펼쳐 표시합니다.",
@@ -2212,6 +2227,11 @@ export const ko: TranslationResources = {
         closePane: "창 닫기",
         newTerminal: "새 터미널",
         searchFiles: "파일 검색",
+        findInPane: "창에서 찾기",
+        findNext: "다음 찾기",
+        findPrevious: "이전 찾기",
+        historyBack: "기록 뒤로",
+        historyForward: "기록 앞으로",
         toggleCommandCenter: "명령 센터 토글",
         showKeyboardShortcuts: "키보드 단축키 표시",
         toggleLeftSidebar: "왼쪽 사이드바 토글",
@@ -2231,6 +2251,7 @@ export const ko: TranslationResources = {
         switchProject: "프로젝트 전환",
       },
       helpNotes: {
+        findWhileOpen: "찾기 표시줄이 열려 있을 때만 사용할 수 있습니다.",
         showKeyboardShortcuts: "포커스가 텍스트 필드나 터미널에 있지 않을 때 사용할 수 있습니다.",
       },
     },
