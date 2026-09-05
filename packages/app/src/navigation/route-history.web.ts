@@ -1,10 +1,14 @@
-export type RouteHistoryDirection = "back" | "forward";
+import { isWeb } from "@/constants/platform";
+import { useApplicationRouteHistory } from "./route-history-shared";
+export type { RouteHistoryDirection } from "./route-history-state";
 
-export function navigateRouteHistory(direction: RouteHistoryDirection): boolean {
-  if (direction === "back") {
-    window.history.back();
-  } else {
-    window.history.forward();
-  }
-  return true;
+function readHref(): string {
+  // Expo's global href can contain inherited params absent from the displayed URL.
+  return isWeb
+    ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+    : "/";
+}
+
+export function useRouteHistory() {
+  return useApplicationRouteHistory(readHref);
 }
