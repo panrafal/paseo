@@ -215,6 +215,15 @@ export const zhCN: TranslationResources = {
       implement: "实施",
       question: "你想如何继续？",
       proposedPlan: "建议计划",
+      planApproved: "已批准",
+      planRejected: "已拒绝",
+      planDismissed: "已忽略",
+    },
+    questions: {
+      answerPlaceholder: "输入你的回答...",
+      submit: "发送回答",
+      answered: "已回答",
+      sendFailed: "无法发送你的回答",
     },
   },
   agentPanel: {
@@ -662,6 +671,8 @@ export const zhCN: TranslationResources = {
         archive: "归档",
         closeTerminalTitle: "关闭 Terminal？",
         closeTerminalMessage: "此 Terminal 中任何正在运行的进程都会立即停止。",
+        rememberChoice: "记住此选择",
+        closeAndDontAskAgain: "关闭并不再询问",
         archiveRunningAgentTitle: "归档正在运行的 Agent？",
         archiveRunningAgentMessage: "此 Agent 仍在运行。归档会停止该 Agent 并关闭标签。",
         closeTabsLeftTitle: "关闭左侧标签？",
@@ -925,6 +936,7 @@ export const zhCN: TranslationResources = {
         openIn: "在 {{target}} 中打开 workspace",
         openFileIn: "在 {{target}} 中打开 {{fileName}}",
         failedOpen: "打开 workspace 失败",
+        failedOpenFile: "无法打开文件",
       },
       pr: {
         actions: {
@@ -1041,12 +1053,6 @@ export const zhCN: TranslationResources = {
     display: {
       trigger: "显示偏好",
       heading: "显示",
-      grouping: {
-        label: "分组",
-        project: "项目",
-        status: "状态",
-        labels: "标签",
-      },
       titleSource: {
         label: "标题",
         title: "标题",
@@ -1403,6 +1409,11 @@ export const zhCN: TranslationResources = {
   startup: {
     errorTitle: "出现问题",
     errorDescription: "本地服务器启动失败。如果持续发生，请在 GitHub 报告问题并附上下方日志。",
+    status: {
+      connecting: "正在连接 Paseo daemon…",
+      loadingWorkspaces: "正在加载你的工作区…",
+      opening: "正在用 Paseo 打开此文件夹…",
+    },
     logs: {
       loading: "正在加载 daemon 日志...",
       unavailable: "没有可用的 daemon 日志。",
@@ -1745,6 +1756,15 @@ export const zhCN: TranslationResources = {
     archiveFinishedAction: "归档已完成的 subagent",
     archiveFinishedRetry: "重试 ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "查找",
+    matchPosition: "第 {{current}} 个，共 {{count}} 个",
+    noResults: "无结果",
+    cappedCount: "超过 {{count}} 个匹配项",
+    previous: "上一个匹配项",
+    next: "下一个匹配项",
+    close: "关闭查找",
+  },
   panels: {
     draft: {
       newAgent: "新建 Agent",
@@ -1985,6 +2005,10 @@ export const zhCN: TranslationResources = {
         description: "内置终端缓冲区保留的行数",
         accessibilityLabel: "终端回滚行数",
       },
+      confirmTerminalClose: {
+        label: "关闭终端前确认",
+        description: "关闭终端标签前先询问",
+      },
       autoExpandReasoning: {
         label: "始终展开推理过程",
         description: "默认情况下完全展开 AI 的思考和推理过程",
@@ -2176,6 +2200,11 @@ export const zhCN: TranslationResources = {
         closePane: "关闭窗格",
         newTerminal: "新建终端",
         searchFiles: "搜索文件",
+        findInPane: "在窗格中查找",
+        findNext: "查找下一个",
+        findPrevious: "查找上一个",
+        historyBack: "后退历史记录",
+        historyForward: "前进历史记录",
         toggleCommandCenter: "切换命令中心",
         showKeyboardShortcuts: "显示键盘快捷键",
         toggleLeftSidebar: "切换左侧边栏",
@@ -2195,6 +2224,7 @@ export const zhCN: TranslationResources = {
         switchProject: "切换项目",
       },
       helpNotes: {
+        findWhileOpen: "仅在查找栏打开时可用。",
         showKeyboardShortcuts: "焦点不在文本输入框或终端内时可用。",
       },
     },

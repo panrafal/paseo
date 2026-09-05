@@ -79,8 +79,25 @@ Paseo uses a host allowlist to validate the `Host` header on incoming requests. 
 Configure via `daemon.hostnames` in `config.json`:
 
 - Default (`[]`): allow `localhost`, `*.localhost`, and all IP addresses
-- `['.example.com']`: allow `example.com` and any subdomain, plus defaults
+- `["myhost"]`: allow `myhost`, plus defaults
+- `[".example.com"]`: allow `example.com` and any subdomain, plus defaults
 - `true`: allow any host (not recommended)
+
+Entries ignore the port in the `Host` header. Append a port to require it, `example.com:6767`. A trailing colon, `example.com:`, spells out any port. A port narrows only the entry it is written on: the defaults stay allowed on every port, so `localhost:6767` does not block `localhost:9999`. Entries take no scheme; schemes belong to origins.
+
+## Browser origins
+
+Browsers send an `Origin` header on cross-origin requests and on every WebSocket connection. The daemon adds CORS headers, and accepts the upgrade, only when that origin is listed in `daemon.cors.allowedOrigins` or `PASEO_CORS_ORIGINS` (comma-separated). Same-origin traffic, including the web UI the daemon serves itself, needs no entry, and neither does the desktop app.
+
+Entries use the `hostnames` syntax with an optional scheme. Without a port, an entry matches only an origin that has no explicit port:
+
+- `https://app.example.com`: that origin exactly
+- `.example.com`: `example.com` and any subdomain, on any scheme, without an explicit port
+- `.example.com:`: the same on any port
+- `https://.example.com:8443`: HTTPS subdomains on port 8443
+- `*`: any origin (not recommended)
+
+Prefer entries with a scheme. Without one, `.example.com` also admits plain `http://` pages on those hosts. Browsers send `Origin: null` for sandboxed frames and local files, so an entry of `null` admits all of them and is as broad as `*`.
 
 ## Password authentication
 
@@ -92,10 +109,13 @@ If you enable the [bundled web UI](/docs/web-ui), its static files are also serv
 
 The password is stored as a bcrypt hash in `config.json`, the daemon never stores it in plaintext. See [Configuration](/docs/configuration#password-authentication) for setup instructions.
 
+`daemon.auth.allowLoopbackWithoutPassword` exempts clients on the daemon's own machine, so remote devices authenticate while `paseo` on the box and agents do not. The daemon decides from the kernel-reported peer address, and refuses the exemption to any request carrying a forwarding header, so a reverse proxy on the same host cannot launder remote clients through it. Leave it off when a proxy fronts the daemon, since one that strips those headers still defeats the check. See [Configuration](/docs/configuration#exempting-this-machine).
+
 ### What password auth does and does not do
 
 - **Does:** Prevents unauthorized clients from controlling your agents, even if they can reach the daemon over the network.
 - **Does not:** Encrypt traffic. Password auth protects access, not confidentiality. If you need encrypted connections over an untrusted network, use the relay (which provides end-to-end encryption) or a VPN like Tailscale.
+- **Does not:** Keep other processes on the daemon's own machine out, once you enable the loopback exemption. `config.json` stores a bcrypt hash rather than the password, so a local process cannot read the password back out and authenticate with it. The password is a real barrier against local callers, and the exemption gives it up deliberately. Turn it on only where you accept that anything running on that machine can drive your agents.
 
 ### When to use it
 

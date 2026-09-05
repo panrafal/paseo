@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { droppedItemsToPickedFiles } from "./drop";
+import { droppedItemsToPickedFiles, splitDroppedImagePaths } from "./drop";
 
 describe("composer dropped attachments", () => {
   it("turns non-image browser files into picked files and leaves raster images for image handling", async () => {
@@ -63,5 +63,27 @@ describe("composer dropped attachments", () => {
         bytes: new Uint8Array([4, 5]),
       },
     ]);
+  });
+});
+
+describe("splitDroppedImagePaths", () => {
+  it("separates image paths from the items that upload as files", () => {
+    const file = new File([new Uint8Array([0])], "screen.png", { type: "image/png" });
+
+    expect(
+      splitDroppedImagePaths([
+        { kind: "file-uri", path: "/Users/alice/repo/logo.png" },
+        { kind: "desktop-path", path: "/Users/alice/repo/notes.md" },
+        { kind: "desktop-path", path: "/Users/alice/repo/diagram.jpeg" },
+        { kind: "web-file", file },
+      ]),
+    ).toEqual({
+      imagePaths: ["/Users/alice/repo/logo.png", "/Users/alice/repo/diagram.jpeg"],
+      otherItems: [
+        { kind: "desktop-path", path: "/Users/alice/repo/notes.md" },
+        // A browser File never goes down the path branch; the drop listener persists it as an image.
+        { kind: "web-file", file },
+      ],
+    });
   });
 });
