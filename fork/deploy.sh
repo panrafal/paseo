@@ -70,6 +70,8 @@ wants() {
   return 1
 }
 
+# Terminal can launch this script with the home directory as its working directory.
+cd "$HERE/.."
 require_repo
 REPO="$FORK_GH_OWNER/$FORK_GH_REPO"
 
@@ -299,7 +301,7 @@ for t in "${targets[@]}"; do
   : >"$DEPLOY_DIR/$t.result"
   (
     set +e
-    "$0" --job "$t" ${flags[@]+"${flags[@]}"} >"$DEPLOY_DIR/$t.log" 2>&1
+    "$HERE/deploy.sh" --job "$t" ${flags[@]+"${flags[@]}"} >"$DEPLOY_DIR/$t.log" 2>&1
     echo $? >"$DEPLOY_DIR/$t.exit"
   ) &
   EXIT_FILES[$t]="$DEPLOY_DIR/$t.exit"
