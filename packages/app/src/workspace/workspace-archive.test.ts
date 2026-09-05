@@ -39,6 +39,7 @@ function workspace(input?: Partial<WorkspaceDescriptor>): WorkspaceDescriptor {
     workspaceKind: "worktree",
     name: "workspace-1",
     status: "done",
+    activityAt: null,
     archivingAt: null,
     statusEnteredAt: null,
     diffStat: null,

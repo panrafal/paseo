@@ -6,6 +6,7 @@ function createWorkspace(
   input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">,
 ): WorkspaceDescriptor {
   return {
+    activityAt: null,
     id: input.id,
     projectId: input.projectId ?? "project-1",
     projectDisplayName: input.projectDisplayName ?? "Project",
