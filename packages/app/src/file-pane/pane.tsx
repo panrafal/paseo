@@ -33,6 +33,8 @@ import { useLiveFile } from "./live-file/hook";
 import { useFilePreview } from "./preview-lifecycle/hook";
 import { resolveFilePreviewLifecycle } from "./preview-lifecycle/model";
 import { FilePanelBar } from "./bar";
+import { FileVideoPreview } from "./video-preview";
+import { resolveVideoMimeType } from "@/attachments/file-types";
 import { FileHtmlPreview } from "./html-preview";
 import { FileMarkdownPreview } from "./markdown-preview";
 import { FileEditorModel, getFileConflictCallout, type FileConflictCallout } from "./editor/model";
@@ -100,7 +102,7 @@ interface FilePreviewBodyProps {
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
-  imagePreviewUri: string | null;
+  mediaPreviewUri: string | null;
   /** Both are stable setters: find swaps engines when the rendered mode changes. */
   onEditorViewChange?: (view: EditorView | null) => void;
   onPreviewScrollElementChange?: (element: HTMLElement | null) => void;
@@ -170,7 +172,7 @@ function FilePreviewBody({
   isMobile: _isMobile,
   location,
   navigationRevision,
-  imagePreviewUri,
+  mediaPreviewUri,
   onEditorViewChange,
   onPreviewScrollElementChange,
 }: FilePreviewBodyProps) {
@@ -206,6 +208,10 @@ function FilePreviewBody({
         <Text style={styles.emptyText}>{t("panels.file.noPreview")}</Text>
       </View>
     );
+  }
+
+  if (resolveVideoMimeType({ mimeType: preview.mimeType, path: filePath })) {
+    return <FileVideoPreview key={mediaPreviewUri} uri={mediaPreviewUri} />;
   }
 
   if (preview.kind === "text") {
@@ -244,7 +250,7 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "image") {
-    if (!imagePreviewUri) {
+    if (!mediaPreviewUri) {
       return (
         <View style={styles.centerState}>
           <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
@@ -253,7 +259,7 @@ function FilePreviewBody({
       );
     }
 
-    return <ZoomableImage uri={imagePreviewUri} testID="image-file-preview" />;
+    return <ZoomableImage uri={mediaPreviewUri} testID="image-file-preview" />;
   }
 
   return (
@@ -368,8 +374,8 @@ export function FilePane({
 
   useEffect(() => setPreviewMode("preview"), [targetKey]);
 
-  const { file: preview, imageAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
-  const imagePreviewUri = useAttachmentPreviewUrl(imageAttachment);
+  const { file: preview, mediaAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
+  const mediaPreviewUri = useAttachmentPreviewUrl(mediaAttachment);
   const isRenderable = isRenderablePreview(preview, location.path);
   const editable = isEditableTextFile({
     preview,
@@ -405,7 +411,7 @@ export function FilePane({
       isMobile={isMobile}
       location={location}
       navigationRevision={navigationRevision}
-      imagePreviewUri={imagePreviewUri}
+      mediaPreviewUri={mediaPreviewUri}
     />
   );
 }
@@ -446,7 +452,7 @@ function FilePanePresentation({
   isMobile,
   location,
   navigationRevision,
-  imagePreviewUri,
+  mediaPreviewUri,
 }: {
   serverId: string;
   client: DaemonClient | null;
@@ -467,7 +473,7 @@ function FilePanePresentation({
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
-  imagePreviewUri: string | null;
+  mediaPreviewUri: string | null;
 }) {
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [previewScrollElement, setPreviewScrollElement] = useState<HTMLElement | null>(null);
@@ -542,7 +548,7 @@ function FilePanePresentation({
           isMobile={isMobile}
           location={location}
           navigationRevision={navigationRevision}
-          imagePreviewUri={imagePreviewUri}
+          mediaPreviewUri={mediaPreviewUri}
           onEditorViewChange={setEditorView}
           onPreviewScrollElementChange={setPreviewScrollElement}
         />
@@ -693,7 +699,7 @@ function EditableFilePane({
             isMobile={isMobile}
             location={location}
             navigationRevision={navigationRevision}
-            imagePreviewUri={null}
+            mediaPreviewUri={null}
             onEditorViewChange={setEditorView}
             onPreviewScrollElementChange={setPreviewScrollElement}
           />
