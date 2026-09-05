@@ -215,6 +215,9 @@ export const ru: TranslationResources = {
       implement: "Реализовать",
       question: "Как бы вы хотели продолжить?",
       proposedPlan: "Предлагаемый план",
+      planApproved: "Одобрено",
+      planRejected: "Отклонено",
+      planDismissed: "Отменено",
     },
     questions: {
       answerPlaceholder: "Введите ответ...",

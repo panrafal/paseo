@@ -215,6 +215,9 @@ export const zhCN: TranslationResources = {
       implement: "实施",
       question: "你想如何继续？",
       proposedPlan: "建议计划",
+      planApproved: "已批准",
+      planRejected: "已拒绝",
+      planDismissed: "已忽略",
     },
     questions: {
       answerPlaceholder: "输入你的回答...",

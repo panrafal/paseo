@@ -215,6 +215,9 @@ export const ja: TranslationResources = {
       implement: "実装",
       question: "どのように続けますか？",
       proposedPlan: "提案されたプラン",
+      planApproved: "承認済み",
+      planRejected: "却下済み",
+      planDismissed: "破棄済み",
     },
     questions: {
       answerPlaceholder: "回答を入力...",
