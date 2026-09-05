@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { router, useGlobalSearchParams, type Href } from "expo-router";
+import { router, useGlobalSearchParams, useSegments, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import {
   CalendarClock,
@@ -120,7 +120,10 @@ function PanelLeftIcon({ size }: CommandCenterIconProps) {
 export function CommandCenterRootActions() {
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const { t } = useTranslation();
-  const { serverId } = useGlobalSearchParams<{ serverId?: string }>();
+  const params = useGlobalSearchParams<{ serverId?: string | string[] }>();
+  const segments = useSegments();
+  const isHostRoute = segments.some((segment) => segment === "[serverId]");
+  const serverId = isHostRoute && typeof params.serverId === "string" ? params.serverId : null;
   const chooseHost = useHostChooser();
   const { overrides } = useKeyboardShortcutOverrides();
   const shortcutsAvailable = useKeyboardShortcutsAvailable();

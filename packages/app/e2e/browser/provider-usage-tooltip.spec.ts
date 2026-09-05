@@ -22,7 +22,47 @@ async function openMockAgent(page: Page) {
 }
 
 test.describe("provider usage tooltip", () => {
-  test("compact single taps open the tooltip; double taps and long presses open host usage", async ({
+  test.describe("touch input", () => {
+    test.use({ hasTouch: true });
+
+    test("single and long touches stay put; the second tap can finish after the inter-tap delay", async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      const session = await openMockAgent(page);
+      try {
+        const agentUrl = page.url();
+        const meter = page.getByTestId("context-window-meter");
+        await meter.tap();
+        await expect(page.getByText("Context window", { exact: true })).toBeVisible();
+        await page.waitForTimeout(500);
+        await expect(page).toHaveURL(agentUrl);
+
+        const bounds = await meter.boundingBox();
+        if (!bounds) throw new Error("Context meter has no bounds");
+        const cdp = await page.context().newCDPSession(page);
+        const touchPoints = [{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }];
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+        await page.waitForTimeout(600);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await expect(page).toHaveURL(agentUrl);
+        await page.waitForTimeout(350);
+
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await page.waitForTimeout(100);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+        await page.waitForTimeout(300);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+        await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+      } finally {
+        await session.cleanup();
+      }
+    });
+  });
+
+  test("compact single taps show the tooltip and only double taps open host usage", async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -36,14 +76,12 @@ test.describe("provider usage tooltip", () => {
       await expect(page).toHaveURL(agentUrl);
 
       await page.mouse.move(0, 0);
+      await page.waitForTimeout(500);
       await expect(page.getByText("Context window", { exact: true })).toBeHidden();
-      await meter.dblclick({ delay: 80 });
-      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
-      await expect(page.getByText("Context window", { exact: true })).toBeHidden();
-
-      await openAgentRoute(page, session);
-      await expect(meter).toBeVisible();
       await meter.click({ delay: 600 });
+      await expect(page).toHaveURL(agentUrl);
+
+      await meter.dblclick({ delay: 80 });
       await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
       await expect(page.getByText("Context window", { exact: true })).toBeHidden();
     } finally {
@@ -51,7 +89,7 @@ test.describe("provider usage tooltip", () => {
     }
   });
 
-  test("desktop clicks and the Usage command open the current host's usage settings", async ({
+  test("desktop navigation requires a double click and Usage follows the current host route", async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -59,7 +97,14 @@ test.describe("provider usage tooltip", () => {
     const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
     try {
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.getByTestId("context-window-meter").click();
+      const agentUrl = page.url();
+      const meter = page.getByTestId("context-window-meter");
+      await meter.click();
+      await page.waitForTimeout(500);
+      await expect(page).toHaveURL(agentUrl);
+      await meter.click({ delay: 600 });
+      await expect(page).toHaveURL(agentUrl);
+      await meter.dblclick({ delay: 80 });
       await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
 
       await openAgentRoute(page, session);
@@ -69,6 +114,12 @@ test.describe("provider usage tooltip", () => {
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
       await expect(panel).toBeHidden();
+
+      await page.goto("/new?serverId=stale-host");
+      const newWorkspacePanel = await openCommandCenter(page);
+      await newWorkspacePanel.getByTestId("command-center-input").fill("Usage");
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
     } finally {
       await session.cleanup();
     }
