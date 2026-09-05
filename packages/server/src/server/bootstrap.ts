@@ -199,9 +199,12 @@ import {
 } from "./managed-processes/managed-processes.js";
 import { terminateWithTreeKill } from "../utils/tree-kill.js";
 import { isHostnameAllowed, type HostnamesConfig } from "./hostnames.js";
+import { isOriginAllowed } from "./origins.js";
 import {
   createRequireBearerMiddleware,
   isAgentMcpRequestAuthorized,
+  isLoopbackConnection,
+  isLoopbackPasswordExempt,
   type DaemonAuthConfig,
 } from "./auth.js";
 import { createWebUiMiddleware } from "./web-ui.js";
@@ -283,17 +286,11 @@ const TERMINAL_ACTIVITY_STATE_MAP = {
   "needs-input": "attention",
 } as const;
 
-const LOOPBACK_REMOTE_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
-
-function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-  return remoteAddress !== undefined && LOOPBACK_REMOTE_ADDRESSES.has(remoteAddress);
-}
-
 export function createTerminalActivityRouteHandler(
   terminalManager: TerminalManager,
 ): express.RequestHandler {
   return async (req, res) => {
-    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+    if (!isLoopbackConnection({ remoteAddress: req.socket.remoteAddress, headers: req.headers })) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -734,7 +731,7 @@ export async function createPaseoDaemon(
 
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && (allowedOrigins.has("*") || allowedOrigins.has(origin))) {
+    if (origin && isOriginAllowed(origin, allowedOrigins)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -1475,6 +1472,10 @@ export async function createPaseoDaemon(
           password: config.auth?.password,
           capabilityToken: agentMcpAuthToken,
           authorizationHeader: req.header("authorization"),
+          loopbackExempt: isLoopbackPasswordExempt(config.auth, {
+            remoteAddress: req.socket.remoteAddress,
+            headers: req.headers,
+          }),
         }))
       ) {
         res.status(401).json({ error: "Unauthorized" });
@@ -1634,7 +1635,12 @@ export async function createPaseoDaemon(
               );
             }
             if (config.auth?.password) {
-              logger.info("Daemon password authentication enabled");
+              logger.info(
+                {
+                  allowLoopbackWithoutPassword: config.auth.allowLoopbackWithoutPassword === true,
+                },
+                "Daemon password authentication enabled",
+              );
             }
 
             wsServer = new VoiceAssistantWebSocketServer(

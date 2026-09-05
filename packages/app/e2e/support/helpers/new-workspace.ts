@@ -213,6 +213,23 @@ export async function openMissingProjectNewWorkspaceComposer(
   await expect(page).toHaveURL(/\/new\?.*projectId=/u, { timeout: 30_000 });
 }
 
+export async function openNewWorkspacePromptDeepLink(
+  page: Page,
+  input: { serverId: string; name: string; prompt: string },
+): Promise<void> {
+  const query = new URLSearchParams({
+    serverId: input.serverId,
+    name: input.name,
+    q: input.prompt,
+  });
+  const route = `/new?${query.toString()}`;
+
+  await page.goto(route);
+  await expect(page).toHaveURL((url) => `${url.pathname}${url.search}${url.hash}` === route, {
+    timeout: 30_000,
+  });
+}
+
 export async function expectNewWorkspaceControlsEnabled(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "Workspace project" })).toBeEnabled({
     timeout: 30_000,
@@ -281,6 +298,26 @@ export async function selectNewWorkspaceHost(page: Page, hostLabel: string): Pro
   await trigger.click();
   await page.getByRole("button", { name: hostLabel, exact: true }).click();
   await expect(trigger).toContainText(hostLabel);
+}
+
+function newWorkspaceHostPillLabel(page: Page, hostLabel: string) {
+  return page.getByTestId("host-picker-trigger").getByText(hostLabel, { exact: true });
+}
+
+export async function readNewWorkspaceHostPillColor(
+  page: Page,
+  hostLabel: string,
+): Promise<string> {
+  const label = newWorkspaceHostPillLabel(page, hostLabel);
+  await expect(label).toBeVisible();
+  return label.evaluate((element) => getComputedStyle(element).color);
+}
+
+export async function expectNewWorkspaceHostPillColor(
+  page: Page,
+  input: { hostLabel: string; color: string },
+): Promise<void> {
+  await expect(newWorkspaceHostPillLabel(page, input.hostLabel)).toHaveCSS("color", input.color);
 }
 
 export async function submitNewWorkspacePrompt(

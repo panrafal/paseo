@@ -1,0 +1,44 @@
+# Branches merged into fork-integration, in order.
+#
+# One git ref or owner:branch per line. Blank lines and `#` comments are ignored.
+# Use `origin/<name>` for branches you push; a bare name means a local branch.
+# Use `owner:branch` for someone else's github.com/owner/paseo branch. Each
+# update fetches the author's tip, including force-pushes; we never rebase it.
+#
+# `fork/integrate.sh add <branch>` appends a line here and merges the branch
+# in; a line added by hand is merged by the next `fork/integrate.sh rebase`.
+# Removing a line takes effect at the next `fork/integrate.sh rebuild`, which
+# is also the only time the order matters: for conflict resolution, the branch
+# you want to "win" goes last.
+#
+# fork-base is not listed: it is the branch this file lives on, and it is
+# always merged first.
+#
+# When a PR lands upstream, delete its line and rebuild. The commits arrive
+# through upstream/main instead.
+
+
+# Open PRs against getpaseo/paseo.
+origin/add-daemon-loopback-password-bypass
+origin/add-paseo-deeplink-hash-prompts
+
+# PRs maintained by their authors; fetched from their GitHub forks.
+colonelpanic8:codex-astra-support
+ragokan:fix/claude-native-tool-details
+stackia:fix/cursor-usage-official-display
+cleiter:plan-visible-after-answer
+fidelix:fix/cursor-per-model-thinking
+
+# Soon to be PRs against getpaseo/paseo.
+origin/paseo-ls/add-labels-filter
+origin/add-search-transcript-terminal
+origin/feat/terminal-close-confirm
+origin/sidebar-grouping-toggle
+origin/allowedorigins-domain-patterns
+origin/history-navigation-shortcuts
+origin/host-selection-pill-color
+
+# Fork features not yet sent upstream.
+origin/vscode
+origin/fix/plugin-host-react-free-sdk-import
+origin/video-file-preview

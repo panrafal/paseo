@@ -212,6 +212,15 @@ export const en = {
       implement: "Implement",
       question: "How would you like to proceed?",
       proposedPlan: "Proposed plan",
+      planApproved: "Approved",
+      planRejected: "Rejected",
+      planDismissed: "Dismissed",
+    },
+    questions: {
+      answerPlaceholder: "Type your answer...",
+      submit: "Send answer",
+      answered: "Answered",
+      sendFailed: "Couldn't send your answer",
     },
   },
   agentPanel: {
@@ -648,6 +657,7 @@ export const en = {
         reloadedAgent: "Reloaded agent",
         failedToReloadAgent: "Failed to reload agent",
         failedToCloseAgent: "Failed to close agent",
+        failedToSaveClosePreference: "Couldn't save your terminal close preference",
       },
       confirmations: {
         close: "Close",
@@ -661,6 +671,8 @@ export const en = {
         bulkUnsaved: "{{count}} tab(s) have unsaved changes. Closing will discard those drafts.",
         closeTerminalTitle: "Close terminal?",
         closeTerminalMessage: "Any running process in this terminal will be stopped immediately.",
+        rememberChoice: "Remember this choice",
+        closeAndDontAskAgain: "Close and don't ask again",
         archiveRunningAgentTitle: "Archive running agent?",
         archiveRunningAgentMessage:
           "This agent is still running. Archiving it will stop the agent and close the tab.",
@@ -942,6 +954,7 @@ export const en = {
         openIn: "Open workspace in {{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "Failed to open workspace",
+        failedOpenFile: "Failed to open file",
       },
       pr: {
         actions: {
@@ -1058,12 +1071,6 @@ export const en = {
     display: {
       trigger: "Display preferences",
       heading: "Display",
-      grouping: {
-        label: "Grouping",
-        project: "Project",
-        status: "Status",
-        labels: "Labels",
-      },
       titleSource: {
         label: "Title",
         title: "Title",
@@ -1429,6 +1436,11 @@ export const en = {
     errorTitle: "Something went wrong",
     errorDescription:
       "The local server failed to start. If this keeps happening, please report the issue on GitHub and include the logs below.",
+    status: {
+      connecting: "Connecting to the Paseo daemon…",
+      loadingWorkspaces: "Loading your workspaces…",
+      opening: "Opening this folder in Paseo…",
+    },
     logs: {
       loading: "Loading daemon logs...",
       unavailable: "No daemon logs available.",
@@ -1776,6 +1788,16 @@ export const en = {
     archiveFinishedAction: "Archive finished subagents",
     archiveFinishedRetry: "Retry ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "Find",
+    matchPosition: "{{current}} of {{count}}",
+    matchPositionCapped: "{{current}} of {{count}}+",
+    noResults: "No results",
+    cappedCount: "{{count}}+ matches",
+    previous: "Previous match",
+    next: "Next match",
+    close: "Close find",
+  },
   panels: {
     draft: {
       newAgent: "New Agent",
@@ -1786,6 +1808,8 @@ export const en = {
       loading: "Loading file...",
       noPreview: "No preview available",
       binaryPreviewUnavailable: "Binary preview unavailable",
+      videoPlaybackFailed:
+        "Unable to play this video. The file may be damaged or its format may not be supported on this device.",
       tooLargeToDisplay: "This file is too large to display",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
@@ -2108,6 +2132,10 @@ export const en = {
         description: "Lines kept in the built-in terminal buffer",
         accessibilityLabel: "Terminal scrollback lines",
       },
+      confirmTerminalClose: {
+        label: "Confirm closing terminals",
+        description: "Ask before closing a terminal tab",
+      },
       autoExpandReasoning: {
         label: "Always expand reasoning",
         description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
@@ -2300,6 +2328,11 @@ export const en = {
         closePane: "Close pane",
         newTerminal: "New terminal",
         searchFiles: "Search files",
+        findInPane: "Find in pane",
+        findNext: "Find next",
+        findPrevious: "Find previous",
+        historyBack: "History back",
+        historyForward: "History forward",
         toggleCommandCenter: "Toggle command center",
         showKeyboardShortcuts: "Show keyboard shortcuts",
         toggleLeftSidebar: "Toggle left sidebar",
@@ -2319,6 +2352,7 @@ export const en = {
         switchProject: "Switch project",
       },
       helpNotes: {
+        findWhileOpen: "Only while the find bar is open.",
         showKeyboardShortcuts: "Available when focus is not in a text field or terminal.",
       },
     },

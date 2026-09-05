@@ -25,6 +25,27 @@ function fileNameFromPath(path: string): string {
   return path;
 }
 
+/**
+ * Separates dropped paths that point at a raster image. `droppedItemsToPickedFiles` skips those —
+ * an image belongs in the composer as an image attachment, not as an uploaded file — so a caller
+ * that does not persist them first drops the image on the floor.
+ */
+export function splitDroppedImagePaths(items: readonly DroppedItem[]): {
+  imagePaths: string[];
+  otherItems: DroppedItem[];
+} {
+  const imagePaths: string[] = [];
+  const otherItems: DroppedItem[] = [];
+  for (const item of items) {
+    if (item.kind !== "web-file" && isRasterImagePath(item.path)) {
+      imagePaths.push(item.path);
+      continue;
+    }
+    otherItems.push(item);
+  }
+  return { imagePaths, otherItems };
+}
+
 export async function droppedItemsToPickedFiles(
   items: DroppedItem[],
   runtime: DroppedAttachmentsRuntime = defaultRuntime,

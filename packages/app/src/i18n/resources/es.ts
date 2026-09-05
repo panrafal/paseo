@@ -215,6 +215,15 @@ export const es: TranslationResources = {
       implement: "Implementar",
       question: "¿Cómo le gustaría proceder?",
       proposedPlan: "Plan propuesto",
+      planApproved: "Aprobado",
+      planRejected: "Rechazado",
+      planDismissed: "Descartado",
+    },
+    questions: {
+      answerPlaceholder: "Escribe tu respuesta...",
+      submit: "Enviar respuesta",
+      answered: "Respondida",
+      sendFailed: "No se pudo enviar tu respuesta",
     },
   },
   agentPanel: {
@@ -655,6 +664,7 @@ export const es: TranslationResources = {
         reloadedAgent: "Agente recargado",
         failedToReloadAgent: "No se pudo recargar el agente",
         failedToCloseAgent: "No se pudo cerrar el agente",
+        failedToSaveClosePreference: "No se pudo guardar tu preferencia de cierre de terminal",
       },
       confirmations: {
         unsavedTitle: "Cambios sin guardar",
@@ -670,6 +680,8 @@ export const es: TranslationResources = {
         closeTerminalTitle: "¿Cerrar terminal?",
         closeTerminalMessage:
           "Cualquier proceso en ejecución en esta terminal se detendrá inmediatamente.",
+        rememberChoice: "Recordar esta elección",
+        closeAndDontAskAgain: "Cerrar y no volver a preguntar",
         archiveRunningAgentTitle: "¿Agente de ejecución de archivos?",
         archiveRunningAgentMessage:
           "Este agente todavía está ejecutándose. Archivarlo detendrá al agente y cerrará la pestaña.",
@@ -964,6 +976,7 @@ export const es: TranslationResources = {
         openIn: "Abrir espacio de trabajo en{{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "No se pudo abrir el espacio de trabajo",
+        failedOpenFile: "No se pudo abrir el archivo",
       },
       pr: {
         actions: {
@@ -1083,12 +1096,6 @@ export const es: TranslationResources = {
     display: {
       trigger: "Preferencias de visualización",
       heading: "Visualización",
-      grouping: {
-        label: "Agrupación",
-        project: "Proyecto",
-        status: "Estado",
-        labels: "Etiquetas",
-      },
       titleSource: {
         label: "Título",
         title: "Título",
@@ -1463,6 +1470,11 @@ export const es: TranslationResources = {
     errorTitle: "algo salió mal",
     errorDescription:
       "El servidor local no pudo iniciarse. Si esto continúa sucediendo, informe el problema enGitHube incluya los registros a continuación.",
+    status: {
+      connecting: "Conectando con el demonio de Paseo…",
+      loadingWorkspaces: "Cargando tus espacios de trabajo…",
+      opening: "Abriendo esta carpeta en Paseo…",
+    },
     logs: {
       loading: "Cargando registros de demonio...",
       unavailable: "No hay registros de demonios disponibles.",
@@ -1812,6 +1824,16 @@ export const es: TranslationResources = {
     archiveFinishedAction: "Archivar subagentes finalizados",
     archiveFinishedRetry: "Reintentar ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "Buscar",
+    matchPosition: "{{current}} de {{count}}",
+    matchPositionCapped: "{{current}} de más de {{count}}",
+    noResults: "Sin resultados",
+    cappedCount: "Más de {{count}} coincidencias",
+    previous: "Coincidencia anterior",
+    next: "Coincidencia siguiente",
+    close: "Cerrar búsqueda",
+  },
   panels: {
     draft: {
       newAgent: "Nuevo agente",
@@ -1822,6 +1844,8 @@ export const es: TranslationResources = {
       loading: "Cargando archivo...",
       noPreview: "No hay vista previa disponible",
       binaryPreviewUnavailable: "Vista previa binaria no disponible",
+      videoPlaybackFailed:
+        "No se puede reproducir este vídeo. El archivo puede estar dañado o su formato no ser compatible con este dispositivo.",
       tooLargeToDisplay: "Este archivo es demasiado grande para mostrarlo",
       failedToLoad: "No se pudo cargar el archivo",
       failedToLoadPreview: "No se pudo cargar la vista previa del archivo",
@@ -2058,6 +2082,10 @@ export const es: TranslationResources = {
         description: "Líneas mantenidas en el búfer de terminal incorporado",
         accessibilityLabel: "Líneas del historial de terminal",
       },
+      confirmTerminalClose: {
+        label: "Confirmar el cierre de terminales",
+        description: "Preguntar antes de cerrar una pestaña de terminal",
+      },
       autoExpandReasoning: {
         label: "Siempre expandir razonamiento",
         description:
@@ -2254,6 +2282,11 @@ export const es: TranslationResources = {
         closePane: "Cerrar panel",
         newTerminal: "Nueva terminal",
         searchFiles: "Buscar archivos",
+        findInPane: "Buscar en el panel",
+        findNext: "Buscar siguiente",
+        findPrevious: "Buscar anterior",
+        historyBack: "Atrás en el historial",
+        historyForward: "Adelante en el historial",
         toggleCommandCenter: "Alternar centro de comando",
         showKeyboardShortcuts: "Mostrar atajos de teclado",
         toggleLeftSidebar: "Alternar barra lateral izquierda",
@@ -2273,6 +2306,7 @@ export const es: TranslationResources = {
         switchProject: "Cambiar proyecto",
       },
       helpNotes: {
+        findWhileOpen: "Solo mientras la barra de búsqueda está abierta.",
         showKeyboardShortcuts: "Disponible cuando el foco no está en un campo de texto o terminal.",
       },
     },

@@ -215,6 +215,15 @@ export const ru: TranslationResources = {
       implement: "Реализовать",
       question: "Как бы вы хотели продолжить?",
       proposedPlan: "Предлагаемый план",
+      planApproved: "Одобрено",
+      planRejected: "Отклонено",
+      planDismissed: "Отменено",
+    },
+    questions: {
+      answerPlaceholder: "Введите ответ...",
+      submit: "Отправить ответ",
+      answered: "Отвечено",
+      sendFailed: "Не удалось отправить ответ",
     },
   },
   agentPanel: {
@@ -655,6 +664,7 @@ export const ru: TranslationResources = {
         reloadedAgent: "Агент перезагружен",
         failedToReloadAgent: "Не удалось перезагрузить агента",
         failedToCloseAgent: "Не удалось закрыть агента",
+        failedToSaveClosePreference: "Не удалось сохранить настройку закрытия терминала",
       },
       confirmations: {
         unsavedTitle: "Несохранённые изменения",
@@ -670,6 +680,8 @@ export const ru: TranslationResources = {
         closeTerminalTitle: "Закрыть терминал?",
         closeTerminalMessage:
           "Любой запущенный процесс в этом терминале будет немедленно остановлен.",
+        rememberChoice: "Запомнить выбор",
+        closeAndDontAskAgain: "Закрыть и больше не спрашивать",
         archiveRunningAgentTitle: "Архивировать работающего агента?",
         archiveRunningAgentMessage:
           "Этот агент всё ещё работает. При архивировании агент будет остановлен, а вкладка закрыта.",
@@ -948,6 +960,7 @@ export const ru: TranslationResources = {
         openIn: "Открыть рабочее пространство в {{target}}",
         openFileIn: "Открыть {{fileName}} в {{target}}",
         failedOpen: "Не удалось открыть рабочее пространство",
+        failedOpenFile: "Не удалось открыть файл",
       },
       pr: {
         actions: {
@@ -1064,12 +1077,6 @@ export const ru: TranslationResources = {
     display: {
       trigger: "Настройки отображения",
       heading: "Отображение",
-      grouping: {
-        label: "Группировка",
-        project: "Проект",
-        status: "Статус",
-        labels: "Метки",
-      },
       titleSource: {
         label: "Заголовок",
         title: "Заголовок",
@@ -1445,6 +1452,11 @@ export const ru: TranslationResources = {
     errorTitle: "Что-то пошло не так",
     errorDescription:
       "Не удалось запустить локальный сервер. Если ошибка повторится, сообщите о ней на GitHub и приложите приведённые ниже журналы.",
+    status: {
+      connecting: "Подключение к демону Paseo…",
+      loadingWorkspaces: "Загрузка ваших рабочих областей…",
+      opening: "Открытие этой папки в Paseo…",
+    },
     logs: {
       loading: "Загрузка журналов демона...",
       unavailable: "Журналы демона отсутствуют.",
@@ -1796,6 +1808,16 @@ export const ru: TranslationResources = {
     archiveFinishedAction: "Архивировать завершенные субагенты",
     archiveFinishedRetry: "Повторить ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "Поиск",
+    matchPosition: "{{current}} из {{count}}",
+    matchPositionCapped: "{{current}} из более чем {{count}}",
+    noResults: "Нет результатов",
+    cappedCount: "Более {{count}} совпадений",
+    previous: "Предыдущее совпадение",
+    next: "Следующее совпадение",
+    close: "Закрыть поиск",
+  },
   panels: {
     draft: {
       newAgent: "Новый агент",
@@ -1806,6 +1828,8 @@ export const ru: TranslationResources = {
       loading: "Загрузка файла...",
       noPreview: "Предварительный просмотр недоступен",
       binaryPreviewUnavailable: "Предварительный просмотр двоичного файла недоступен.",
+      videoPlaybackFailed:
+        "Не удалось воспроизвести видео. Возможно, файл повреждён или его формат не поддерживается на этом устройстве.",
       tooLargeToDisplay: "Этот файл слишком велик для отображения",
       failedToLoad: "Не удалось загрузить файл",
       failedToLoadPreview: "Не удалось загрузить предварительный просмотр файла.",
@@ -2042,6 +2066,10 @@ export const ru: TranslationResources = {
         description: "Количество строк, сохраняемых во встроенном буфере терминала",
         accessibilityLabel: "Количество строк в буфере прокрутки терминала",
       },
+      confirmTerminalClose: {
+        label: "Подтверждать закрытие терминалов",
+        description: "Спрашивать перед закрытием вкладки терминала",
+      },
       autoExpandReasoning: {
         label: "Всегда разворачивать размышления",
         description:
@@ -2240,6 +2268,11 @@ export const ru: TranslationResources = {
         closePane: "Закрыть панель",
         newTerminal: "Новый терминал",
         searchFiles: "Поиск файлов",
+        findInPane: "Поиск в панели",
+        findNext: "Найти далее",
+        findPrevious: "Найти ранее",
+        historyBack: "Назад по истории",
+        historyForward: "Вперёд по истории",
         toggleCommandCenter: "Переключить командный центр",
         showKeyboardShortcuts: "Показать сочетания клавиш",
         toggleLeftSidebar: "Переключить левую боковую панель",
@@ -2259,6 +2292,7 @@ export const ru: TranslationResources = {
         switchProject: "Сменить проект",
       },
       helpNotes: {
+        findWhileOpen: "Только когда открыта панель поиска.",
         showKeyboardShortcuts: "Доступно, когда фокус находится не в текстовом поле или терминале.",
       },
     },
