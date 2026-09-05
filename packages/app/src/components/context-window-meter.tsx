@@ -1,11 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative } from "@/constants/platform";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
@@ -23,6 +27,7 @@ interface ContextWindowMeterProps {
 }
 
 const SVG_SIZE = 14;
+const DOUBLE_TAP_DELAY_MS = 300;
 const COMPACT_SVG_SIZE = 12;
 const COMPACT_CENTER = COMPACT_SVG_SIZE / 2;
 const COMPACT_RADIUS = 5;
@@ -108,6 +113,9 @@ export function ContextWindowMeter({
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  const usesTapGestures = isCompact || isNative;
+  const pendingTapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(
     serverId ?? null,
@@ -126,6 +134,32 @@ export function ContextWindowMeter({
   );
 
   const geometry = getMeterGeometry(showPercentage, glyphSize);
+  const cancelPendingTap = useCallback(() => {
+    if (pendingTapRef.current !== null) {
+      clearTimeout(pendingTapRef.current);
+      pendingTapRef.current = null;
+    }
+  }, []);
+  useEffect(() => cancelPendingTap, [cancelPendingTap, serverId, usesTapGestures]);
+
+  const openUsage = useCallback(() => {
+    if (!serverId) return;
+    cancelPendingTap();
+    setIsTooltipOpen(false);
+    router.push(buildSettingsHostSectionRoute(serverId, "usage"));
+  }, [cancelPendingTap, serverId]);
+
+  const handlePress = useCallback(() => {
+    if (!usesTapGestures || pendingTapRef.current !== null) {
+      openUsage();
+      return;
+    }
+    // Native tooltips use a modal, so wait for the second tap before opening it.
+    pendingTapRef.current = setTimeout(() => {
+      pendingTapRef.current = null;
+      handleTooltipOpenChange(true);
+    }, DOUBLE_TAP_DELAY_MS);
+  }, [handleTooltipOpenChange, openUsage, usesTapGestures]);
 
   // No usage yet: reserve the footprint with a track-only ring while a session is
   // active so the real ring fades in without shifting siblings. Render nothing when
@@ -173,12 +207,16 @@ export function ContextWindowMeter({
       delayDuration={0}
       enabledOnDesktop
       enabledOnMobile
+      openOnPress={serverId ? false : undefined}
     >
       <TooltipTrigger asChild triggerRefProp="ref">
         <Pressable
           style={containerStyle}
           testID="context-window-meter"
-          accessibilityRole="image"
+          onPress={serverId ? handlePress : undefined}
+          onLongPress={serverId ? openUsage : undefined}
+          accessibilityRole={serverId ? "button" : "image"}
+          accessibilityHint={serverId ? t("settings.hostSections.usage") : undefined}
           accessibilityLabel={t("contextWindow.accessibility", {
             percentage: roundedPercentage,
           })}
