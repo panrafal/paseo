@@ -25,6 +25,13 @@ die() {
 }
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 
+restart_and_launch() {
+  say "Restarting the local daemon"
+  "$APP/Contents/Resources/bin/paseo" daemon restart
+  say "Launching"
+  open "$APP"
+}
+
 [ "$(uname -s)" = "Darwin" ] || die "run this on macOS"
 command -v gh >/dev/null 2>&1 || die "the gh CLI is required: brew install gh"
 
@@ -54,6 +61,7 @@ installed=""
 say "wanted: $tag   installed: ${installed:-none}"
 if [ -n "$installed" ] && [ "$tag" = "fork-v$installed" ]; then
   say "Already up to date."
+  restart_and_launch
   exit 0
 fi
 
@@ -83,5 +91,4 @@ cp -R "$mount_point/Paseo.app" /Applications/
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
 say "Installed $(defaults read "$APP/Contents/Info" CFBundleShortVersionString)"
-say "Launching"
-open "$APP"
+restart_and_launch
