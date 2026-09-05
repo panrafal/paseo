@@ -93,11 +93,12 @@ jobs:
           set -euo pipefail
           node -e '
             const fs = require("node:fs");
-            const p = `${process.env.DESKTOP_PACKAGE_PATH}/package.json`;
+            const p = "package.json";
             const pkg = JSON.parse(fs.readFileSync(p, "utf8"));
             pkg.version = process.env.FORK_TAG.replace(/^fork-v/, "");
             fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + "\n");
           '
+          node scripts/sync-workspace-versions.mjs
 
       - name: Build and sign
         env:
