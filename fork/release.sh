@@ -56,7 +56,7 @@ or publish yours with fork/integrate.sh first."
     git tag -a "$tag" "$sha" -m "Fork build $version from $TARGET"
     git push "$FORK_REMOTE" "$tag"
     say "Tagged $tag at $(git log -1 --format='%h %s' "$sha")"
-    say "Desktop build started: https://github.com/$REPO/actions"
+    say "Waiting for the Desktop workflow: https://github.com/$REPO/actions"
     echo
     echo "When it finishes, update the Mac with:"
     echo "    fork/update-macos.sh          # run this on the laptop"
@@ -72,6 +72,11 @@ or publish yours with fork/integrate.sh first."
       sleep 2
     done
     [ -n "$run_id" ] || die "no Fork Desktop run for $tag appeared within a minute — see https://github.com/$REPO/actions"
+    run_url="https://github.com/$REPO/actions/runs/$run_id"
+    say "Desktop build: $run_url"
+    if [ -n "${FORK_BUILD_LINKS_FILE:-}" ]; then
+      printf 'GitHub Actions: %s\n' "$run_url" >>"$FORK_BUILD_LINKS_FILE"
+    fi
     # A red run fails this script, and fork/build.sh with it.
     gh run watch --repo "$REPO" --exit-status "$run_id"
     ;;
