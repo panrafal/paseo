@@ -664,6 +664,8 @@ export const ar: TranslationResources = {
         archive: "أرشيف",
         closeTerminalTitle: "إغلاق المحطة؟",
         closeTerminalMessage: "سيتم إيقاف أي عملية جارية في هذه المحطة على الفور.",
+        rememberChoice: "تذكر هذا الاختيار",
+        closeAndDontAskAgain: "إغلاق وعدم السؤال مرة أخرى",
         archiveRunningAgentTitle: "وكيل تشغيل الأرشيف؟",
         archiveRunningAgentMessage:
           "هذا الوكيل لا يزال قيد التشغيل. ستؤدي أرشفته إلى إيقاف الوكيل وإغلاق علامة التبويب.",
@@ -933,6 +935,7 @@ export const ar: TranslationResources = {
         openIn: "افتح مساحة العمل في{{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "فشل في فتح مساحة العمل",
+        failedOpenFile: "تعذر فتح الملف",
       },
       pr: {
         actions: {
@@ -1049,12 +1052,6 @@ export const ar: TranslationResources = {
     display: {
       trigger: "تفضيلات العرض",
       heading: "العرض",
-      grouping: {
-        label: "التجميع",
-        project: "المشروع",
-        status: "الحالة",
-        labels: "التسميات",
-      },
       titleSource: {
         label: "العنوان",
         title: "العنوان",
@@ -1420,6 +1417,11 @@ export const ar: TranslationResources = {
     errorTitle: "حدث خطأ ما",
     errorDescription:
       "فشل الخادم المحلي في البدء. إذا استمر حدوث ذلك، فيرجى الإبلاغ عن المشكلة على GitHub وتضمين السجلات أدناه.",
+    status: {
+      connecting: "جارٍ الاتصال ببرنامج Paseo الخفي…",
+      loadingWorkspaces: "جارٍ تحميل مساحات العمل الخاصة بك…",
+      opening: "جارٍ فتح هذا المجلد في Paseo…",
+    },
     logs: {
       loading: "جارٍ تحميل سجلات البرنامج الخفي...",
       unavailable: "لا توجد سجلات خفية متاحة.",
@@ -1766,6 +1768,15 @@ export const ar: TranslationResources = {
     archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
     archiveFinishedRetry: "إعادة المحاولة ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "بحث",
+    matchPosition: "{{current}} من {{count}}",
+    noResults: "لا توجد نتائج",
+    cappedCount: "أكثر من {{count}} نتيجة",
+    previous: "النتيجة السابقة",
+    next: "النتيجة التالية",
+    close: "إغلاق البحث",
+  },
   panels: {
     draft: {
       newAgent: "وكيل جديد",
@@ -2009,6 +2020,10 @@ export const ar: TranslationResources = {
         description: "يتم الاحتفاظ بالخطوط في المخزن المؤقت الطرفي المدمج",
         accessibilityLabel: "خطوط التمرير Terminal",
       },
+      confirmTerminalClose: {
+        label: "تأكيد إغلاق المحطات",
+        description: "اسأل قبل إغلاق علامة تبويب المحطة",
+      },
       autoExpandReasoning: {
         label: "عرض التفكير دائماً",
         description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
@@ -2202,6 +2217,11 @@ export const ar: TranslationResources = {
         closePane: "إغلاق الجزء",
         newTerminal: "محطة جديدة",
         searchFiles: "البحث في الملفات",
+        findInPane: "البحث في اللوحة",
+        findNext: "البحث عن التالي",
+        findPrevious: "البحث عن السابق",
+        historyBack: "الرجوع في السجل",
+        historyForward: "التقدم في السجل",
         toggleCommandCenter: "تبديل مركز القيادة",
         showKeyboardShortcuts: "إظهار اختصارات لوحة المفاتيح",
         toggleLeftSidebar: "تبديل الشريط الجانبي الأيسر",
@@ -2221,6 +2241,7 @@ export const ar: TranslationResources = {
         switchProject: "تبديل المشروع",
       },
       helpNotes: {
+        findWhileOpen: "فقط أثناء فتح شريط البحث.",
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",
       },
     },

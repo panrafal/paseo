@@ -667,6 +667,8 @@ export const ja: TranslationResources = {
         archive: "アーカイブ",
         closeTerminalTitle: "ターミナルを閉じますか？",
         closeTerminalMessage: "このターミナルで実行中のプロセスはすぐに停止されます。",
+        rememberChoice: "この選択を記憶する",
+        closeAndDontAskAgain: "閉じて今後確認しない",
         archiveRunningAgentTitle: "実行中のエージェントをアーカイブしますか？",
         archiveRunningAgentMessage:
           "このエージェントはまだ実行中です。アーカイブするとエージェントが停止してタブが閉じられます。",
@@ -944,6 +946,7 @@ export const ja: TranslationResources = {
         openIn: "{{target}}でワークスペースを開く",
         openFileIn: "{{target}}で{{fileName}}を開く",
         failedOpen: "ワークスペースを開けませんでした",
+        failedOpenFile: "ファイルを開けませんでした",
       },
       pr: {
         actions: {
@@ -1060,12 +1063,6 @@ export const ja: TranslationResources = {
     display: {
       trigger: "表示設定",
       heading: "表示",
-      grouping: {
-        label: "グループ化",
-        project: "プロジェクト",
-        status: "ステータス",
-        labels: "ラベル",
-      },
       titleSource: {
         label: "タイトル",
         title: "タイトル",
@@ -1434,6 +1431,11 @@ export const ja: TranslationResources = {
     errorTitle: "問題が発生しました",
     errorDescription:
       "ローカルサーバーの起動に失敗しました。この問題が続く場合は、以下のログを添えてGitHubでIssueを作成してください。",
+    status: {
+      connecting: "Paseoデーモンに接続中…",
+      loadingWorkspaces: "ワークスペースを読み込み中…",
+      opening: "このフォルダをPaseoで開いています…",
+    },
     logs: {
       loading: "デーモンログを読み込み中...",
       unavailable: "利用可能なデーモンログがありません。",
@@ -1783,6 +1785,15 @@ export const ja: TranslationResources = {
     archiveFinishedAction: "完了したサブエージェントをアーカイブ",
     archiveFinishedRetry: "再試行 ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "検索",
+    matchPosition: "{{count}} 件中 {{current}} 件目",
+    noResults: "結果がありません",
+    cappedCount: "{{count}} 件以上",
+    previous: "前の一致",
+    next: "次の一致",
+    close: "検索を閉じる",
+  },
   panels: {
     draft: {
       newAgent: "新しいエージェント",
@@ -2026,6 +2037,10 @@ export const ja: TranslationResources = {
         description: "組み込みターミナルバッファに保持する行数",
         accessibilityLabel: "ターミナルスクロールバック行数",
       },
+      confirmTerminalClose: {
+        label: "ターミナルを閉じる前に確認",
+        description: "ターミナルのタブを閉じる前に確認します",
+      },
       autoExpandReasoning: {
         label: "常に思考プロセスを展開",
         description: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
@@ -2220,6 +2235,11 @@ export const ja: TranslationResources = {
         closePane: "ペインを閉じる",
         newTerminal: "新しいターミナル",
         searchFiles: "ファイルを検索",
+        findInPane: "ペイン内を検索",
+        findNext: "次を検索",
+        findPrevious: "前を検索",
+        historyBack: "履歴を戻る",
+        historyForward: "履歴を進む",
         toggleCommandCenter: "コマンドセンターを切り替え",
         showKeyboardShortcuts: "キーボードショートカットを表示",
         toggleLeftSidebar: "左サイドバーを切り替え",
@@ -2239,6 +2259,7 @@ export const ja: TranslationResources = {
         switchProject: "プロジェクトを切り替え",
       },
       helpNotes: {
+        findWhileOpen: "検索バーが開いているときのみ有効です。",
         showKeyboardShortcuts:
           "テキストフィールドまたはターミナルにフォーカスがない場合に利用できます。",
       },
