@@ -1057,6 +1057,12 @@ export const ar: TranslationResources = {
     display: {
       trigger: "تفضيلات العرض",
       heading: "العرض",
+      grouping: {
+        label: "التجميع",
+        project: "المشروع",
+        status: "الحالة",
+        labels: "التسميات",
+      },
       titleSource: {
         label: "العنوان",
         title: "العنوان",

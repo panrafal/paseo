@@ -1082,6 +1082,12 @@ export const ptBR: TranslationResources = {
     display: {
       trigger: "Preferências de exibição",
       heading: "Exibição",
+      grouping: {
+        label: "Agrupamento",
+        project: "Projeto",
+        status: "Status",
+        labels: "Etiquetas",
+      },
       titleSource: {
         label: "Título",
         title: "Título",
