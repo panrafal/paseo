@@ -1074,6 +1074,8 @@ export const ru: TranslationResources = {
       heading: "Отображение",
       grouping: {
         label: "Группировка",
+        currentLabel: "Текущая группировка: {{current}}",
+        toggleLabel: "Текущая группировка: {{current}}. Переключить группировку",
         project: "Проект",
         status: "Статус",
         labels: "Метки",
