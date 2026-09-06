@@ -25,7 +25,7 @@ force-pushed. **Nothing committed directly to `main` survives.**
 **Never start a branch from `main`.** `main` carries the whole patch stack, so
 a branch cut from it is unusable as a PR and has to be rebased by hand before
 the integration will take it. Use `fork/new-branch.sh`, which branches off
-`upstream/main`; `fork/integrate.sh` refuses a branch that was cut from the
+`fork-upstream`; `fork/integrate.sh` refuses a branch that was cut from the
 wrong place, but only after the mistake is already committed.
 
 **Never set a git identity yourself.** No `-c user.name`/`user.email`, no
