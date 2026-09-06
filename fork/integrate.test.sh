@@ -144,6 +144,7 @@ scenario_rebuild() {
   assert_eq "origin/main pushed" "$(at origin/main)" "$(at main)"
   assert_eq "origin/fork-integration pushed" "$(at origin/fork-integration)" "$(at fork-integration)"
   assert_eq "origin/fork-base pushed" "$(at origin/fork-base)" "$(at fork-base)"
+  assert_fails "rebuild does not create fork-upstream" git -C "$R" show-ref --verify refs/heads/fork-upstream
   assert_eq "fork-base checkout follows" "$(git -C "$R" rev-parse HEAD)" "$(at fork-base)"
   # A rebuild with nothing new is a new history and a new number.
   assert "rebuild again" run rebuild --push
@@ -172,6 +173,8 @@ scenario_rebase() {
   old_main="$(at main)"
   upstream_commit c.txt 'c' "upstream: add c"
   assert "rebase --push" run rebase --push
+  assert_eq "routine update refreshes fork-upstream" "$(at fork-upstream)" "$(at upstream/main)"
+  assert_eq "routine update publishes fork-upstream" "$(at origin/fork-upstream)" "$(at upstream/main)"
   assert_fails "still not after a rebase" grep -q "no longer in fork/branches" "$F/last.log"
   assert "c is in" git -C "$R" cat-file -e main:c.txt
   assert_eq "patch a survives" "$(git -C "$R" show main:a.txt | head -1)" "line 1 (a)"
@@ -474,6 +477,8 @@ scenario_rebase_branches() {
   old_main="$(at main)"
   upstream_commit c.txt 'c' "upstream: add c"
   assert "rebase-branches --push" run rebase-branches --push
+  assert_eq "branch rebase refreshes fork-upstream" "$(at fork-upstream)" "$(at upstream/main)"
+  assert_eq "branch rebase publishes fork-upstream" "$(at origin/fork-upstream)" "$(at upstream/main)"
   assert "feat-a on new upstream" git -C "$R" merge-base --is-ancestor upstream/main feat-a
   assert "feat-b on new upstream" git -C "$R" merge-base --is-ancestor upstream/main feat-b
   assert "fork-base on new upstream" git -C "$R" merge-base --is-ancestor upstream/main fork-base
@@ -638,9 +643,79 @@ scenario_args() {
   assert "main's message lists it with an id" grep -qE "^  origin/feat-a [0-9a-f]{40}\$" <(git -C "$R" log -1 --format=%B main)
 }
 
+scenario_upstream_mirror() {
+  fixture upstream-mirror
+  run rebuild --push
+  assert "update creates mirror" run rebase --push
+  local before upstream
+  before="$(at upstream/main)"
+  git -C "$R" worktree add -q "$F/mirror" fork-upstream
+  upstream_commit c.txt 'c' "upstream: add c"
+  assert "no-fetch uses cached upstream" run rebase --no-fetch
+  assert_eq "cached mirror unchanged" "$(at fork-upstream)" "$before"
+
+  printf 'dirty\n' >>"$F/mirror/a.txt"
+  assert_fails "dirty mirror checkout refused" run rebase --push
+  assert_log "fork-upstream is checked out with uncommitted changes"
+  assert_eq "dirty mirror is not moved" "$(at fork-upstream)" "$before"
+  assert_eq "nothing published on failure" "$(at origin/fork-upstream)" "$before"
+  git -C "$F/mirror" restore a.txt
+
+  assert "update without push" run rebase
+  upstream="$(at upstream/main)"
+  assert_eq "local mirror updated" "$(at fork-upstream)" "$upstream"
+  assert_eq "mirror checkout follows" "$(git -C "$F/mirror" rev-parse HEAD)" "$upstream"
+  assert "mirror checkout has upstream file" test -f "$F/mirror/c.txt"
+  assert_eq "remote mirror unchanged without push" "$(at origin/fork-upstream)" "$before"
+  assert "no-op update publishes mirror" run rebase --push
+  assert_eq "remote mirror updated" "$(at origin/fork-upstream)" "$upstream"
+
+  upstream_commit d.txt 'd' "upstream: add d"
+  assert "rebuild leaves mirror alone" run rebuild --push
+  assert_eq "rebuild keeps local mirror" "$(at fork-upstream)" "$upstream"
+  assert_eq "rebuild keeps remote mirror" "$(at origin/fork-upstream)" "$upstream"
+  patch_branch feat-e e.txt 'e'
+  assert "add leaves mirror alone" run add feat-e --push
+  assert_eq "add keeps local mirror" "$(at fork-upstream)" "$upstream"
+  assert_eq "add keeps remote mirror" "$(at origin/fork-upstream)" "$upstream"
+
+  # The mirror follows upstream even if upstream rewrites its history.
+  git -C "$R" push -q --force upstream "$before:refs/heads/main"
+  assert "upstream rewind" run rebase --push
+  assert_eq "mirror follows upstream rewind" "$(at fork-upstream)" "$before"
+  assert_eq "rewound mirror published" "$(at origin/fork-upstream)" "$before"
+  assert_fails "mirror checkout drops withdrawn file" test -f "$F/mirror/c.txt"
+}
+
+scenario_new_branch() {
+  fixture new-branch
+  local base
+  base="$(at upstream/main)"
+  git -C "$R" branch fork-upstream "$base"
+  upstream_commit c.txt 'c' "upstream: add c"
+  git -C "$R" fetch -q upstream
+  assert "create patch from saved base" run_new_branch feat-new
+  assert_eq "new patch uses fork-upstream" "$(at feat-new)" "$base"
+  assert_eq "creating patch keeps mirror unchanged" "$(at fork-upstream)" "$base"
+  assert_fails "new patch has no fork tooling" git -C "$R" cat-file -e feat-new:fork/branches
+  assert_fails "new patch has no tracking branch" git -C "$R" config --get branch.feat-new.remote
+
+  # Creating a branch also works offline and cannot refresh cached upstream.
+  git -C "$R" remote set-url upstream "$F/missing.git"
+  assert "create patch offline" run_new_branch feat-offline
+  assert_eq "offline patch uses saved base" "$(at feat-offline)" "$base"
+  assert_fails "existing branch refused" run_new_branch feat-new
+  git -C "$R" branch -D fork-upstream >/dev/null
+  assert_fails "missing mirror refused" run_new_branch feat-missing
+  assert_log "fork-upstream"
+  assert_fails "missing mirror is not created" git -C "$R" show-ref --verify refs/heads/fork-upstream
+}
+
+run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; }
+
 # ---------------------------------------------------------------- run ----
 
-all=(rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args)
+all=(rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"
