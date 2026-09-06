@@ -713,6 +713,10 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
     type: z.literal("assistant_message"),
     text: z.string(),
     messageId: z.string().optional(),
+    // Questions the agent asked without pausing its turn; the reply is an ordinary user message.
+    questions: z
+      .array(z.object({ title: z.string(), options: z.array(z.string()).optional() }))
+      .optional(),
   }),
   z.object({
     type: z.literal("reasoning"),
@@ -3406,6 +3410,8 @@ export const ServerInfoStatusPayloadSchema = z
         directorySync: z.boolean().optional(),
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         workspaceLabels: z.boolean().optional(),
+        // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+        scheduleWorkspaceLabels: z.boolean().optional(),
         // COMPAT(workspaceSetupRun): added in v0.7.3, remove gate after 2027-09-02.
         workspaceSetupRun: z.boolean().optional(),
         // COMPAT(checkoutForgeSetAutoMerge): added in v0.2.0-beta.1. Remove the

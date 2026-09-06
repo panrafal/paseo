@@ -69,6 +69,7 @@ import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { MarkdownFenceBlock } from "@/components/markdown/fence";
 import type { MarkdownPhase } from "@/components/markdown/fence/types";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+import { findTextDataSet } from "@/find/transcript/markers";
 import { useRevealedText } from "@/hooks/use-revealed-text";
 import { colorMarkdownLinkChildren } from "@/components/markdown/link-children";
 import { createAssistantMarkdownParser } from "@/utils/assistant-markdown-parser";
@@ -540,7 +541,7 @@ export const UserMessage = memo(function UserMessage({
             </View>
           ) : null}
           {hasText ? (
-            <Text selectable style={userMessageStylesheet.text}>
+            <Text selectable style={userMessageStylesheet.text} dataSet={findTextDataSet}>
               {message}
             </Text>
           ) : null}
@@ -885,9 +886,13 @@ function AssistantMarkdownImage({
     [containerStyle],
   );
 
+  // The image slot contributes no searchable text whichever state it is in: find counts
+  // matches against find/transcript/plain-text.ts, which projects an image token as
+  // nothing. Copying drops the failure string with it, which is right — it is renderer
+  // chrome, not message content.
   if (image.status === "failed") {
     return (
-      <View style={stateFrameStyle}>
+      <View style={stateFrameStyle} dataSet={markdownCopyDataSet.ignore}>
         <Text style={assistantMessageStylesheet.imageErrorText}>{image.message}</Text>
       </View>
     );
@@ -895,7 +900,7 @@ function AssistantMarkdownImage({
 
   if (!binding) {
     return (
-      <View style={stateFrameStyle}>
+      <View style={stateFrameStyle} dataSet={markdownCopyDataSet.ignore}>
         <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
       </View>
     );
@@ -1380,7 +1385,7 @@ function AssistantMessageBlockContainer({
     [block],
   );
   return (
-    <View style={style} onLayout={isWeb ? handleLayout : undefined}>
+    <View style={style} onLayout={isWeb ? handleLayout : undefined} dataSet={findTextDataSet}>
       {children}
     </View>
   );
@@ -3022,6 +3027,38 @@ interface ToolCallProps {
   maxDetailHeight?: number;
 }
 
+interface PlanCardPresentation {
+  outcome?: "approved" | "rejected" | "superseded";
+  collapsible: boolean;
+}
+
+// `plan_approval` is Claude's plan, anchored at the ExitPlanMode position. While it's running
+// the plan is pending and shown by the permission card, so nothing renders here (no duplicate);
+// once it resolves, the same item flips in place to the decided card. The decision maps from the
+// terminal status (completed -> approved, failed -> rejected, canceled -> superseded). Other plan
+// cards (e.g. Codex's inline plan) stay as-is. Returns null when the card must not render.
+function resolvePlanCardPresentation(
+  toolName: string,
+  status: ToolCallProps["status"],
+): PlanCardPresentation | null {
+  if (toolName !== "plan_approval") {
+    return { collapsible: false };
+  }
+  if (status === "failed") {
+    return { outcome: "rejected", collapsible: true };
+  }
+  if (status === "canceled") {
+    return { outcome: "superseded", collapsible: true };
+  }
+  if (status === "completed") {
+    return { outcome: "approved", collapsible: true };
+  }
+  // Still running. Rendering it here would double up with the permission card for the whole
+  // time the plan is pending, which is every plan. The cost is that a plan whose daemon was
+  // killed before any tool_result stays running forever and never gets a card.
+  return null;
+}
+
 export const ToolCall = memo(function ToolCall({
   toolName,
   args,
@@ -3156,9 +3193,15 @@ export const ToolCall = memo(function ToolCall({
   ]);
 
   if (presentation.isPlan && effectiveDetail?.type === "plan") {
+    const plan = resolvePlanCardPresentation(toolName, status);
+    if (!plan) {
+      return null;
+    }
     return (
       <PlanCard
         text={effectiveDetail.text}
+        outcome={plan.outcome}
+        collapsible={plan.collapsible}
         testID="timeline-plan-card"
         disableOuterSpacing={disableOuterSpacing}
       />

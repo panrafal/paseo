@@ -31,6 +31,7 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
       model: z.string().trim().min(1).optional(),
       thinkingOptionId: z.string().trim().min(1).optional(),
       archiveOnFinish: z.boolean().optional(),
+      workspaceLabels: z.array(z.string().trim().min(1)).optional(),
       isolation: z.enum(["local", "worktree"]).optional(),
       title: z.string().trim().min(1).nullable().optional(),
       providerOptions: z.record(z.string(), z.json()).optional(),
@@ -94,6 +95,7 @@ export interface UpdateScheduleNewAgentConfig {
   modeId?: string | null;
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
+  workspaceLabels?: string[];
   isolation?: "local" | "worktree";
   cwd?: string;
 }

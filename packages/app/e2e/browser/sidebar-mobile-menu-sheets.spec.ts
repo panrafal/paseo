@@ -1,17 +1,39 @@
 import { expect, test, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
-import { seedWorkspace } from "../support/helpers/seed-client";
+import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+let searchWorkspace: SeededWorkspace | null = null;
+
+test.afterEach(async () => {
+  const workspace = searchWorkspace;
+  searchWorkspace = null;
+  await workspace?.cleanup();
+});
 
 async function closeMenuSheet(page: Page): Promise<void> {
   const backdrop = page.getByRole("button", { name: "Bottom sheet backdrop" }).first();
   await backdrop.click({ position: { x: 12, y: 12 } });
   await expect(backdrop).not.toBeVisible({ timeout: 10_000 });
 }
+
+test("sidebar header Search closes the compact sidebar before opening", async ({ page }) => {
+  searchWorkspace = await seedWorkspace({ repoPrefix: "sidebar-mobile-search-" });
+
+  await gotoAppShell(page);
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await waitForSidebarHydration(page);
+
+  await page.getByTestId("sidebar-command-center-search").click();
+  await expect(page.getByTestId("command-center-panel")).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("command-center-panel")).not.toBeVisible();
+  await expect(page.getByTestId("sidebar-sessions")).not.toBeInViewport({ timeout: 5_000 });
+});
 
 test("project and workspace kebabs open action sheets on compact layouts", async ({ page }) => {
   const seeded = await seedWorkspace({ repoPrefix: "sidebar-mobile-menu-sheet-" });

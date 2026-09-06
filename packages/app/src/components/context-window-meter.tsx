@@ -1,11 +1,16 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRetainedPanelActive } from "@/components/retained-panel";
+import { isNative } from "@/constants/platform";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
@@ -23,6 +28,7 @@ interface ContextWindowMeterProps {
 }
 
 const SVG_SIZE = 14;
+const DOUBLE_TAP_DELAY_MS = 300;
 const COMPACT_SVG_SIZE = 12;
 const COMPACT_CENTER = COMPACT_SVG_SIZE / 2;
 const COMPACT_RADIUS = 5;
@@ -108,24 +114,56 @@ export function ContextWindowMeter({
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const isActive = useRetainedPanelActive();
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const tooltipOpen = isActive && isTooltipOpen;
   const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(
     serverId ?? null,
-    { enabled: isTooltipOpen },
+    { enabled: tooltipOpen },
   );
   const percentage =
     maxTokens !== null && usedTokens !== null ? getUsagePercentage(maxTokens, usedTokens) : null;
   const handleTooltipOpenChange = useCallback(
     (nextOpen: boolean) => {
+      if (!isActive) return;
       setIsTooltipOpen(nextOpen);
       if (nextOpen) {
         void refreshProviderUsage().catch(() => {});
       }
     },
-    [refreshProviderUsage],
+    [isActive, refreshProviderUsage],
   );
 
   const geometry = getMeterGeometry(showPercentage, glyphSize);
+  useEffect(() => {
+    if (!isActive) setIsTooltipOpen(false);
+  }, [isActive]);
+
+  const openUsage = useCallback(() => {
+    if (!serverId || !isActive) return;
+    setIsTooltipOpen(false);
+    router.push(buildSettingsHostSectionRoute(serverId, "usage"));
+  }, [isActive, serverId]);
+
+  const tapGesture = useMemo(() => {
+    const doubleTap = Gesture.Tap()
+      .enabled(isActive && Boolean(serverId))
+      .numberOfTaps(2)
+      .maxDelay(DOUBLE_TAP_DELAY_MS)
+      .runOnJS(true)
+      .onEnd((_event, success) => {
+        if (success) openUsage();
+      });
+    // The native tooltip modal must wait until the double-tap recognizer fails.
+    // Web tooltips don't intercept touches, so their normal press handler can open immediately.
+    const singleTap = Gesture.Tap()
+      .enabled(isActive && isNative)
+      .runOnJS(true)
+      .onEnd((_event, success) => {
+        if (success) handleTooltipOpenChange(true);
+      });
+    return Gesture.Exclusive(doubleTap, singleTap);
+  }, [handleTooltipOpenChange, isActive, openUsage, serverId]);
 
   // No usage yet: reserve the footprint with a track-only ring while a session is
   // active so the real ring fades in without shifting siblings. Render nothing when
@@ -168,54 +206,58 @@ export function ContextWindowMeter({
 
   return (
     <Tooltip
-      open={isTooltipOpen}
+      open={tooltipOpen}
       onOpenChange={handleTooltipOpenChange}
       delayDuration={0}
       enabledOnDesktop
       enabledOnMobile
+      openOnPress={isNative ? false : undefined}
     >
-      <TooltipTrigger asChild triggerRefProp="ref">
-        <Pressable
-          style={containerStyle}
-          testID="context-window-meter"
-          accessibilityRole="image"
-          accessibilityLabel={t("contextWindow.accessibility", {
-            percentage: roundedPercentage,
-          })}
-        >
-          <Svg
-            width={svgSize}
-            height={svgSize}
-            viewBox={`0 0 ${svgSize} ${svgSize}`}
-            style={styles.svg}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
+      <GestureDetector gesture={tapGesture}>
+        <TooltipTrigger asChild triggerRefProp="ref">
+          <Pressable
+            style={containerStyle}
+            testID="context-window-meter"
+            accessibilityRole={serverId ? "button" : "image"}
+            accessibilityHint={serverId ? t("settings.hostSections.usage") : undefined}
+            accessibilityLabel={t("contextWindow.accessibility", {
+              percentage: roundedPercentage,
+            })}
           >
-            <Circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="none"
-              stroke={colors.track}
-              strokeWidth={strokeWidth}
-            />
-            <Circle
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="none"
-              stroke={colors.progress}
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={dashOffset}
-            />
-          </Svg>
-          {showPercentage ? (
-            <Text style={styles.percentageLabel}>{`${roundedPercentage}%`}</Text>
-          ) : null}
-        </Pressable>
-      </TooltipTrigger>
+            <Svg
+              width={svgSize}
+              height={svgSize}
+              viewBox={`0 0 ${svgSize} ${svgSize}`}
+              style={styles.svg}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Circle
+                cx={center}
+                cy={center}
+                r={radius}
+                fill="none"
+                stroke={colors.track}
+                strokeWidth={strokeWidth}
+              />
+              <Circle
+                cx={center}
+                cy={center}
+                r={radius}
+                fill="none"
+                stroke={colors.progress}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={dashOffset}
+              />
+            </Svg>
+            {showPercentage ? (
+              <Text style={styles.percentageLabel}>{`${roundedPercentage}%`}</Text>
+            ) : null}
+          </Pressable>
+        </TooltipTrigger>
+      </GestureDetector>
       <TooltipContent side="top" align="center" offset={8}>
         <View style={styles.tooltipContent}>
           <Text style={styles.tooltipTitle}>{t("contextWindow.title")}</Text>

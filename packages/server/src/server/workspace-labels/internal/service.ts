@@ -10,6 +10,8 @@ import {
   type WorkspaceLabelCursor,
 } from "./sequence.js";
 import type { PersistedWorkspaceRecord } from "../../workspace-registry.js";
+import type { ScheduleStore } from "../../schedule/store.js";
+import type { Logger } from "pino";
 
 interface AssignmentCommit {
   definition: WorkspaceLabelDefinition;
@@ -49,10 +51,100 @@ export class WorkspaceLabelService {
   constructor(
     private readonly catalog: WorkspaceLabelCatalogStore,
     private readonly sequence = new WorkspaceLabelSequence(),
+    private readonly schedules?: ScheduleStore,
+    private readonly logger?: Logger,
   ) {}
 
   async initialize(): Promise<void> {
     await this.catalog.initialize();
+  }
+
+  async resolveNames(names: readonly string[]): Promise<string[]> {
+    return this.exclusive(async () => {
+      const catalog = await this.catalog.list();
+      return [
+        ...new Set(
+          names.map((name) => {
+            const label = catalog.find(
+              (entry) => workspaceLabelKey(entry.name) === workspaceLabelKey(name),
+            );
+            if (!label) throw new WorkspaceLabelError("label_not_found", "Label not found");
+            return label.name;
+          }),
+        ),
+      ];
+    });
+  }
+
+  async assignLabels({
+    workspaceId,
+    names = [],
+  }: {
+    workspaceId: string;
+    names?: readonly string[];
+  }): Promise<void> {
+    if (names.length === 0) return;
+    await this.exclusive(() =>
+      this.catalog.commit((catalog, workspaces) => {
+        const workspace = workspaces.get(workspaceId);
+        if (!workspace || workspace.archivedAt)
+          throw new WorkspaceLabelError("workspace_not_found", "Workspace not found");
+        let labels = workspace.labels ?? [];
+        for (const name of names) {
+          const key = workspaceLabelKey(name);
+          const label = catalog.find((entry) => workspaceLabelKey(entry.name) === key);
+          if (label) labels = updateAssignmentLabels(labels, key, label.name, true);
+        }
+        return {
+          labels: [...catalog],
+          workspaceUpdates:
+            labels.length && labels !== workspace.labels
+              ? [{ ...workspace, labels, updatedAt: new Date().toISOString() }]
+              : [],
+          result: undefined,
+        };
+      }),
+    );
+  }
+
+  private async rewriteSchedules(oldName: string, newName?: string): Promise<void> {
+    const store = this.schedules;
+    if (!store) return;
+    const key = workspaceLabelKey(oldName);
+    try {
+      const schedules = await store.list();
+      for (const schedule of schedules) {
+        if (
+          schedule.target.type !== "new-agent" ||
+          !schedule.target.config.workspaceLabels?.some((name) => workspaceLabelKey(name) === key)
+        )
+          continue;
+        try {
+          await store.update(schedule.id, (current) => {
+            if (current.target.type !== "new-agent") return current;
+            const config = { ...current.target.config };
+            const names = (config.workspaceLabels ?? []).flatMap((name) => {
+              if (workspaceLabelKey(name) !== key) return [name];
+              return newName ? [newName] : [];
+            });
+            if (names.length) config.workspaceLabels = [...new Set(names)];
+            else delete config.workspaceLabels;
+            return {
+              ...current,
+              target: { ...current.target, config },
+              updatedAt: new Date().toISOString(),
+            };
+          });
+        } catch (err) {
+          this.logger?.warn(
+            { err, scheduleId: schedule.id },
+            "Failed to rewrite schedule workspace labels",
+          );
+        }
+      }
+    } catch (err) {
+      this.logger?.warn({ err }, "Failed to list schedules for label rewrite");
+    }
   }
 
   async subscribe(input: {
@@ -182,6 +274,8 @@ export class WorkspaceLabelService {
         };
       });
       if (committed.changed) {
+        if (committed.previousName)
+          await this.rewriteSchedules(committed.previousName, committed.label.name);
         this.sequence.publish({
           kind: "upsert",
           label: committed.label,
@@ -218,6 +312,7 @@ export class WorkspaceLabelService {
         };
       });
       if (committed.deletedName) {
+        await this.rewriteSchedules(committed.deletedName);
         this.sequence.publish({ kind: "remove", name: committed.deletedName });
       }
       return { affectedWorkspaceCount: committed.affectedWorkspaceCount };

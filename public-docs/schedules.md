@@ -21,6 +21,8 @@ Cron is the canonical cadence. The CLI accepts simple presets such as `5m` or `1
 
 Both run on a cadence you set. To start an agent from an external event instead — a comment, a mention — see [Hub](/docs/hub).
 
+Choose existing labels in the schedule form to label each new workspace before its agent starts. Changing the selection affects future runs. Labels belong to the selected host; update the host if the Labels field is unavailable.
+
 ## What it's for
 
 - **Fresh recurring jobs:** start a clean agent for daily triage, reports, or maintenance.
