@@ -10,24 +10,31 @@ you the build I actually use, and upstream's workflows only fire on a branch
 literally called `main` (`ci.yml` is `push: branches: [main]`), so mirroring
 upstream into it burned a full CI run on every sync. `fork-base` moves
 those workflows into `.github/workflows/disabled/`, which GitHub does not read,
-and `main` carries that move. Upstream's `main` is `upstream/main`; there is no
-fork-side copy of it and nothing needs one.
+and `main` carries that move. `fork-upstream` mirrors `upstream/main` and
+provides the base for new patch branches.
 
 ## Branches
 
 | Branch               | Base            | Purpose                                                                                                                                                                         |
 | -------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fork-upstream`      | mirror          | Exact copy of `upstream/main` from the last successful update or branch rebase; the base for new work.                                                                          |
 | `fork-base`          | `upstream/main` | Everything fork-only: this directory, and the repo changes the fork needs — own update feed and app identifiers, upstream workflows disabled, the `🍱` scripts in `paseo.json`. |
-| PR branches          | `upstream/main` | One per change, sent upstream as a pull request.                                                                                                                                |
+| PR branches          | `fork-upstream` | One per change, sent upstream as a pull request.                                                                                                                                |
 | External PR branches | author's fork   | Listed as `owner:branch`; fetched from the author, never rebased or pushed by us.                                                                                               |
 | `fork-integration`   | kept            | `upstream/main` + `fork-base` + the PR branches, as merges. Advanced by `fork/integrate.sh`; rebuilt only on request.                                                           |
 | `main`               | derived         | `fork-integration`'s tree as one commit on top of the newest upstream commit it contains. Force-pushed on every run.                                                            |
 
-Everything except the last two is based on `upstream/main`, including
-`fork-base`. Start a change with `fork/new-branch.sh <name>` rather than
+Start a change with `fork/new-branch.sh <name>` rather than
 `git switch -c`: `main` is the branch your fingers reach for, and a branch cut
 from it carries the whole patch stack. `fork/integrate.sh` refuses such a
 branch — it spots `fork/branches` in it — but only once the mistake is made.
+
+`fork-upstream` moves only when `rebase` or `rebase-branches` succeeds, and
+`--push` publishes it with the other fork branches. `--no-fetch` uses the
+cached `upstream/main`. Creating a branch, adding one to the integration,
+and rebuilding the integration leave it at the saved commit. Do not commit
+to `fork-upstream`: updates replace it with upstream, including upstream
+history rewrites.
 
 ## The quick route
 
@@ -70,12 +77,12 @@ fork/integrate.sh rebase --agent --push
    inside the commit it identifies. A run that merged nothing bumps nothing.
 5. Derive `main`: `fork-integration`'s tree as one commit on the newest
    upstream commit it contains, with a message naming the integration commit
-   and every branch tip that went in. Push `fork-base`, `fork-integration`
-   and `main` together.
+   and every branch tip that went in. Refresh `fork-upstream` to the fetched
+   `upstream/main` and push all four fork branches together.
 
 Run it from any worktree. The merges happen in a scratch worktree under
 `~/.paseo-fork/integrate`, so a run that stops on a conflict leaves your
-checkout alone. A checkout sitting on `main`, `fork-base` or
+checkout alone. A checkout sitting on `main`, `fork-base`, `fork-upstream` or
 `fork-integration` is hard-reset to the result when the run succeeds, and
 one with uncommitted changes to tracked files stops the run before any work
 is done — stash or discard them first; do not commit them on `main`, the
@@ -128,9 +135,10 @@ a branch and merges it in, without touching anything else. See
 
 ### Adding a change
 
-Every change to Paseo itself is its own branch off `upstream/main`, never a
+Every change to Paseo itself is its own branch off `fork-upstream`, never a
 commit on `main`. That is what keeps it sendable upstream and what lets it be
-merged on its own.
+merged on its own. `new-branch.sh` uses the saved local base without fetching
+or moving it. If `fork-upstream` is missing, run the update command first.
 
 ```bash
 fork/new-branch.sh my-change
@@ -209,7 +217,8 @@ back in the same shape.
 `fork/integrate.test.sh` runs every command against scratch repositories
 under a temp directory: rebuild, the routine rebase, branch drift, add,
 conflicts and re-runs, rebase-branches, author-owned PR updates and force-pushes,
-seeding a fresh clone, diverged branches, dirty checkouts. Nothing touches this repository or
+seeding a fresh clone, diverged branches, dirty checkouts, and the saved base
+used by `fork/new-branch.sh`. Nothing touches this repository or
 `~/.paseo-fork`. Run it after changing `fork/integrate.sh`.
 
 ## Versions
@@ -545,7 +554,7 @@ typecheck on every commit, which needs `node_modules` and built declarations
 in the checkout and takes about twenty seconds. `fork-base` sets the
 pre-commit hook to `skip: true`, so commits on `fork-base` and on anything
 derived from `main` pass straight through. A patch branch is cut from
-`upstream/main`, does not have that change, and keeps the hooks: it is a PR,
+`fork-upstream`, does not have that change, and keeps the hooks: it is a PR,
 and gets the checks upstream expects. `LEFTHOOK=0` in the environment turns
 the hook off anywhere; the installed hook script checks it before it looks
 for node.
