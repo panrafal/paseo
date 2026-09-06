@@ -6,7 +6,8 @@ UPSTREAM_REMOTE="${FORK_UPSTREAM_REMOTE:-upstream}"
 UPSTREAM_BRANCH="${FORK_UPSTREAM_BRANCH:-main}"
 FORK_REMOTE="${FORK_REMOTE:-origin}"
 
-# The three fork branches. fork-base holds this directory and the fork's own
+# The four fork branches. fork-upstream mirrors upstream for new patch work.
+# fork-base holds this directory and the fork's own
 # identity. fork-integration is upstream plus fork-base plus every patch
 # branch, kept between runs and advanced by fork/integrate.sh. main is
 # derived from it on every run: the same tree as one commit on top of
@@ -14,6 +15,7 @@ FORK_REMOTE="${FORK_REMOTE:-origin}"
 # build, and upstream's workflows only fire on a branch literally called
 # `main`, so `main` has to be the branch that carries fork-base's disabled/
 # workflow move.
+UPSTREAM_REF="${FORK_UPSTREAM_REF:-fork-upstream}"
 TOOLING_REF="${FORK_TOOLING_REF:-fork-base}"
 INTEGRATION_REF="${FORK_INTEGRATION_REF:-fork-integration}"
 TARGET="${FORK_TARGET_BRANCH:-main}"
