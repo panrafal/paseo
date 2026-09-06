@@ -2,6 +2,7 @@
 #
 # fork/integrate.sh — maintain the integration branch.
 #
+#   fork-upstream    = upstream/main, the base for new patch branches
 #   fork-integration = upstream/main + fork-base + every ref in fork/branches
 #   main             = fork-integration's tree, as one commit on top of upstream
 #
@@ -18,7 +19,7 @@
 #                                       upstream/main, then rebuild
 #
 # Flags:
-#   --push       push fork-base, fork-integration and main (and rebased branches)
+#   --push       publish results, including fork-upstream on update/rebase
 #   --agent      hand conflicts to a Paseo agent
 #   --no-fetch   use the refs already fetched
 #
@@ -44,7 +45,7 @@ for arg in "$@"; do
     --agent) use_agent=1 ;;
     --no-fetch) fetch=0 ;;
     -h | --help)
-      sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*) die "unknown flag: $arg" ;;
@@ -56,6 +57,10 @@ for arg in "$@"; do
 done
 [ -n "$cmd" ] || die "pick one of: rebase, add <branch>, rebuild, rebase-branches (see --help)"
 [ "$cmd" != add ] || [ -n "$branch_arg" ] || die "usage: fork/integrate.sh add <branch>"
+refresh_upstream=0
+case "$cmd" in
+  rebase | rebase-branches) refresh_upstream=1 ;;
+esac
 
 require_repo
 
@@ -664,14 +669,17 @@ stray_main_commits() {
 }
 
 push_all() {
+  local refs=("$TOOLING_REF:$TOOLING_REF" "$INTEGRATION_REF:$INTEGRATION_REF" "$TARGET:$TARGET")
+  if [ "$refresh_upstream" -eq 1 ]; then
+    refs=("$UPSTREAM_REF:$UPSTREAM_REF" "${refs[@]}")
+  fi
   if [ "$push" -eq 1 ]; then
-    say "Pushing $TOOLING_REF, $INTEGRATION_REF and $TARGET to $FORK_REMOTE"
-    git push --atomic --force-with-lease "$FORK_REMOTE" \
-      "$TOOLING_REF:$TOOLING_REF" "$INTEGRATION_REF:$INTEGRATION_REF" "$TARGET:$TARGET"
+    say "Pushing ${refs[*]} to $FORK_REMOTE"
+    git push --atomic --force-with-lease "$FORK_REMOTE" "${refs[@]}"
   else
     echo
     echo "Not pushed. To publish:"
-    echo "    git push --atomic --force-with-lease $FORK_REMOTE $TOOLING_REF $INTEGRATION_REF $TARGET"
+    echo "    git push --atomic --force-with-lease $FORK_REMOTE ${refs[*]}"
     echo "  or re-run with --push."
   fi
 }
@@ -688,6 +696,9 @@ finish() {
   [ "$counted" = "$carried" ] ||
     die "fork/build-number in the result counts $counted but package.json says $carried"
 
+  if [ "$refresh_upstream" -eq 1 ]; then
+    move_branch "$UPSTREAM_REF" "$(git rev-parse "$BASE")"
+  fi
   move_branch "$INTEGRATION_REF" "$tip"
   stray="$(stray_main_commits)"
   [ "$stray" -eq 0 ] ||
@@ -1045,6 +1056,7 @@ fi
 
 BASE="$UPSTREAM_REMOTE/$UPSTREAM_BRANCH"
 git rev-parse --verify -q "$BASE^{commit}" >/dev/null || die "cannot resolve $BASE"
+[ "$refresh_upstream" -eq 0 ] || assert_movable "$UPSTREAM_REF"
 git rev-parse --verify -q "$TOOLING_REF^{commit}" >/dev/null ||
   die "base branch '$TOOLING_REF' not found — it holds fork/branches and these scripts"
 adopt_remote "$TOOLING_REF"
