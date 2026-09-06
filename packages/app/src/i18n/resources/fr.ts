@@ -217,6 +217,15 @@ export const fr: TranslationResources = {
       implement: "Mettre en œuvre",
       question: "Comment souhaitez-vous procéder?",
       proposedPlan: "Plan proposé",
+      planApproved: "Approuvé",
+      planRejected: "Rejeté",
+      planDismissed: "Ignoré",
+    },
+    questions: {
+      answerPlaceholder: "Saisissez votre réponse...",
+      submit: "Envoyer la réponse",
+      answered: "Répondu",
+      sendFailed: "Impossible d'envoyer votre réponse",
     },
   },
   agentPanel: {
@@ -655,6 +664,8 @@ export const fr: TranslationResources = {
         reloadedAgent: "Agent rechargé",
         failedToReloadAgent: "Échec du rechargement de l'agent",
         failedToCloseAgent: "Échec de la fermeture de l'agent",
+        failedToSaveClosePreference:
+          "Impossible d'enregistrer votre préférence de fermeture du terminal",
       },
       confirmations: {
         unsavedTitle: "Modifications non enregistrées",
@@ -670,6 +681,8 @@ export const fr: TranslationResources = {
         closeTerminalTitle: "Fermer le terminal?",
         closeTerminalMessage:
           "Tout processus en cours d’exécution dans ce terminal sera immédiatement arrêté.",
+        rememberChoice: "Mémoriser ce choix",
+        closeAndDontAskAgain: "Fermer et ne plus demander",
         archiveRunningAgentTitle: "Archiver l'agent en cours d'exécution?",
         archiveRunningAgentMessage:
           "Cet agent est toujours en cours d'exécution. L'archiver arrêtera l'agent et fermera l'onglet.",
@@ -963,6 +976,7 @@ export const fr: TranslationResources = {
         openIn: "Espace de travail ouvert dans{{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "Échec de l'ouverture de l'espace de travail",
+        failedOpenFile: "Impossible d'ouvrir le fichier",
       },
       pr: {
         actions: {
@@ -1034,6 +1048,8 @@ export const fr: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection:
+      "Certaines étiquettes sélectionnées n’existent plus. Retirez-les pour continuer.",
     title: "Étiquettes",
     unlabelled: "Sans étiquette",
     create: "Créer une étiquette",
@@ -1084,6 +1100,8 @@ export const fr: TranslationResources = {
       heading: "Affichage",
       grouping: {
         label: "Regroupement",
+        currentLabel: "Regroupement actuel : {{current}}",
+        toggleLabel: "Regroupement actuel : {{current}}. Changer de regroupement",
         project: "Projet",
         status: "Statut",
         labels: "Libellés",
@@ -1466,6 +1484,11 @@ export const fr: TranslationResources = {
     errorTitle: "Quelque chose s'est mal passé",
     errorDescription:
       "Le serveur local n'a pas pu démarrer. Si cela continue, veuillez signaler le problème surGitHubet inclure les journaux ci-dessous.",
+    status: {
+      connecting: "Connexion au démon Paseo…",
+      loadingWorkspaces: "Chargement de vos espaces de travail…",
+      opening: "Ouverture de ce dossier dans Paseo…",
+    },
     logs: {
       loading: "Chargement des journaux du démon...",
       unavailable: "Aucun journal de démon disponible.",
@@ -1816,6 +1839,16 @@ export const fr: TranslationResources = {
     archiveFinishedAction: "Archiver les sous-agents terminés",
     archiveFinishedRetry: "Réessayer ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "Rechercher",
+    matchPosition: "{{current}} sur {{count}}",
+    matchPositionCapped: "{{current}} sur plus de {{count}}",
+    noResults: "Aucun résultat",
+    cappedCount: "Plus de {{count}} occurrences",
+    previous: "Occurrence précédente",
+    next: "Occurrence suivante",
+    close: "Fermer la recherche",
+  },
   panels: {
     draft: {
       newAgent: "Nouvel agent",
@@ -1826,6 +1859,8 @@ export const fr: TranslationResources = {
       loading: "Chargement du fichier...",
       noPreview: "Aucun aperçu disponible",
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
+      videoPlaybackFailed:
+        "Impossible de lire cette vidéo. Le fichier est peut-être endommagé ou son format n’est pas pris en charge sur cet appareil.",
       tooLargeToDisplay: "Ce fichier est trop volumineux pour être affiché",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
@@ -2062,6 +2097,10 @@ export const fr: TranslationResources = {
         description: "Lignes conservées dans le tampon du terminal intégré",
         accessibilityLabel: "Lignes de défilementTerminal",
       },
+      confirmTerminalClose: {
+        label: "Confirmer la fermeture des terminaux",
+        description: "Demander avant de fermer un onglet de terminal",
+      },
       autoExpandReasoning: {
         label: "Toujours afficher le raisonnement",
         description: "Afficher le raisonnement de l'agent entièrement développé par défaut",
@@ -2242,6 +2281,7 @@ export const fr: TranslationResources = {
         jumpToTab: "Aller à l'onglet",
         previousWorkspace: "Espace de travail précédent",
         nextWorkspace: "Espace de travail suivant",
+        cycleSidebarGrouping: "Changer le regroupement",
         previousTab: "Onglet précédent",
         nextTab: "Onglet suivant",
         splitPaneRight: "Volet divisé à droite",
@@ -2257,6 +2297,11 @@ export const fr: TranslationResources = {
         closePane: "Fermer le volet",
         newTerminal: "Nouvelle borne",
         searchFiles: "Rechercher des fichiers",
+        findInPane: "Rechercher dans le volet",
+        findNext: "Rechercher suivant",
+        findPrevious: "Rechercher précédent",
+        historyBack: "Reculer dans l’historique",
+        historyForward: "Avancer dans l’historique",
         toggleCommandCenter: "Basculer le centre de commande",
         showKeyboardShortcuts: "Afficher les raccourcis clavier",
         toggleLeftSidebar: "Basculer la barre latérale gauche",
@@ -2276,6 +2321,7 @@ export const fr: TranslationResources = {
         switchProject: "Changer de projet",
       },
       helpNotes: {
+        findWhileOpen: "Uniquement lorsque la barre de recherche est ouverte.",
         showKeyboardShortcuts:
           "Disponible lorsque le focus n’est pas dans un champ de texte ou un terminal.",
       },

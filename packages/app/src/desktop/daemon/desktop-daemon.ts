@@ -1,5 +1,6 @@
 import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
+import { isVscodeRuntime } from "@/desktop/vscode/host";
 import type { AgentSkillSelection } from "@getpaseo/protocol/messages";
 
 export type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
@@ -53,10 +54,24 @@ export interface DesktopUpdaterDiagnostics {
   stderr: DesktopUpdaterDiagnosticFile | null;
 }
 
-export interface LocalTransportTarget {
+export interface DesktopPairingOffer {
+  relayEnabled: boolean;
+  url: string | null;
+  qr: string | null;
+}
+
+export interface LocalSocketTransportTarget {
   [key: string]: unknown;
   transportType: "socket" | "pipe";
   transportPath: string;
+  protocols?: string[];
+}
+
+export interface DirectTcpTransportTarget {
+  [key: string]: unknown;
+  transportType: "tcp";
+  endpoint: string;
+  protocols?: string[];
 }
 
 export interface RemoteSshTransportTarget {
@@ -67,7 +82,10 @@ export interface RemoteSshTransportTarget {
   daemonPort?: number;
 }
 
-export type DesktopDaemonTransportTarget = LocalTransportTarget | RemoteSshTransportTarget;
+export type DesktopDaemonTransportTarget =
+  | LocalSocketTransportTarget
+  | DirectTcpTransportTarget
+  | RemoteSshTransportTarget;
 
 export interface OpenLocalTransportSessionInput {
   [key: string]: unknown;
@@ -174,6 +192,10 @@ function parseDesktopUpdaterDiagnostics(raw: unknown): DesktopUpdaterDiagnostics
 
 export function shouldUseDesktopDaemon(): boolean {
   return isElectronRuntime();
+}
+
+export function shouldUseVscodeDaemon(): boolean {
+  return isVscodeRuntime();
 }
 
 export async function getDesktopDaemonStatus(): Promise<DesktopDaemonStatus> {
