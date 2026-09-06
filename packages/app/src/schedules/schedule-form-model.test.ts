@@ -456,6 +456,58 @@ describe("schedule form model", () => {
     });
   });
 
+  it("applies an agent profile's provider, model, mode and thinking without remembering it", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
+    });
+
+    form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
+    form.applyProviderSnapshot("host-a", providerSnapshot(THINKING_MODELS));
+
+    form.applyAgentProfile({
+      provider: "mock",
+      modelId: "model-c",
+      modeId: "load-test",
+      thinkingOptionId: "high",
+      featureValues: {},
+    });
+
+    expect(form.getState()).toMatchObject({
+      selectedProvider: "mock",
+      selectedModel: "model-c",
+      selectedMode: "load-test",
+      selectedThinkingOptionId: "high",
+    });
+    expect(form.getState()).not.toHaveProperty("selectedProfileId");
+
+    // Blank fields fall back to provider defaults; an unknown mode is dropped.
+    form.applyAgentProfile({
+      provider: "mock",
+      modelId: "",
+      modeId: "missing-mode",
+      thinkingOptionId: "",
+      featureValues: {},
+    });
+
+    expect(form.getState()).toMatchObject({
+      selectedProvider: "mock",
+      selectedModel: "model-b",
+      selectedMode: "load-test",
+      selectedThinkingOptionId: "high",
+    });
+
+    // A provider the host does not offer leaves the form untouched.
+    form.applyAgentProfile({
+      provider: "other",
+      modelId: "x",
+      modeId: "",
+      thinkingOptionId: "",
+      featureValues: {},
+    });
+    expect(form.getState().selectedProvider).toBe("mock");
+  });
+
   it("preserves stored worktree isolation until host resolution proves it unavailable", () => {
     const nonGitTarget = target({
       serverId: "host-b",
