@@ -34,6 +34,7 @@ import {
   type SelectFieldRenderOptionInput,
 } from "@/components/ui/select-field";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
+import { useAgentProfilePicker, type AgentProfileApplyTarget } from "@/agent-profiles";
 import {
   mergeProviderPreferences,
   useFormPreferences,
@@ -639,6 +640,21 @@ function ScheduleTargetFields({
     },
     [model],
   );
+  // Every provider the host can run is offered, since the schedule form picks
+  // the provider itself. The picked profile is applied and then forgotten.
+  const profileProviders = useMemo(
+    () => state.modelSelectorProviders.map((entry) => entry.id),
+    [state.modelSelectorProviders],
+  );
+  const profileTarget = useMemo<AgentProfileApplyTarget>(
+    () => ({ kind: "draft", controls: { applyProfile: model.applyAgentProfile } }),
+    [model],
+  );
+  const agentProfiles = useAgentProfilePicker({
+    serverId: state.selectedServerId,
+    availableProviders: profileProviders,
+    target: profileTarget,
+  });
   const handleModelOpen = useCallback(() => {
     providerSnapshot.refetchIfStale(state.selectedProvider);
   }, [providerSnapshot, state.selectedProvider]);
@@ -748,6 +764,8 @@ function ScheduleTargetFields({
             selectedModel={state.selectedModel}
             onSelect={handleSelectModel}
             isLoading={providerSnapshot.isLoading || providerSnapshot.isFetching}
+            profiles={agentProfiles}
+            onApplyProfile={agentProfiles?.applyProfile}
             renderTrigger={renderModelTrigger}
             triggerFill
             serverId={mutationServerId}
