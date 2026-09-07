@@ -201,7 +201,10 @@ make a patch apply nor a patch's feature because its lines no longer fit. The
 default is Codex `gpt-5.6-luna` with `max` thinking, `auto-review`, and Fast
 mode. Override `FORK_AGENT_PROVIDER`, `FORK_AGENT_MODEL`,
 `FORK_AGENT_THINKING`, `FORK_AGENT_MODE`, or `FORK_AGENT_FAST_MODE` before
-running if needed.
+running if needed. Integration uses the checkout's CLI source when its
+dependencies are installed, so a newly added CLI option works before the
+global CLI is redeployed. Set `FORK_AGENT_CLI` to an executable to override
+that choice.
 
 Without `--agent`, or when the agent gives up, the run stops and leaves the
 scratch worktree in place. Resolve there, commit, and re-run the same
