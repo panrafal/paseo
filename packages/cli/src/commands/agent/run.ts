@@ -38,6 +38,12 @@ export function addRunOptions(cmd: Command): Command {
         "Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)",
       )
       .option("--thinking <id>", "Thinking option ID to use for this run")
+      .option(
+        "--feature <key=value>",
+        "Provider feature value (can be used multiple times; booleans and JSON are parsed)",
+        collectMultiple,
+        [],
+      )
       .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
       .option("--new-workspace <local|worktree>", "Create a separate local or worktree workspace")
       .addOption(new Option("--worktree <name>", "Legacy workspace isolation alias").hideHelp())
@@ -114,6 +120,7 @@ export interface AgentRunOptions extends CommandOptions {
   provider?: string;
   model?: string;
   thinking?: string;
+  feature?: string[];
   mode?: string;
   newWorkspace?: string;
   worktree?: string;
@@ -461,6 +468,46 @@ function parseRunEnv(envFlags: string[] | undefined): Record<string, string> {
   });
 }
 
+function parseFeatureValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+export function parseRunFeatures(featureFlags: string[] | undefined): Record<string, unknown> {
+  const features: Record<string, unknown> = {};
+  if (!featureFlags) return features;
+
+  for (const featureFlag of featureFlags) {
+    const eqIndex = featureFlag.indexOf("=");
+    if (eqIndex === -1) {
+      throw {
+        code: "INVALID_FEATURE",
+        message: `Invalid feature format: ${featureFlag}`,
+        details: "Features must be in key=value format",
+      } satisfies CommandError;
+    }
+
+    const key = featureFlag.slice(0, eqIndex).trim();
+    if (!key) {
+      throw {
+        code: "INVALID_FEATURE",
+        message: `Invalid feature format: ${featureFlag}`,
+        details: "Features must include a non-empty key in key=value format",
+      } satisfies CommandError;
+    }
+
+    features[key] = parseFeatureValue(featureFlag.slice(eqIndex + 1));
+  }
+
+  return features;
+}
+
 function parseKeyValueFlags(
   flags: string[] | undefined,
   options: {
@@ -583,6 +630,8 @@ export async function runRunCommand(
 
   const resolvedProviderModel = resolveProviderAndModel(options);
   const resolvedTitle = options.title ?? options.name;
+  const featureValues = parseRunFeatures(options.feature);
+  const requestFeatureValues = Object.keys(featureValues).length > 0 ? featureValues : undefined;
 
   const client = await connectToDaemon({ target: options.daemonTarget });
 
@@ -625,6 +674,7 @@ export async function runRunCommand(
             modeId: options.mode,
             model: resolvedProviderModel.model,
             thinkingOptionId,
+            featureValues: requestFeatureValues,
             initialPrompt: structuredPrompt,
             outputSchema,
             images,
@@ -696,6 +746,7 @@ export async function runRunCommand(
       modeId: options.mode,
       model: resolvedProviderModel.model,
       thinkingOptionId,
+      featureValues: requestFeatureValues,
       initialPrompt: prompt,
       images,
       env: requestEnv,
