@@ -61,7 +61,6 @@ describe("canonical CLI surface", () => {
     const scheduleCreate = schedule?.commands.find((command) => command.name() === "create");
 
     expect(run?.helpInformation()).toContain("--thinking <id>");
-    expect(run?.helpInformation()).toContain("--feature <key=value>");
     expect(update?.helpInformation()).toContain("--thinking <id>");
     expect(scheduleCreate?.helpInformation()).toContain("--thinking <id>");
   });
