@@ -776,7 +776,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   imageFrame: {
     width: "100%",
-    minHeight: 160,
     marginHorizontal: -theme.spacing[1],
   },
   imageSurface: {
@@ -850,6 +849,7 @@ function AssistantMarkdownImage({
   });
   const binding = image.status === "failed" ? null : image.binding;
   const aspectRatio = image.status === "failed" ? null : image.aspectRatio;
+  const naturalWidth = image.status === "failed" ? null : image.naturalWidth;
   const imageUri = binding?.uri ?? "";
   const imageSource = useMemo(() => ({ uri: imageUri }), [imageUri]);
   const frameStyle = useMemo<StyleProp<ViewStyle>>(
@@ -857,11 +857,14 @@ function AssistantMarkdownImage({
     [containerStyle],
   );
   const imageSizeStyle = useMemo<ViewStyle>(() => {
+    // Never upscale: a narrow image stays at its own width instead of stretching
+    // to the full message column.
+    const maxWidth = naturalWidth ?? undefined;
     if (aspectRatio) {
-      return { aspectRatio };
+      return { aspectRatio, maxWidth };
     }
-    return { height: ASSISTANT_IMAGE_MIN_HEIGHT };
-  }, [aspectRatio]);
+    return { height: ASSISTANT_IMAGE_MIN_HEIGHT, maxWidth };
+  }, [aspectRatio, naturalWidth]);
   const surfaceStyle = useMemo<StyleProp<ViewStyle>>(
     () => [assistantMessageStylesheet.imageSurface, imageSizeStyle],
     [imageSizeStyle],
