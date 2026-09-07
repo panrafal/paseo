@@ -197,8 +197,11 @@ anything by hand.
 A merge that conflicts is handed to a Paseo agent with `--agent`, told which
 listed branches touch each conflicted file so it can read a patch's intent
 from the patch's own commits, and told never to drop an upstream change to
-make a patch apply nor a patch's feature because its lines no longer fit. Set
-`FORK_AGENT_PROVIDER` to pick the provider.
+make a patch apply nor a patch's feature because its lines no longer fit. The
+default is Codex `gpt-5.6-luna` with `max` thinking, `auto-review`, and Fast
+mode. Override `FORK_AGENT_PROVIDER`, `FORK_AGENT_MODEL`,
+`FORK_AGENT_THINKING`, `FORK_AGENT_MODE`, or `FORK_AGENT_FAST_MODE` before
+running if needed.
 
 Without `--agent`, or when the agent gives up, the run stops and leaves the
 scratch worktree in place. Resolve there, commit, and re-run the same
