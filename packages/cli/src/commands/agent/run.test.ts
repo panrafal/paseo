@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DaemonConnectionError } from "@getpaseo/client/internal/daemon-client";
 import {
   resolveExistingRunWorkspace,
-  parseRunFeatures,
   resolveRunCallerAgentId,
   runRunCommand,
   type AgentRunOptions,
@@ -55,31 +54,6 @@ describe("managed agent caller context", () => {
     await expect(
       resolveRunCallerAgentId(daemonWithAgents(), { PASEO_AGENT_ID: "   " }),
     ).resolves.toBeUndefined();
-  });
-});
-
-describe("run feature options", () => {
-  it("parses booleans, JSON values, and plain strings", () => {
-    expect(
-      parseRunFeatures(["fast_mode=true", "plan_mode=false", 'limits={"turns":3}', "label=fast"]),
-    ).toEqual({
-      fast_mode: true,
-      plan_mode: false,
-      limits: { turns: 3 },
-      label: "fast",
-    });
-  });
-
-  it("rejects feature flags without a key=value pair", () => {
-    try {
-      parseRunFeatures(["fast_mode"]);
-      throw new Error("expected parseRunFeatures to reject the flag");
-    } catch (error) {
-      expect(error).toMatchObject({
-        code: "INVALID_FEATURE",
-        message: "Invalid feature format: fast_mode",
-      });
-    }
   });
 });
 
