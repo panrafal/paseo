@@ -6,21 +6,16 @@ export declare function useSettings<Schema extends ZodType>(
 ): SettingsState<Schema>;
 
 import type { ComponentType } from "react";
-import type { PluginAttachmentSourceContribution, PluginIconProps } from "./contracts.js";
+import type { PluginIconProps } from "./contracts.js";
 
 export {
+  defineAttachmentSource,
   PluginAttachmentItemSchema,
   PluginAttachmentSearchPayloadSchema,
   type PluginAttachmentItem,
   type PluginAttachmentSearchPayload,
 } from "./attachments.js";
 export { defineRpc, type PluginRpcContract, type RpcInput, type RpcOutput } from "./rpc.js";
-
-export function defineAttachmentSource<Definition extends PluginAttachmentSourceContribution>(
-  definition: Definition,
-): Definition {
-  return definition;
-}
 
 export declare const Icon: ComponentType<PluginIconProps>;
 export type {

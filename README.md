@@ -1,3 +1,13 @@
+> This is a **very custom** fork of paseo.sh, whatever makes sense I'm pushing upstream as PRs
+
+It also carries a VS Code extension package (`packages/vscode`) that embeds the Paseo UI in VS Code and connects to your Paseo daemon. A published build is on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode).
+
+<p align="center">
+  <img src="packages/vscode/media/screenshot.png" alt="Paseo VS Code extension" width="100%">
+</p>
+
+---
+
 <p align="center">
   <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
 </p>

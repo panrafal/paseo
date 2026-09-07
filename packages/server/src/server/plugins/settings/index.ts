@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { defineSettings, type SettingsDefinition } from "@getpaseo/plugin";
-import { settingsRpc } from "@getpaseo/plugin/host";
+// The SDK root and /host re-export React hooks; packaged daemons do not ship React.
+import { defineSettings, settingsRpc, type SettingsDefinition } from "@getpaseo/plugin/server";
 
 const envelopeSchema = z.object({ version: z.number().int().positive(), values: z.json() });
 function message(error: unknown): string {

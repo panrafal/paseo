@@ -77,6 +77,7 @@ import { AddHostModal } from "@/components/add-host-modal";
 import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
+import { nativeHistoryShortcutsAvailable } from "@/native/history-shortcuts";
 import { EditorSection } from "@/screens/settings/editor-section";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -157,7 +158,12 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     desktopOnly: true,
   },
   { id: "editor", labelKey: "settings.sections.editor", icon: Code2, webOnly: true },
-  { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
+  {
+    id: "shortcuts",
+    labelKey: "settings.sections.shortcuts",
+    icon: Keyboard,
+    desktopOnly: !nativeHistoryShortcutsAvailable,
+  },
   {
     id: "integrations",
     labelKey: "settings.sections.integrations",
@@ -285,6 +291,7 @@ interface GeneralSectionProps {
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
+  handleConfirmTerminalCloseChange: (enabled: boolean) => void;
 }
 
 interface ServiceUrlBehaviorMenuItemProps {
@@ -359,6 +366,7 @@ function GeneralSection({
   handleServiceUrlBehaviorChange,
   handleLanguageChange,
   handleTerminalScrollbackLinesChange,
+  handleConfirmTerminalCloseChange,
 }: GeneralSectionProps) {
   const { t, i18n } = useTranslation();
   const activeLocale = getActiveLocale(i18n.language);
@@ -504,6 +512,21 @@ function GeneralSection({
             selectTextOnFocus
             style={styles.terminalScrollbackInput}
             accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.general.confirmTerminalClose.label")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.general.confirmTerminalClose.description")}
+            </Text>
+          </View>
+          <Switch
+            value={settings.confirmTerminalClose}
+            onValueChange={handleConfirmTerminalCloseChange}
+            accessibilityLabel={t("settings.general.confirmTerminalClose.label")}
           />
         </View>
       </View>
@@ -1263,6 +1286,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handleConfirmTerminalCloseChange = useCallback(
+    (confirmTerminalClose: boolean) => {
+      void updateSettings({ confirmTerminalClose });
+    },
+    [updateSettings],
+  );
+
   const handleUseLegacyTerminalRendererChange = useCallback(
     (useLegacyTerminalRenderer: boolean) => {
       void updateSettings({ useLegacyTerminalRenderer });
@@ -1501,6 +1531,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
                   handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
                   handleLanguageChange={handleLanguageChange}
                   handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
+                  handleConfirmTerminalCloseChange={handleConfirmTerminalCloseChange}
                 />
                 {isDesktopApp ? <BrowserDataSection /> : null}
               </>

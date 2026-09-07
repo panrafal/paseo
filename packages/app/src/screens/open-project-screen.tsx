@@ -21,6 +21,7 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
+import { getIsVscode } from "@/constants/platform";
 
 export function OpenProjectScreen() {
   const { t } = useTranslation();
@@ -33,12 +34,13 @@ export function OpenProjectScreen() {
   const [isPairDeviceOpen, setIsPairDeviceOpen] = useState(false);
 
   const isCompactLayout = useIsCompactFormFactor();
+  const isVscodeRuntime = getIsVscode();
 
   useEffect(() => {
-    if (!isCompactLayout) {
+    if (!isCompactLayout && !isVscodeRuntime) {
       openDesktopAgentList();
     }
-  }, [isCompactLayout, openDesktopAgentList]);
+  }, [isCompactLayout, isVscodeRuntime, openDesktopAgentList]);
 
   const handleOpenPicker = useCallback(() => {
     void openProjectPicker();
