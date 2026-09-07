@@ -16,6 +16,88 @@ const HOSTS = [
   { serverId: "host-b", label: "Host B", supportsWorkspaceMultiplicity: true },
 ] as const;
 
+describe("schedule workspace labels", () => {
+  it("only submits dirty labels to a supported host and clears them on host changes", () => {
+    const model = openScheduleForm({
+      mode: "create",
+      hosts: HOSTS,
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS },
+    });
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
+    model.toggleWorkspaceLabel("Review");
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
+    model.applyHosts(HOSTS.map((host) => ({ ...host, supportsScheduleWorkspaceLabels: true })));
+    expect(model.getState().submitWorkspaceLabels).toEqual(["Review"]);
+    model.toggleWorkspaceLabel("review");
+    expect(model.getState().submitWorkspaceLabels).toEqual([]);
+    model.toggleWorkspaceLabel("Review");
+    model.setProject(buildProjectOptionId("host-b", "project-b"), { label: "Project B" });
+    expect(model.getState().workspaceLabels).toEqual([]);
+    model.toggleWorkspaceLabel("Review");
+    model.setHost("host-a");
+    expect(model.getState().workspaceLabels).toEqual([]);
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
+    model.close();
+  });
+
+  it("omits untouched edit labels, blocks stale selections, and follows live rename/remove events", () => {
+    const schedule = scheduleOnHost({
+      serverId: "host-a",
+      serverName: "Host A",
+      cwd: "/repo/a",
+      model: "model-a",
+    });
+    if (schedule.target.type !== "new-agent") throw new Error("Expected new-agent schedule");
+    schedule.target.config.workspaceLabels = ["Review"];
+    const model = openScheduleForm({
+      mode: "edit",
+      schedule,
+      hosts: HOSTS.map((host) => ({ ...host, supportsScheduleWorkspaceLabels: true })),
+      defaults: { projectTargets: PROJECT_TARGETS },
+    });
+    model.applyProviderSnapshot("host-a", providerSnapshot(HOST_A_MODELS));
+    expect(model.getState()).toMatchObject({ workspaceLabels: ["Review"], canSubmit: true });
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
+    model.toggleWorkspaceLabel("Missing");
+    model.applyWorkspaceLabelCatalog("host-a", ["Review"]);
+    expect(model.getState()).toMatchObject({ workspaceLabelsInvalid: true, canSubmit: false });
+    model.toggleWorkspaceLabel("Missing");
+    expect(model.getState()).toMatchObject({ workspaceLabelsInvalid: false, canSubmit: true });
+    model.applyWorkspaceLabelChange("host-b", {
+      kind: "remove",
+      name: "Review",
+      generation: "g",
+      seq: 1,
+    });
+    expect(model.getState().workspaceLabels).toEqual(["Review"]);
+    model.applyWorkspaceLabelChange("host-a", {
+      kind: "upsert",
+      previousName: "Review",
+      label: { name: "Ready", color: "sky" },
+      generation: "g",
+      seq: 2,
+    });
+    model.applyProjectTargets([...PROJECT_TARGETS]);
+    expect(model.getState()).toMatchObject({
+      workspaceLabels: ["Ready"],
+      workspaceLabelsInvalid: false,
+      submitWorkspaceLabels: ["Ready"],
+    });
+    model.applyWorkspaceLabelChange("host-a", {
+      kind: "remove",
+      name: "Ready",
+      generation: "g",
+      seq: 3,
+    });
+    expect(model.getState()).toMatchObject({
+      workspaceLabels: [],
+      workspaceLabelsInvalid: false,
+      submitWorkspaceLabels: [],
+    });
+    model.close();
+  });
+});
+
 const MOCK_MODES: AgentMode[] = [{ id: "load-test", label: "Load test" }];
 
 const HOST_A_MODELS: AgentModelDefinition[] = [
@@ -454,6 +536,58 @@ describe("schedule form model", () => {
         showThinkingField: false,
       },
     });
+  });
+
+  it("applies an agent profile's provider, model, mode and thinking without remembering it", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
+    });
+
+    form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
+    form.applyProviderSnapshot("host-a", providerSnapshot(THINKING_MODELS));
+
+    form.applyAgentProfile({
+      provider: "mock",
+      modelId: "model-c",
+      modeId: "load-test",
+      thinkingOptionId: "high",
+      featureValues: {},
+    });
+
+    expect(form.getState()).toMatchObject({
+      selectedProvider: "mock",
+      selectedModel: "model-c",
+      selectedMode: "load-test",
+      selectedThinkingOptionId: "high",
+    });
+    expect(form.getState()).not.toHaveProperty("selectedProfileId");
+
+    // Blank fields fall back to provider defaults; an unknown mode is dropped.
+    form.applyAgentProfile({
+      provider: "mock",
+      modelId: "",
+      modeId: "missing-mode",
+      thinkingOptionId: "",
+      featureValues: {},
+    });
+
+    expect(form.getState()).toMatchObject({
+      selectedProvider: "mock",
+      selectedModel: "model-b",
+      selectedMode: "load-test",
+      selectedThinkingOptionId: "high",
+    });
+
+    // A provider the host does not offer leaves the form untouched.
+    form.applyAgentProfile({
+      provider: "other",
+      modelId: "x",
+      modeId: "",
+      thinkingOptionId: "",
+      featureValues: {},
+    });
+    expect(form.getState().selectedProvider).toBe("mock");
   });
 
   it("preserves stored worktree isolation until host resolution proves it unavailable", () => {
