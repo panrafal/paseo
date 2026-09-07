@@ -38,6 +38,8 @@ Due to the volume and my limited bandwidth, I may not participate in all the dis
 
 ## Pull requests
 
+For plugin changes, start with the [SDK import boundaries](docs/plugins.md#sdk-import-boundaries).
+
 Anyone can open a pull request, but there are no guarantees of it getting merged, only submit one if you're okay with it being closed.
 
 Open it as a draft if the work isn't ready for review, if you want to run the checks against it, or if you want feedback on the direction before you finish it. Mark it ready when you want it looked at.
@@ -53,7 +55,7 @@ Here is the criteria I use to decide:
 - Explains the problem you're solving
 - QA evidence
 - Automated tests
-- Screenshots or video for UI changes, on every affected platform
+- Screenshots or video for UI changes, on every affected platform or UI host, including VS Code
 - Says which platforms you tested and which you didn't
 - Maintainer edits enabled
 

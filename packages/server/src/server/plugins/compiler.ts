@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { createRequire, isBuiltin } from "node:module";
 import path from "node:path";
-import type { OnResolveResult, Plugin } from "esbuild";
+import { createPluginImportReader } from "./compiler-imports.js";
+import type { ImportKind, Metafile, OnResolveResult, Plugin } from "esbuild";
 import {
-  PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
+  isPluginClientOnlySdkSpecifier,
+  isPluginServerOnlySdkSpecifier,
   PLUGIN_SDK_SPECIFIERS,
 } from "./plugin-sdk-specifiers.js";
 
@@ -120,7 +122,7 @@ function findDependencyRoot(
 
 function moduleBoundaryError(
   moduleLocation: PluginModuleLocation | null,
-  target: PluginBuildTarget,
+  target: PluginBuildTarget | "shared",
   filePath: string,
 ): OnResolveResult | null {
   if (moduleLocation === "invalid") {
@@ -144,7 +146,7 @@ function lexicalBoundaryError(
   specifier: string,
   resolveDirectory: string,
   pluginDirectory: string,
-  target: PluginBuildTarget,
+  target: PluginBuildTarget | "shared",
 ): OnResolveResult | null {
   if (!specifier.startsWith(".") && !path.isAbsolute(specifier)) return null;
   const lexicalPath = path.resolve(resolveDirectory, specifier);
@@ -158,14 +160,106 @@ function createRuntimeBoundaryPlugin(target: PluginBuildTarget, pluginDirectory:
   return {
     name: `paseo-plugin-${target}-runtime-boundary`,
     setup(buildContext) {
+      const checked = new Set<string>();
+      const imports = createPluginImportReader(pluginDirectory);
+      function resolvedBoundaryError(
+        file: string,
+        specifier: string,
+        importer: string,
+        owner: PluginBuildTarget | "shared",
+      ) {
+        const location = directoryTarget(file, pluginDirectory);
+        if (location === "invalid") {
+          if (
+            [...linkedDependencyRoots].some(
+              (root) => containsPath(root, importer) && containsPath(root, file),
+            )
+          )
+            return null;
+          if (!specifier.startsWith(".") && !path.isAbsolute(specifier)) {
+            const root = findDependencyRoot(file, specifier, pluginDirectory);
+            if (root) {
+              linkedDependencyRoots.add(root);
+              return null;
+            }
+          }
+        }
+        return moduleBoundaryError(location, owner, file);
+      }
+      async function resolveImportFiles(
+        file: string,
+        specifier: string,
+        kind: ImportKind,
+        typeOnly: boolean,
+      ): Promise<Set<string>> {
+        const declaration = imports.resolve(specifier, file, kind);
+        const dependencyFiles = new Set<string>();
+        if (declaration && (typeOnly || /\.d\.[cm]?ts$/.test(declaration)))
+          dependencyFiles.add(declaration);
+        if (typeOnly && !declaration) {
+          throw new Error(`Could not resolve type dependency "${specifier}" imported by ${file}`);
+        }
+        if (!typeOnly) {
+          const resolution = await buildContext.resolve(specifier, {
+            importer: file,
+            resolveDir: path.dirname(file),
+            kind,
+          });
+          // A normal TS import may also be erased. Validate its declarations;
+          // esbuild still rejects missing runtime modules when it emits the import.
+          if (resolution.errors.length && dependencyFiles.size === 0)
+            throw new Error(resolution.errors.map((error) => error.text).join("\n"));
+          if (!resolution.errors.length && !resolution.external && resolution.namespace === "file")
+            dependencyFiles.add(resolution.path);
+        }
+        return dependencyFiles;
+      }
+      async function checkSourceImports(
+        file: string,
+        inheritedOwner: PluginBuildTarget | "shared",
+      ): Promise<OnResolveResult | null> {
+        const owner =
+          directoryTarget(file, pluginDirectory) === "shared" ? "shared" : inheritedOwner;
+        const key = `${owner}:${file}`;
+        if (checked.has(key) || !/\.[cm]?[jt]sx?$/.test(file)) return null;
+        checked.add(key);
+        for (const { specifier, kind, typeOnly } of imports.read(file)) {
+          const error =
+            runtimeSpecifierError(specifier, owner, file) ??
+            lexicalBoundaryError(specifier, path.dirname(file), pluginDirectory, owner);
+          if (error) return error;
+          // Host modules have separately enforced SDK boundaries and need no local installation.
+          if (
+            (PLUGIN_SDK_SPECIFIERS as readonly string[]).includes(specifier) ||
+            /^(zod|react|react-native|@tanstack\/react-query)(\/|$)/.test(specifier) ||
+            isBuiltin(specifier)
+          )
+            continue;
+          const dependencyFiles = await resolveImportFiles(file, specifier, kind, typeOnly);
+          for (const dependencyFile of dependencyFiles) {
+            const boundaryError = resolvedBoundaryError(dependencyFile, specifier, file, owner);
+            if (boundaryError) return boundaryError;
+            const dependencyError = await checkSourceImports(dependencyFile, owner);
+            if (dependencyError) return dependencyError;
+          }
+        }
+        return null;
+      }
+      buildContext.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, (args) =>
+        checkSourceImports(args.path, target),
+      );
       buildContext.onResolve({ filter: /.*/ }, async (args) => {
         if (args.kind === "entry-point") return null;
         if (args.pluginData === boundaryResolution) return null;
+        const owner =
+          directoryTarget(args.importer, pluginDirectory) === "shared" ? "shared" : target;
+        const specifierError = runtimeSpecifierError(args.path, owner, args.importer);
+        if (specifierError) return specifierError;
         const lexicalError = lexicalBoundaryError(
           args.path,
           args.resolveDir,
           pluginDirectory,
-          target,
+          owner,
         );
         if (lexicalError) return lexicalError;
         const resolution = await buildContext.resolve(args.path, {
@@ -183,26 +277,7 @@ function createRuntimeBoundaryPlugin(target: PluginBuildTarget, pluginDirectory:
         ) {
           return null;
         }
-        const resolvedPath = resolution.path;
-        const importedTarget = directoryTarget(resolvedPath, pluginDirectory);
-        if (importedTarget === "invalid") {
-          if (
-            [...linkedDependencyRoots].some(
-              (root) => containsPath(root, args.importer) && containsPath(root, resolvedPath),
-            )
-          ) {
-            return null;
-          }
-          if (!args.path.startsWith(".") && !path.isAbsolute(args.path)) {
-            const dependencyRoot = findDependencyRoot(resolvedPath, args.path, pluginDirectory);
-            if (dependencyRoot) {
-              linkedDependencyRoots.add(dependencyRoot);
-              return null;
-            }
-          }
-          return moduleBoundaryError(importedTarget, target, resolvedPath);
-        }
-        return moduleBoundaryError(importedTarget, target, resolvedPath);
+        return resolvedBoundaryError(resolution.path, args.path, args.importer, owner);
       });
     },
   };
@@ -219,50 +294,66 @@ function makeHermesInteropEager(code: string): string {
   return code.replaceAll("get: () => from[key]", "value: from[key]");
 }
 
-function exactSpecifierFilter(specifiers: readonly string[]): RegExp {
-  const alternatives = specifiers.map((specifier) =>
-    specifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-  );
-  return new RegExp(`^(${alternatives.join("|")})$`);
-}
-
-function createUnusedPlatformModulePlugin(): Plugin {
-  const filter = exactSpecifierFilter([
-    "@tanstack/react-query",
-    "react",
-    "react/jsx-runtime",
-    "react-native",
-    ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
-  ]);
-  return {
-    name: "paseo-plugin-server-unused-platform-modules",
-    setup(buildContext) {
-      buildContext.onResolve({ filter }, (args) => ({
-        path: args.path,
-        namespace: "paseo-unused-platform-module",
-        sideEffects: false,
-      }));
-      buildContext.onLoad({ filter: /.*/, namespace: "paseo-unused-platform-module" }, () => ({
-        contents: "module.exports = {};",
-        loader: "js",
-      }));
-    },
-  };
-}
-
-function createClientNodeImportPlugin(): Plugin {
-  return {
-    name: "paseo-plugin-client-node-imports",
-    setup(buildContext) {
-      buildContext.onResolve({ filter: /^node:/ }, (args) => ({
+function runtimeSpecifierError(
+  specifier: string,
+  target: PluginBuildTarget | "shared",
+  importer: string,
+): OnResolveResult | null {
+  let kind: string | null = null;
+  if (specifier === "@getpaseo/plugin/client/host") kind = "host-private";
+  else if (
+    (specifier === "@getpaseo/plugin" ||
+      specifier.startsWith("@getpaseo/plugin/") ||
+      specifier === "@paseo/plugin" ||
+      specifier.startsWith("@paseo/plugin/")) &&
+    !(PLUGIN_SDK_SPECIFIERS as readonly string[]).includes(specifier)
+  )
+    kind = "Unknown SDK";
+  else if (target !== "server" && isBuiltin(specifier)) kind = "Node";
+  else if (target !== "server" && isPluginServerOnlySdkSpecifier(specifier)) kind = "server-only";
+  else if (
+    target !== "client" &&
+    (isPluginClientOnlySdkSpecifier(specifier) ||
+      /^(react(?:-dom|-native)?|use-sync-external-store|@tanstack\/react-query)(\/|$)/.test(
+        specifier,
+      ))
+  )
+    kind = "client-only";
+  return kind
+    ? {
         errors: [
           {
-            text: `Node module cannot be imported into the plugin client bundle: ${args.path} imported by ${args.importer}`,
+            text: `${kind} module cannot be imported into the plugin ${target} bundle: ${specifier} imported by ${importer}`,
           },
         ],
-      }));
-    },
-  };
+      }
+    : null;
+}
+
+function checkSharedDependencies(inputs: Metafile["inputs"], pluginDirectory: string): void {
+  const pending = Object.keys(inputs).filter(
+    (file) => directoryTarget(path.resolve(file), pluginDirectory) === "shared",
+  );
+  const visited = new Set<string>();
+  while (pending.length) {
+    const file = pending.pop()!;
+    if (visited.has(file)) continue;
+    visited.add(file);
+    for (const dependency of inputs[file]?.imports ?? []) {
+      const location = directoryTarget(path.resolve(dependency.path), pluginDirectory);
+      const error =
+        runtimeSpecifierError(dependency.original ?? dependency.path, "shared", file) ??
+        (dependency.external
+          ? null
+          : moduleBoundaryError(
+              location === "invalid" ? null : location,
+              "shared",
+              dependency.path,
+            ));
+      if (error?.errors?.length) throw new Error(error.errors[0].text);
+      if (!dependency.external) pending.push(dependency.path);
+    }
+  }
 }
 
 async function compileTarget(entryPath: string, target: PluginBuildTarget): Promise<string> {
@@ -272,7 +363,7 @@ async function compileTarget(entryPath: string, target: PluginBuildTarget): Prom
     entryPoints: [entryPath],
     bundle: true,
     format: "cjs",
-    jsx: target === "client" ? "automatic" : undefined,
+    jsx: "automatic",
     platform: target === "server" ? "node" : "neutral",
     target: target === "server" ? "node20" : "es2020",
     // Metro lowers async syntax before Hermes sees app code. Plugin client bundles bypass Metro,
@@ -289,16 +380,13 @@ async function compileTarget(entryPath: string, target: PluginBuildTarget): Prom
             "zod",
           ]
         : [...PLUGIN_SDK_SPECIFIERS, "zod"],
-    plugins: [
-      createRuntimeBoundaryPlugin(target, pluginDirectory),
-      ...(target === "client"
-        ? [createClientNodeImportPlugin()]
-        : [createUnusedPlatformModulePlugin()]),
-    ],
+    plugins: [createRuntimeBoundaryPlugin(target, pluginDirectory)],
+    metafile: true,
     logLevel: "silent",
     treeShaking: true,
     write: false,
   });
+  checkSharedDependencies(result.metafile.inputs, pluginDirectory);
   const output = result.outputFiles[0]?.text;
   if (!output) throw new Error(`Plugin ${target} compilation produced no output`);
   return wrapCommonJsBundle(makeHermesInteropEager(output));

@@ -226,6 +226,7 @@ function createLegacyWorkspace(
     normalizeWorkspacePath(checkout.mainRepoRoot ?? checkout.worktreeRoot ?? checkout.cwd) ??
     workspaceDirectory;
   return {
+    activityAt: null,
     id: workspaceDirectory,
     projectId: entry.project.projectKey,
     projectDisplayName: entry.project.projectName,

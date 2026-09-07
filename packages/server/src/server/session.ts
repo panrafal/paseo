@@ -2593,6 +2593,8 @@ export class Session {
     switch (msg.type) {
       case "workspace.label.list.request":
         return this.handleWorkspaceLabelList(msg);
+      case "workspace.label.create.request":
+        return this.handleWorkspaceLabelCreate(msg);
       case "workspace.label.assignment.set.request":
         return this.handleWorkspaceLabelAssignment(msg);
       case "workspace.label.update.request":
@@ -2669,6 +2671,8 @@ export class Session {
         return this.providerCatalogSession.handleRefreshProvidersSnapshotRequest(msg);
       case "provider_diagnostic_request":
         return this.providerCatalogSession.handleProviderDiagnosticRequest(msg);
+      case "provider.codex.consume_banked_reset.request":
+        return this.providerCatalogSession.handleCodexBankedResetConsumeRequest(msg);
       case "provider.usage.list.request":
         return this.providerCatalogSession.handleProviderUsageListRequest(msg);
       default:
@@ -5899,6 +5903,20 @@ export class Session {
       if (this.workspaceLabelSubscription?.owner === owner) {
         this.workspaceLabelSubscription = null;
       }
+      this.emitWorkspaceLabelError(request, error);
+    }
+  }
+
+  private async handleWorkspaceLabelCreate(
+    request: Extract<SessionInboundMessage, { type: "workspace.label.create.request" }>,
+  ): Promise<void> {
+    try {
+      const label = await this.requireWorkspaceLabels().create(request.label);
+      this.emit({
+        type: "workspace.label.create.response",
+        payload: { requestId: request.requestId, label },
+      });
+    } catch (error) {
       this.emitWorkspaceLabelError(request, error);
     }
   }
