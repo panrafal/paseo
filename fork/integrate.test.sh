@@ -719,7 +719,7 @@ all=(rebuild rebase drift add external conflict conflict_add rebase_branches see
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"
-  printf '\033[1m--> %s\033[0m\n' "$name"
+  printf '\n\033[1m🧪 %s\033[0m\n\n' "$name"
   "scenario_$name"
 done
 echo
