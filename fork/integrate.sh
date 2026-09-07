@@ -403,19 +403,45 @@ attribution() {
   done < <(unmerged "$dir")
 }
 
+# Use the checkout CLI first. The installed daemon can be newer than its CLI,
+# and a fork change to the CLI must work before the next daemon deployment.
+run_agent_cli() {
+  local root="$HERE/.." source loader
+  if [ -n "$FORK_AGENT_CLI" ]; then
+    "$FORK_AGENT_CLI" "$@"
+    return
+  fi
+
+  source="$root/packages/cli/src/index.ts"
+  loader="$root/node_modules/tsx/dist/esm/index.mjs"
+  if [ -f "$source" ] && [ -f "$loader" ]; then
+    say "Using checkout CLI for agent options"
+    node --import "$loader" "$source" "$@"
+    return
+  fi
+
+  command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
+  if [ "$FORK_AGENT_FAST_MODE" != "false" ] &&
+    ! command paseo run --help 2>&1 | grep -q -- "--feature <key=value>"; then
+    die "the paseo CLI on PATH does not support --feature; install checkout dependencies or set FORK_AGENT_CLI"
+  fi
+  command paseo "$@"
+}
+
 # Hand a stopped merge or rebase to a Paseo agent. Returns non-zero if the
 # agent did not finish the job.
 resolve_with_agent() {
-  local dir="$1" what="$2" sides="$3"
-  command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
+  local dir="$1" what="$2" sides="$3" feature_args=()
+  [ "$FORK_AGENT_FAST_MODE" = "false" ] ||
+    feature_args=(--feature "fast_mode=$FORK_AGENT_FAST_MODE")
   section "🤖" "Resolve $what"
   say "Handing the conflict to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING, fast=$FORK_AGENT_FAST_MODE)"
-  paseo run \
+  run_agent_cli run \
     --cwd "$dir" \
     --provider "$FORK_AGENT_PROVIDER" \
     --model "$FORK_AGENT_MODEL" \
     --thinking "$FORK_AGENT_THINKING" \
-    --feature "fast_mode=$FORK_AGENT_FAST_MODE" \
+    "${feature_args[@]}" \
     --mode "$FORK_AGENT_MODE" \
     --wait-timeout "$FORK_AGENT_TIMEOUT" \
     --title "fork integrate: resolve $what" \
