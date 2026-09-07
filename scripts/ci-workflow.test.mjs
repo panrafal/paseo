@@ -4,9 +4,12 @@ import { relative as relativePath } from "node:path";
 import test from "node:test";
 
 const repoRoot = new URL("../", import.meta.url);
-const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
-const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
-const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
+// Disabled on this fork: the upstream workflows live under workflows/disabled/
+// so GitHub never scans them. Their contents are unchanged, so these checks
+// still mean what they meant upstream.
+const ciWorkflowPath = new URL(".github/workflows/disabled/ci.yml", repoRoot);
+const dockerWorkflowPath = new URL(".github/workflows/disabled/docker.yml", repoRoot);
+const nixWorkflowPath = new URL(".github/workflows/disabled/nix.yml", repoRoot);
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
@@ -169,7 +172,14 @@ test("PR routing declares stable behavior ownership", () => {
       "packages/app/package.json",
     ],
     app: ["packages/app/**", "packages/expo-two-way-audio/**"],
-    sdk: ["packages/client/**", "packages/highlight/**", "packages/protocol/**"],
+    sdk: [
+      "packages/plugin/**",
+      "plugin-examples/**",
+      "public-docs/plugins/v0.8/**",
+      "packages/client/**",
+      "packages/highlight/**",
+      "packages/protocol/**",
+    ],
     browser: [
       "packages/server/src/server/agent/provider-snapshot-manager.ts",
       "packages/server/src/server/session/provider/provider-catalog-session.ts",
@@ -182,7 +192,7 @@ test("PR routing declares stable behavior ownership", () => {
       "packages/server/src/server/agent/plugin-provider.ts",
       "packages/server/src/server/plugins/{index,plugin-process,plugin-process-protocol,runtime}.ts",
       "packages/server/src/executable-resolution/**",
-      "packages/plugin/src/provider.ts",
+      "packages/plugin/src/server/provider.ts",
       "packages/app/src/!(desktop)/**",
       "packages/app/e2e/browser/**",
       "packages/app/e2e/support/**",
@@ -262,7 +272,7 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
     "packages/server/src/server/agent/plugin-provider.ts",
     "packages/server/src/server/plugins/{index,plugin-process,plugin-process-protocol,runtime}.ts",
     "packages/server/src/executable-resolution/**",
-    "packages/plugin/src/provider.ts",
+    "packages/plugin/src/server/provider.ts",
     "packages/app/src/!(desktop)/**",
     "packages/app/e2e/browser/**",
     "packages/app/e2e/support/**",

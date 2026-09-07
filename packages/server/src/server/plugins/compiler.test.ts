@@ -127,6 +127,229 @@ export default function contribute(server) {
 }
 
 describe("plugin runtime entries", () => {
+  it.each([
+    "react",
+    "react/jsx-runtime",
+    "react-native",
+    "@getpaseo/plugin/client",
+    "@getpaseo/plugin/client/ui",
+  ])("rejects %s from server code", async (specifier) => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      entries.server,
+      `import * as value from "${specifier}"; export default function contribute() { return value; }`,
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow("client-only module");
+  });
+
+  it.each([
+    "@getpaseo/plugin/server",
+    "@getpaseo/plugin/server/provider",
+    "@getpaseo/plugin/server/acp",
+  ])("rejects %s from client code", async (specifier) => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      entries.client,
+      `import * as value from "${specifier}"; export default function contribute() { return value; }`,
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow("server-only module");
+  });
+
+  it.each([
+    "react",
+    "node:fs",
+    "fs",
+    "@getpaseo/plugin/client",
+    "@getpaseo/plugin/server",
+    "../client/surface",
+    "../server/handler",
+  ])("rejects %s from shared code", async (specifier) => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      path.join(entries.directory, "shared/labels.ts"),
+      `import * as value from "${specifier}"; export const clientLabel = value; export const serverLabel = value;`,
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow("plugin shared");
+  });
+
+  it.each([
+    { target: "client", dependency: "react" },
+    { target: "server", dependency: "node:fs" },
+    { target: "server", dependency: "@getpaseo/plugin/server/provider" },
+  ] as const)(
+    "rejects a shared dependency reaching $dependency in the $target bundle",
+    async ({ target, dependency }) => {
+      const entries = await createSplitPlugin();
+      const dependencyDirectory = path.join(entries.directory, "node_modules/impure");
+      await mkdir(dependencyDirectory, { recursive: true });
+      await writeFile(
+        path.join(dependencyDirectory, "package.json"),
+        JSON.stringify({ name: "impure", main: "index.js" }),
+      );
+      await writeFile(path.join(dependencyDirectory, "index.js"), `export * from "${dependency}";`);
+      await writeFile(
+        path.join(entries.directory, "shared/labels.ts"),
+        `import * as value from "impure"; export const clientLabel = value; export const serverLabel = value;`,
+      );
+      await expect(
+        compilePlugin({
+          client: target === "client" ? entries.client : null,
+          server: target === "server" ? entries.server : null,
+        }),
+      ).rejects.toThrow("plugin shared");
+    },
+  );
+
+  it.each([
+    'import type { PluginClientContext } from "@getpaseo/plugin/client"; export type Context = PluginClientContext;',
+    'export type { PluginClientContext } from "@getpaseo/plugin/client";',
+    'export type Context = import("@getpaseo/plugin/client").PluginClientContext;',
+    'import { type PluginClientContext } from "@getpaseo/plugin/client"; export type Context = PluginClientContext;',
+    'import type { ComponentType } from "react"; export type Component = ComponentType;',
+  ])("rejects runtime-owned types in shared code: %s", async (typeSource) => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      path.join(entries.directory, "shared/labels.ts"),
+      typeSource + '\nexport const clientLabel = "client"; export const serverLabel = "server";',
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow("plugin shared");
+  });
+
+  it.each([{ types: "./index.d.ts" }, { exports: { ".": { types: "./index.d.ts" } } }])(
+    "accepts declaration-only dependencies: %j",
+    async (manifest) => {
+      const entries = await createSplitPlugin();
+      const dependency = path.join(entries.directory, "node_modules/neutral-types");
+      await mkdir(dependency, { recursive: true });
+      await writeFile(
+        path.join(dependency, "package.json"),
+        JSON.stringify({ name: "neutral-types", ...manifest }),
+      );
+      await writeFile(
+        path.join(dependency, "index.d.ts"),
+        "export type JsonValue = string | number | boolean | null;",
+      );
+      await writeFile(
+        path.join(entries.directory, "shared/labels.ts"),
+        'import type { JsonValue } from "neutral-types"; export const clientLabel: JsonValue = "client"; export const serverLabel: JsonValue = "server";',
+      );
+      const result = await compilePlugin(entries);
+      expect(result.clientBundle).toContain('"client"');
+      expect(result.serverBundle).toContain('"server"');
+      expect(result.clientBundle).not.toContain("neutral-types");
+    },
+  );
+
+  it("accepts a declaration import used only as a type without import type", async () => {
+    const entries = await createSplitPlugin();
+    const dependency = path.join(entries.directory, "node_modules/neutral-types");
+    await mkdir(dependency, { recursive: true });
+    await writeFile(
+      path.join(dependency, "package.json"),
+      JSON.stringify({ name: "neutral-types", types: "./index.d.ts" }),
+    );
+    await writeFile(path.join(dependency, "index.d.ts"), "export type Value = string;");
+    await writeFile(
+      path.join(entries.directory, "shared/labels.ts"),
+      'import { Value } from "neutral-types"; export const clientLabel: Value = "client"; export const serverLabel: Value = "server";',
+    );
+    await expect(compilePlugin(entries)).resolves.toMatchObject({
+      clientBundle: expect.any(String),
+      serverBundle: expect.any(String),
+    });
+    await writeFile(
+      path.join(entries.directory, "shared/labels.ts"),
+      'import { Value } from "neutral-types"; export const clientLabel = Value; export const serverLabel = Value;',
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow('Could not resolve "neutral-types"');
+  });
+
+  it("resolves type-only path aliases from the plugin tsconfig", async () => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      path.join(entries.directory, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { baseUrl: ".", paths: { "shared-types": ["shared/types.ts"] } },
+      }),
+    );
+    await writeFile(path.join(entries.directory, "shared/types.ts"), "export type Value = string;");
+    await writeFile(
+      path.join(entries.directory, "shared/labels.ts"),
+      'import type { Value } from "shared-types"; export const clientLabel: Value = "client"; export const serverLabel: Value = "server";',
+    );
+    await expect(compilePlugin(entries)).resolves.toMatchObject({
+      clientBundle: expect.any(String),
+      serverBundle: expect.any(String),
+    });
+    await writeFile(
+      path.join(entries.directory, "shared/types.ts"),
+      'export type { PluginClientContext as Value } from "@getpaseo/plugin/client";',
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow("plugin shared");
+  });
+
+  it.each([
+    { specifier: "@getpaseo/plugin/client", importKind: "import type" },
+    { specifier: "@getpaseo/plugin/server", importKind: "import type" },
+    { specifier: "@getpaseo/plugin/client", importKind: "import" },
+    { specifier: "@getpaseo/plugin/server", importKind: "import" },
+  ])(
+    "rejects transitive declaration dependencies on $specifier through $importKind",
+    async ({ specifier, importKind }) => {
+      const entries = await createSplitPlugin();
+      const dependency = path.join(entries.directory, "node_modules/typed-helper");
+      await mkdir(dependency, { recursive: true });
+      await writeFile(
+        path.join(dependency, "package.json"),
+        JSON.stringify({ name: "typed-helper", main: "index.js", types: "index.d.ts" }),
+      );
+      await writeFile(path.join(dependency, "index.js"), "export {};");
+      await writeFile(
+        path.join(dependency, "index.d.ts"),
+        'export type { Context } from "./context";',
+      );
+      const context = specifier.endsWith("client") ? "PluginClientContext" : "PluginServerContext";
+      await writeFile(
+        path.join(dependency, "context.d.ts"),
+        `export type { ${context} as Context } from "${specifier}";`,
+      );
+      await writeFile(
+        path.join(entries.directory, "shared/labels.ts"),
+        `${importKind} { Context } from "typed-helper"; export type Value = Context; export const clientLabel = "client"; export const serverLabel = "server";`,
+      );
+      await expect(compilePlugin(entries)).rejects.toThrow("plugin shared");
+    },
+  );
+
+  it("checks files reached only through type imports", async () => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      path.join(entries.directory, "shared/types.ts"),
+      'export type { PluginClientContext } from "@getpaseo/plugin/client";',
+    );
+    await writeFile(
+      path.join(entries.directory, "shared/labels.ts"),
+      'export type { PluginClientContext } from "./types"; export const clientLabel = "client"; export const serverLabel = "server";',
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow("plugin shared");
+  });
+
+  it.each([
+    "@paseo/plugin",
+    "@getpaseo/plugin/react-native",
+    "@getpaseo/plugin/ui",
+    "@getpaseo/plugin/provider",
+    "@getpaseo/plugin/acp",
+    "@getpaseo/plugin/host",
+  ])("rejects retired entry %s", async (specifier) => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      entries.server,
+      `import * as sdk from "${specifier}"; export default function contribute() { return sdk; }`,
+    );
+    await expect(compilePlugin(entries)).rejects.toThrow(specifier);
+  });
+
   it("builds each runtime from its own entry and shares neutral modules", async () => {
     const entries = await createSplitPlugin();
 
