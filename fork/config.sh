@@ -55,8 +55,13 @@ FORK_GH_OWNER="${FORK_GH_OWNER:-panrafal}"
 # them, deploy.sh installs them in this order.
 FORK_DAEMON_PACKAGES=(highlight relay protocol client plugin server cli)
 
-# Agent used by `--agent` conflict resolution.
-FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-claude}"
+# Agent used by `--agent` conflict resolution. The feature flag is passed by
+# `paseo run --feature`, so the selected Codex session starts in Fast mode.
+FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-codex}"
+FORK_AGENT_MODEL="${FORK_AGENT_MODEL:-gpt-5.6-luna}"
+FORK_AGENT_THINKING="${FORK_AGENT_THINKING:-max}"
+FORK_AGENT_MODE="${FORK_AGENT_MODE:-auto-review}"
+FORK_AGENT_FAST_MODE="${FORK_AGENT_FAST_MODE:-true}"
 FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
 
 # Where this directory is, resolved from config.sh itself so the secret helper
@@ -66,6 +71,7 @@ FORK_ENV_FILE="${FORK_ENV_FILE:-$FORK_DIR/.env.fork}"
 FORK_DOTENVX_VERSION="${FORK_DOTENVX_VERSION:-2}"
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+section() { printf '\n\033[1m%s %s\033[0m\n\n' "$1" "$2"; }
 warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
 die() {
   printf '\033[31merror:\033[0m %s\n' "$*" >&2

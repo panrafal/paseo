@@ -20,7 +20,7 @@
 #
 # Flags:
 #   --push       publish results, including fork-upstream on update/rebase
-#   --agent      hand conflicts to a Paseo agent
+#   --agent      hand conflicts to a Paseo agent (Codex Luna Max + Fast by default)
 #   --no-fetch   use the refs already fetched
 #
 # See fork/README.md. Settings live in fork/config.sh.
@@ -408,11 +408,15 @@ attribution() {
 resolve_with_agent() {
   local dir="$1" what="$2" sides="$3"
   command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
-  say "Handing $what to a Paseo agent ($FORK_AGENT_PROVIDER)"
+  section "🤖" "Resolve $what"
+  say "Handing the conflict to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING, fast=$FORK_AGENT_FAST_MODE)"
   paseo run \
     --cwd "$dir" \
     --provider "$FORK_AGENT_PROVIDER" \
-    --mode auto \
+    --model "$FORK_AGENT_MODEL" \
+    --thinking "$FORK_AGENT_THINKING" \
+    --feature "fast_mode=$FORK_AGENT_FAST_MODE" \
+    --mode "$FORK_AGENT_MODE" \
     --wait-timeout "$FORK_AGENT_TIMEOUT" \
     --title "fork integrate: resolve $what" \
     --label fork-integrate=1 \
@@ -691,6 +695,8 @@ finish() {
   close_worktree
   trap - EXIT
 
+  section "📤" "Publish integration"
+
   counted="$(git show "$tip:fork/build-number" | cut -d' ' -f1)"
   carried="$(version_at "$tip")"
   [ "$counted" = "$carried" ] ||
@@ -799,6 +805,7 @@ report_drift() {
 }
 
 cmd_rebase() {
+  section "🔀" "Rebase integration"
   assert_no_stopped_run
   assert_movable "$TOOLING_REF" "$INTEGRATION_REF" "$TARGET"
   ensure_integration
@@ -855,6 +862,7 @@ resolve_add_ref() {
 }
 
 cmd_add() {
+  section "➕" "Add $branch_arg"
   assert_no_stopped_run
   assert_movable "$TOOLING_REF" "$INTEGRATION_REF" "$TARGET"
   ensure_integration
@@ -896,6 +904,7 @@ patch_files() {
 }
 
 cmd_rebuild() {
+  section "♻️" "Rebuild integration"
   assert_no_stopped_run
   assert_movable "$TOOLING_REF" "$INTEGRATION_REF" "$TARGET"
   validate_refs
@@ -1037,6 +1046,7 @@ rebase_patch_branches() {
 }
 
 cmd_rebase_branches() {
+  section "🌿" "Rebase patch branches"
   assert_no_stopped_run
   local locals=()
   mapfile -t locals < <(local_patch_branches)
@@ -1049,6 +1059,7 @@ cmd_rebase_branches() {
 # ----------------------------------------------------------------- main ----
 
 if [ "$fetch" -eq 1 ]; then
+  section "📡" "Fetch remotes"
   say "Fetching $UPSTREAM_REMOTE and $FORK_REMOTE"
   git fetch --prune "$UPSTREAM_REMOTE" "$UPSTREAM_BRANCH"
   git fetch --prune "$FORK_REMOTE"
@@ -1074,6 +1085,7 @@ if [ "$cmd" = add ]; then
   add_ref="$(branch_ref "$branch_arg")"
   is_listed "$add_ref" || fetch_external_ref "$add_ref"
 fi
+section "🧭" "Run $cmd"
 say "Base: $BASE ($(git log -1 --format='%h %s' "$BASE"))"
 
 case "$cmd" in
