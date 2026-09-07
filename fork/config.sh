@@ -55,15 +55,11 @@ FORK_GH_OWNER="${FORK_GH_OWNER:-panrafal}"
 # them, deploy.sh installs them in this order.
 FORK_DAEMON_PACKAGES=(highlight relay protocol client plugin server cli)
 
-# Agent used by `--agent` conflict resolution. The integration script prefers
-# the checkout CLI so it can use features added before the next global install.
+# Agent used by `--agent` conflict resolution.
 FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-codex}"
 FORK_AGENT_MODEL="${FORK_AGENT_MODEL:-gpt-5.6-luna}"
 FORK_AGENT_THINKING="${FORK_AGENT_THINKING:-max}"
 FORK_AGENT_MODE="${FORK_AGENT_MODE:-auto-review}"
-FORK_AGENT_FAST_MODE="${FORK_AGENT_FAST_MODE:-true}"
-# Optional executable override for environments without checkout dependencies.
-FORK_AGENT_CLI="${FORK_AGENT_CLI:-}"
 FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
 
 # Where this directory is, resolved from config.sh itself so the secret helper
