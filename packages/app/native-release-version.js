@@ -1,5 +1,5 @@
 const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
-// A fork stamps its own prerelease shape, e.g. 0.7.2-panrafal.7. Upstream's
+// A fork stamps X.Y.Z-panrafal.N, dropping upstream's -beta.N. Upstream's
 // pattern knows only stable and -beta.N, and every Expo config read goes
 // through this file, so an unrecognised version breaks even
 // `expo export --platform web` — which the daemon's bundled web UI build runs.
