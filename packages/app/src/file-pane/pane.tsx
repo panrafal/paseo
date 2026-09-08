@@ -40,8 +40,11 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import type { Theme } from "@/styles/theme";
 import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import type { ViewportFitOptions } from "@/components/zoomable-viewport/geometry";
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+// Show image files at their own size; only oversized images shrink to fit.
+const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -208,7 +211,9 @@ function FilePreviewBody({
       );
     }
 
-    return <ZoomableImage uri={imagePreviewUri} testID="image-file-preview" />;
+    return (
+      <ZoomableImage uri={imagePreviewUri} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />
+    );
   }
 
   return (
