@@ -39,6 +39,7 @@ function shortcutContext(
     isDesktop: false,
     focusScope: "other",
     commandCenterOpen: false,
+    findOpen: false,
     ...overrides,
   };
 }
@@ -148,6 +149,30 @@ describe("keyboard-shortcuts", () => {
       event: { key: "n", code: "KeyN", ctrlKey: true },
       context: { isMac: false, commandCenterOpen: false, focusScope: "other" },
       action: "workspace.new",
+    },
+    {
+      name: "matches Cmd+; to cycle sidebar grouping on mac",
+      event: { key: ";", code: "Semicolon", metaKey: true },
+      context: { isMac: true, commandCenterOpen: false },
+      action: "sidebar.grouping.cycle",
+    },
+    {
+      name: "matches Ctrl+; to cycle sidebar grouping on non-mac",
+      event: { key: ";", code: "Semicolon", ctrlKey: true },
+      context: { isMac: false, commandCenterOpen: false, focusScope: "other" },
+      action: "sidebar.grouping.cycle",
+    },
+    {
+      name: "matches Cmd+; when the keyboard layout requires Shift for semicolon",
+      event: { key: ";", code: "Comma", metaKey: true, shiftKey: true },
+      context: { isMac: true, commandCenterOpen: false },
+      action: "sidebar.grouping.cycle",
+    },
+    {
+      name: "matches Ctrl+; when the keyboard layout requires Shift for semicolon",
+      event: { key: ";", code: "Comma", ctrlKey: true, shiftKey: true },
+      context: { isMac: false, commandCenterOpen: false, focusScope: "other" },
+      action: "sidebar.grouping.cycle",
     },
     {
       name: "matches Cmd+P to search workspace files on mac",
@@ -447,6 +472,21 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true, commandCenterOpen: true },
     },
     {
+      name: "leaves Cmd+; available while editing text on mac",
+      event: { key: ";", code: "Semicolon", metaKey: true },
+      context: { isMac: true, focusScope: "editable" },
+    },
+    {
+      name: "leaves Cmd+; available while a terminal is focused on mac",
+      event: { key: ";", code: "Semicolon", metaKey: true },
+      context: { isMac: true, focusScope: "terminal" },
+    },
+    {
+      name: "leaves Ctrl+; available while editing text on non-mac",
+      event: { key: ";", code: "Semicolon", ctrlKey: true },
+      context: { isMac: false, focusScope: "editable" },
+    },
+    {
       name: "does not close tab with Ctrl+W on mac desktop (Cmd+W only)",
       event: { key: "w", code: "KeyW", ctrlKey: true },
       context: { isMac: true, isDesktop: true },
@@ -651,6 +691,7 @@ describe("keyboard-shortcut help sections", () => {
       expectedKeys: {
         "new-agent": ["mod", "O"],
         "new-workspace": ["mod", "N"],
+        "cycle-sidebar-grouping": ["mod", ";"],
         "workspace-tab-new": ["mod", "T"],
         "workspace-jump-index": ["mod", "1-9"],
         "workspace-tab-jump-index": ["mod", "alt", "1-9"],
@@ -667,6 +708,7 @@ describe("keyboard-shortcut help sections", () => {
       name: "uses non-mac desktop defaults for tab jump and close tab",
       context: { isMac: false, isDesktop: true },
       expectedKeys: {
+        "cycle-sidebar-grouping": ["ctrl", ";"],
         "workspace-tab-jump-index": ["alt", "1-9"],
         "workspace-tab-close-current": ["ctrl", "W"],
       },
@@ -792,6 +834,7 @@ describe("keyboard-shortcut help sections", () => {
     const workspaces = sections.find((section) => section.id === "workspaces");
     const layout = sections.find((section) => section.id === "layout");
     const openProject = findRow(sections, "new-agent");
+    const cycleSidebarGrouping = findRow(sections, "cycle-sidebar-grouping");
     const cycleAgentMode = findRow(sections, "cycle-agent-mode");
     const showShortcuts = findRow(sections, "show-shortcuts");
 
@@ -799,6 +842,8 @@ describe("keyboard-shortcut help sections", () => {
     expect(layout?.titleKey).toBe("settings.shortcuts.sections.layout");
     expect(openProject?.labelKey).toBe("settings.shortcuts.help.openProject");
     expect(openProject?.label).toBe("Open project");
+    expect(workspaces?.rows.map((row) => row.id)).toContain("cycle-sidebar-grouping");
+    expect(cycleSidebarGrouping?.labelKey).toBe("settings.shortcuts.help.cycleSidebarGrouping");
     expect(cycleAgentMode?.labelKey).toBe("settings.shortcuts.help.cycleAgentMode");
     expect(showShortcuts?.noteKey).toBe("settings.shortcuts.helpNotes.showKeyboardShortcuts");
   });
@@ -844,6 +889,62 @@ describe("keyboard-shortcut help sections", () => {
       findRow(buildKeyboardShortcutHelpSections({ isMac: true, isDesktop: true }), "search-files")
         ?.chord,
     ).not.toBeNull();
+  });
+
+  it("lists configurable route history actions without conflicting defaults", () => {
+    const platform = { isMac: true, isDesktop: true };
+    const sections = buildKeyboardShortcutHelpSections(platform);
+
+    expect(findRow(sections, "history-back")).toMatchObject({
+      label: "History back",
+      labelKey: "settings.shortcuts.help.historyBack",
+      chord: null,
+    });
+    expect(findRow(sections, "history-forward")).toMatchObject({
+      label: "History forward",
+      labelKey: "settings.shortcuts.help.historyForward",
+      chord: null,
+    });
+    expect(getBindingIdForAction("history-back", platform)).toBe("navigation-history-back");
+    expect(getBindingIdForAction("history-forward", platform)).toBe("navigation-history-forward");
+  });
+
+  it("resolves user bindings for route history actions", () => {
+    const bindings = buildEffectiveBindings({
+      "navigation-history-back": "Ctrl+Alt+ArrowLeft",
+      "navigation-history-forward": "Ctrl+Alt+ArrowRight",
+    });
+
+    expect(
+      resolveShortcut({
+        event: { key: "ArrowLeft", code: "ArrowLeft", ctrlKey: true, altKey: true },
+        bindings,
+      }).match?.action,
+    ).toBe("navigation.history.back");
+    expect(
+      resolveShortcut({
+        event: { key: "ArrowRight", code: "ArrowRight", ctrlKey: true, altKey: true },
+        bindings,
+      }).match?.action,
+    ).toBe("navigation.history.forward");
+  });
+
+  it.each([
+    ["ArrowLeft", "navigation.history.back"],
+    ["ArrowRight", "navigation.history.forward"],
+  ] as const)("resolves %s route history bindings while the terminal is focused", (key, action) => {
+    const bindings = buildEffectiveBindings({
+      "navigation-history-back": "Ctrl+Alt+ArrowLeft",
+      "navigation-history-forward": "Ctrl+Alt+ArrowRight",
+    });
+
+    expect(
+      resolveShortcut({
+        event: { key, code: key, ctrlKey: true, altKey: true },
+        context: { focusScope: "terminal" },
+        bindings,
+      }).match?.action,
+    ).toBe(action);
   });
 
   it("does not expose Enter send behavior as rebindable shortcut rows", () => {
@@ -1194,5 +1295,109 @@ describe("direct new-tab target shortcuts", () => {
     expect(
       resolveShortcutKeysForAction("workspace-tab-target-agent", overrides, desktopNonMac),
     ).toEqual([["ctrl", "shift", "H"]]);
+  });
+});
+
+describe("find in pane", () => {
+  const macDesktop = { isMac: true, isDesktop: true } as const;
+  const nonMacDesktop = { isMac: false, isDesktop: true } as const;
+  const cmdF = { key: "f", code: "KeyF", metaKey: true };
+  const cmdShiftG = { key: "g", code: "KeyG", metaKey: true, shiftKey: true };
+
+  it.each(["terminal", "message-input", "editable", "other"] as const)(
+    "opens find with Cmd+F in the %s focus scope",
+    (focusScope) => {
+      expectShortcutResolution({
+        event: cmdF,
+        context: { ...macDesktop, focusScope },
+        action: "find.open",
+      });
+    },
+  );
+
+  it("leaves Cmd+F to the page inside the browser webview", () => {
+    expectNoShortcutResolution({ event: cmdF, context: { ...macDesktop, focusScope: "browser" } });
+  });
+
+  it("steps to the previous match with Cmd+Shift+G while a find bar is open", () => {
+    expectShortcutResolution({
+      event: cmdShiftG,
+      context: { ...macDesktop, focusScope: "other", findOpen: true },
+      action: "find.previous",
+    });
+  });
+
+  it("targets the changes tab with Cmd+Shift+G when no find bar is open", () => {
+    expectShortcutResolution({
+      event: cmdShiftG,
+      context: { ...macDesktop, focusScope: "other", findOpen: false },
+      action: "workspace.tab.target.changes",
+    });
+  });
+
+  it("matches nothing on Ctrl+G with no find bar open", () => {
+    expectNoShortcutResolution({
+      event: { key: "g", code: "KeyG", ctrlKey: true },
+      context: { ...nonMacDesktop, focusScope: "other", findOpen: false },
+    });
+  });
+
+  it("steps to the next match on Ctrl+G while a find bar is open", () => {
+    expectShortcutResolution({
+      event: { key: "g", code: "KeyG", ctrlKey: true },
+      context: { ...nonMacDesktop, focusScope: "terminal", findOpen: true },
+      action: "find.next",
+    });
+  });
+
+  // resolveInitialChordStep takes the first matching single-combo binding in array
+  // order, so find previous only ever beats Changes to ⌘⇧G while it is declared first.
+  it.each([
+    ["find-previous-cmd-shift-g-mac", "workspace-tab-target-changes-cmd-shift-c-mac"],
+    ["find-previous-ctrl-shift-g-non-mac", "workspace-tab-target-changes-ctrl-shift-c-non-mac"],
+  ])("declares %s before %s", (findBindingId, changesBindingId) => {
+    const bindings = buildEffectiveBindings({});
+    const findIndex = bindings.findIndex((binding) => binding.id === findBindingId);
+    const changesIndex = bindings.findIndex((binding) => binding.id === changesBindingId);
+
+    expect(findIndex).toBeGreaterThan(-1);
+    expect(changesIndex).toBeGreaterThan(-1);
+    expect(findIndex).toBeLessThan(changesIndex);
+  });
+
+  it("does not let dictation confirm claim Enter inside the find input", () => {
+    expectNoShortcutResolution({
+      event: { key: "Enter", code: "Enter" },
+      context: { ...macDesktop, focusScope: "editable" },
+    });
+    expectShortcutResolution({
+      event: { key: "Enter", code: "Enter" },
+      context: { ...macDesktop, focusScope: "message-input" },
+      action: "message-input.action",
+      payload: { kind: "dictation-confirm" },
+    });
+  });
+
+  it("lists the three find rows in the general section with labels and notes", () => {
+    const sections = buildKeyboardShortcutHelpSections(macDesktop);
+    const general = sections.find((section) => section.id === "general");
+    const rows = general?.rows.filter((row) => row.id.startsWith("find-")) ?? [];
+
+    expect(rows.map((row) => row.id)).toEqual(["find-in-pane", "find-next", "find-previous"]);
+    expect(rows.map((row) => row.labelKey)).toEqual([
+      "settings.shortcuts.help.findInPane",
+      "settings.shortcuts.help.findNext",
+      "settings.shortcuts.help.findPrevious",
+    ]);
+    expect(rows.map((row) => row.noteKey)).toEqual([
+      undefined,
+      "settings.shortcuts.helpNotes.findWhileOpen",
+      "settings.shortcuts.helpNotes.findWhileOpen",
+    ]);
+    expect(rows.map((row) => row.chord)).toEqual([
+      [["mod", "F"]],
+      [["mod", "G"]],
+      [["mod", "shift", "G"]],
+    ]);
   });
 });
