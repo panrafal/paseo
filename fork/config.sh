@@ -152,15 +152,21 @@ should also be in your password manager. See fork/README.md."
 # TestFlight build from the same commit all report the same string.
 #
 #   0.7.2-panrafal.7
-#   ^upstream base   ^fork build number
+#   ^upstream X.Y.Z  ^fork build number
+#
+# The base is the X.Y.Z core of package.json's version. Upstream prereleases
+# are dropped: 0.8.0-beta.1 stamps as 0.8.0-panrafal.N, not
+# 0.8.0-beta.1-panrafal.N — that string is not a valid X.Y.Z-panrafal.N
+# prerelease, and native-release-version.js throws on it.
 #
 # fork/build-number lives on the base branch and holds both halves —
-# "0.7.2 7" — because the counter restarts at 1 every time the upstream
-# version moves. Storing the version it was counting for is what makes the
-# restart detectable; a bare integer cannot tell "first build of 0.7.3" from
-# "someone reset the file".
+# "0.7.2 7" — because the counter restarts at 1 every time that core moves.
+# Storing the version it was counting for is what makes the restart
+# detectable; a bare integer cannot tell "first build of 0.7.3" from
+# "someone reset the file". Later betas of the same core keep incrementing:
+# 0.8.0-beta.1 and 0.8.0-beta.2 are both 0.8.0.
 #
-# The restart is safe, but only under that exact rule — reset when the base
+# The restart is safe, but only under that exact rule — reset when the core
 # moves, never otherwise. Two things depend on it:
 #
 #   - The desktop updater compares semver, and 0.7.3-panrafal.1 sorts above
@@ -168,16 +174,20 @@ should also be in your password manager. See fork/README.md."
 #     upgrade.
 #   - App Store Connect requires CFBundleVersion to increase within one
 #     CFBundleShortVersionString. native-release-version.js reports the bare
-#     base as the short version, so the restart lands exactly when that string
-#     changes. Restarting the counter while the base held would be rejected.
+#     core as the short version, so the restart lands exactly when that string
+#     changes. Restarting the counter while the core held would be rejected.
 #
 # fork/integrate.sh bumps the number once per run that changes the
 # integration, after the merges and before main is derived, so it is inside
 # the commit it identifies.
+fork_version_core() {
+  echo "${1%%[-+]*}"
+}
+
 fork_version() {
   local ref="${1:-$TARGET}" base number
-  base="$(git show "$ref:package.json" |
-    node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')"
+  base="$(fork_version_core "$(git show "$ref:package.json" |
+    node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')")"
   number="$(fork_build_number "$ref" "$base")"
   echo "$base-panrafal.$number"
 }
@@ -187,7 +197,7 @@ fork_build_number() {
   read -r stored_base number < <(git show "$ref:fork/build-number" 2>/dev/null)
   [ -n "$number" ] || die "no fork/build-number on $ref — run fork/integrate.sh rebuild first"
   if [ -n "$expect_base" ] && [ "$stored_base" != "$expect_base" ]; then
-    die "fork/build-number on $ref counts $stored_base, but package.json says $expect_base — run fork/integrate.sh rebase"
+    die "fork/build-number on $ref counts $stored_base, but package.json's core is $expect_base — run fork/integrate.sh rebase"
   fi
   echo "$number"
 }

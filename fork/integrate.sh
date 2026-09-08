@@ -348,10 +348,10 @@ tooling_commit() {
   git -C "$1" -c core.hooksPath=/dev/null commit -q -m "$2"
 }
 
-# fork/build-number holds the upstream version the counter belongs to and the
-# counter itself ("0.7.2 13"). The counter restarts at 1 whenever the upstream
-# version moves — see fork_version() in config.sh for why that is safe.
-# BUMP_BASE is the version of the tree the number will identify.
+# fork/build-number holds the X.Y.Z core the counter belongs to and the
+# counter itself ("0.7.2 13"). The counter restarts at 1 whenever that core
+# moves — see fork_version() in config.sh for why that is safe. BUMP_BASE is
+# the core of the tree the number will identify.
 BUMP_BASE="" BUILD_VERSION=""
 bump_in() {
   local dir="$1" stored_base stored_number next
@@ -607,7 +607,7 @@ MSG
 # and an upstream or patch merge can move it. Extra arguments are further
 # commits to make on fork-base first.
 stamp() {
-  BUMP_BASE="$(version_at "$(worktree_head)")"
+  BUMP_BASE="$(fork_version_core "$(version_at "$(worktree_head)")")"
   commit_on_tooling "$@" bump_in
   say "Build $BUILD_VERSION"
   merge_ref "$TOOLING_REF" "fork: build $BUILD_VERSION" \
@@ -697,9 +697,9 @@ finish() {
   section "📤" "Publish integration"
 
   counted="$(git show "$tip:fork/build-number" | cut -d' ' -f1)"
-  carried="$(version_at "$tip")"
+  carried="$(fork_version_core "$(version_at "$tip")")"
   [ "$counted" = "$carried" ] ||
-    die "fork/build-number in the result counts $counted but package.json says $carried"
+    die "fork/build-number in the result counts $counted but package.json's core is $carried"
 
   if [ "$refresh_upstream" -eq 1 ]; then
     move_branch "$UPSTREAM_REF" "$(git rev-parse "$BASE")"
