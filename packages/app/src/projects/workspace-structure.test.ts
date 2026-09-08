@@ -20,6 +20,7 @@ function project(input: {
 
 function workspace(id: string, projectId: string, root: string): WorkspaceDescriptor {
   return {
+    activityAt: null,
     id,
     projectId,
     projectDisplayName: "acme/app",

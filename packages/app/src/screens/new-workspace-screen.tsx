@@ -19,6 +19,8 @@ import {
 } from "@/composer/attachments/submit";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { HostPicker } from "@/components/hosts/host-picker";
+import type { HostColor } from "@/hosts/appearance";
+import { hostLabelColorStyle } from "@/hosts/host-badge";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption as ComboboxOptionType, ComboboxProps } from "@/components/ui/combobox";
@@ -182,6 +184,21 @@ interface NewWorkspaceScreenProps {
   projectId?: string;
   displayName?: string;
   draftId?: string;
+  initialPrompt?: string;
+}
+
+function useSeedNewWorkspacePrompt(
+  chatDraft: ReturnType<typeof useAgentInputDraft>,
+  initialPrompt: string | undefined,
+): void {
+  const seededPromptRef = useRef(false);
+  useEffect(() => {
+    if (seededPromptRef.current || !chatDraft.isHydrated || initialPrompt === undefined) {
+      return;
+    }
+    seededPromptRef.current = true;
+    chatDraft.replaceText(initialPrompt);
+  }, [chatDraft, initialPrompt]);
 }
 
 // A terminal launch sends argv, not a message: there is nothing to attach and
@@ -1337,13 +1354,25 @@ interface NewWorkspaceFormStackInput {
   };
 }
 
+// The pill's label wears the host's identity color, as the sidebar badge does, so which machine
+// the workspace is about to land on reads at a glance. The dot beside it keeps its status token:
+// it says whether the host is reachable, not which host it is.
+function selectedHostPill(
+  hosts: HostProfile[],
+  serverId: string,
+): { label: string; color: HostColor } {
+  const selected = hosts.find((h) => h.serverId === serverId);
+  return selected
+    ? { label: selected.label, color: selected.appearance.color }
+    : { label: "Host", color: "none" };
+}
+
 function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactElement {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { isCompact, isPending, project, host, isolation, base, launch } = input;
 
-  const selectedHostLabel =
-    host.allHosts.find((h) => h.serverId === host.selectedServerId)?.label ?? "Host";
+  const selectedHost = selectedHostPill(host.allHosts, host.selectedServerId);
   const showHostControl = host.allHosts.length > 1;
   const isolationTriggerLabel = isolationLabel(t, isolation.effectiveIsolation);
   const addProjectAction = useMemo(
@@ -1429,8 +1458,11 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
               <View style={styles.badgeIconBox}>
                 <HostStatusDot serverId={host.selectedServerId} />
               </View>
-              <Text style={styles.badgeText} numberOfLines={1}>
-                {selectedHostLabel}
+              <Text
+                style={[styles.badgeText, hostLabelColorStyle(selectedHost.color)]}
+                numberOfLines={1}
+              >
+                {selectedHost.label}
               </Text>
               {metaChevron}
             </Pressable>
@@ -1542,6 +1574,7 @@ export function NewWorkspaceScreen({
   projectId,
   displayName: displayNameProp,
   draftId,
+  initialPrompt,
 }: NewWorkspaceScreenProps) {
   const queryClient = useQueryClient();
   const { theme } = useUnistyles();
@@ -1580,6 +1613,8 @@ export function NewWorkspaceScreen({
     typeof normalizeWorkspaceDescriptor
   > | null>(null);
   const [pendingAction, setPendingAction] = useState<"chat" | "empty" | "terminal" | null>(null);
+  // Claim before any await; keep the claim through navigation, until this screen unmounts.
+  const submissionStartedRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const openAddProjectPicker = useOpenAddProject();
@@ -1613,7 +1648,7 @@ export function NewWorkspaceScreen({
     () => resolveLaunchTarget(manualLaunchTarget ?? formPreferences.launchTarget, terminalProfiles),
     [manualLaunchTarget, formPreferences.launchTarget, terminalProfiles],
   );
-  const [terminalPromptText, setTerminalPromptText] = useState("");
+  const [terminalPromptText, setTerminalPromptText] = useState(() => initialPrompt ?? "");
   const {
     isTerminalLaunch,
     selectedTerminalProfile,
@@ -1677,6 +1712,8 @@ export function NewWorkspaceScreen({
       initialSetup: forkDraftSetup?.setup,
     }),
   });
+  const clearChatDraft = chatDraft.clear;
+  useSeedNewWorkspacePrompt(chatDraft, initialPrompt);
   const composerState = chatDraft.composerState;
   const [pickerSelection, dispatchPickerSelection] = useReducer(
     reducePickerSelection,
@@ -2037,12 +2074,15 @@ export function NewWorkspaceScreen({
 
   const handleSubmitNewWorkspace = useCallback(
     async (payload: MessagePayload) => {
+      if (submissionStartedRef.current) return;
+      submissionStartedRef.current = true;
       try {
         setErrorMessage(null);
+        const isEmpty = isEmptyWorkspaceSubmission(payload);
+        setPendingAction(isEmpty ? "empty" : "chat");
         await composerState?.persistFormPreferences();
         await updateFormPreferences({ launchTarget });
-        if (isEmptyWorkspaceSubmission(payload)) {
-          setPendingAction("empty");
+        if (isEmpty) {
           await runCreateEmptyWorkspace({
             payload,
             ensureWorkspace,
@@ -2053,14 +2093,13 @@ export function NewWorkspaceScreen({
           return;
         }
 
-        setPendingAction("chat");
         await runCreateChatAgent({
           payload,
           composerState,
           forkDraftSetup,
           ensureWorkspace,
           serverId: selectedServerId,
-          clearDraft: chatDraft.clear,
+          clearDraft: clearChatDraft,
           draftId,
           supportsForgeSearch,
           labels: {
@@ -2069,6 +2108,7 @@ export function NewWorkspaceScreen({
           },
         });
       } catch (error) {
+        submissionStartedRef.current = false;
         const message = toErrorMessage(error);
         setPendingAction(null);
         setErrorMessage(message);
@@ -2078,7 +2118,7 @@ export function NewWorkspaceScreen({
     [
       composerState,
       draftId,
-      chatDraft.clear,
+      clearChatDraft,
       ensureWorkspace,
       forkDraftSetup,
       launchTarget,
@@ -2091,10 +2131,12 @@ export function NewWorkspaceScreen({
   );
 
   const handleSubmitTerminalLaunch = useCallback(async () => {
+    if (submissionStartedRef.current) return;
+    submissionStartedRef.current = true;
     try {
       setErrorMessage(null);
-      await updateFormPreferences({ launchTarget });
       setPendingAction("terminal");
+      await updateFormPreferences({ launchTarget });
       await runCreateTerminalWorkspace({
         cwd: selectedSourceDirectory ?? "",
         prompt: terminalPromptText,
@@ -2127,17 +2169,20 @@ export function NewWorkspaceScreen({
         sendTerminalInput: (terminalId, data) => {
           withConnectedClient().sendTerminalInput(terminalId, { type: "input", data });
         },
+        clearDraft: () => clearChatDraft("sent"),
         serverId: selectedServerId,
         navigate: (targetServerId, workspaceId, target) =>
           navigateToWorkspace({ serverId: targetServerId, workspaceId, target }),
       });
     } catch (error) {
+      submissionStartedRef.current = false;
       const message = toErrorMessage(error);
       setPendingAction(null);
       setErrorMessage(message);
       toast.error(message);
     }
   }, [
+    clearChatDraft,
     ensureWorkspace,
     launchTarget,
     queryClient,
