@@ -1,4 +1,4 @@
-> This is a **very custom** fork of paseo.sh, whatever makes sense I'm pushing upstream as PRs
+> This is a **very custom** fork of [getpaseo/paseo](https://github.com/getpaseo/paseo). What makes sense I push upstream as PRs. How it is built and synced is in [fork/README.md](fork/README.md). To make your own, start from `getpaseo/paseo`, not from this repository — [How to make your own fork](fork/README.md#how-to-make-your-own-fork).
 
 <p align="center">
   <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
