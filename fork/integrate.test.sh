@@ -204,6 +204,16 @@ scenario_rebase() {
   assert "rebase with a version bump" run rebase --push
   assert_eq "counter restarted" "$(build_number main)" "0.7.3 1"
   assert_log "restarting the fork counter"
+  # Upstream prereleases stamp as X.Y.Z-panrafal.N. The counter belongs to
+  # that core, so later betas of the same release keep incrementing.
+  upstream_commit package.json $'{\n  "name": "paseo",\n  "version": "0.8.0-beta.1"\n}\n' "upstream: 0.8.0-beta.1"
+  assert "rebase onto an upstream beta" run rebase --push
+  assert_eq "beta uses the core version" "$(build_number main)" "0.8.0 1"
+  assert_eq "stamp drops the extra -beta.1" "$(git -C "$R" log -1 --format=%s main)" "fork: build 0.8.0-panrafal.1"
+  assert_log "upstream is now 0.8.0"
+  upstream_commit package.json $'{\n  "name": "paseo",\n  "version": "0.8.0-beta.2"\n}\n' "upstream: 0.8.0-beta.2"
+  assert "rebase onto the next beta" run rebase --push
+  assert_eq "same core keeps counting" "$(build_number main)" "0.8.0 2"
 }
 
 scenario_drift() {
