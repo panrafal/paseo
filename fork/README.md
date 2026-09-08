@@ -234,23 +234,29 @@ app and a TestFlight build from one commit all report the same string:
 
 ```
 0.7.2-panrafal.7
-^^^^^ upstream base
+^^^^^ upstream X.Y.Z
               ^ fork build number
 ```
 
 `paseo --version` on the devbox therefore tells you it is a fork build and
 which build — a plain `0.7.2` is upstream's.
 
-`fork/build-number` on `fork-base` holds both halves, `0.7.2 7`, because
-the counter restarts at 1 whenever the upstream version moves. Storing the
-version it counts for is what makes the restart detectable — a bare integer
-cannot tell "first build of 0.7.3" from "someone reset the file".
-`fork/integrate.sh` bumps it once per run that changes the integration,
-after the merges — the number has to count the version the merged tree
-carries, and an upstream merge can move it — and merges it in as the last
-commit, so it is inside the `main` commit it identifies.
+The base is the X.Y.Z core of upstream's version. A prerelease is dropped:
+`0.8.0-beta.1` stamps as `0.8.0-panrafal.N`, not `0.8.0-beta.1-panrafal.N`.
+That concatenated string is not a valid `X.Y.Z-panrafal.N` prerelease, and
+`native-release-version.js` throws on it.
 
-The restart is safe, but only under that rule: reset when the base moves, never
+`fork/build-number` on `fork-base` holds both halves, `0.7.2 7`, because
+the counter restarts at 1 whenever that core moves. Storing the version it
+counts for is what makes the restart detectable — a bare integer cannot tell
+"first build of 0.7.3" from "someone reset the file". Later betas of the same
+core keep incrementing, so `0.8.0-beta.1` and `0.8.0-beta.2` share the
+`0.8.0` counter. `fork/integrate.sh` bumps it once per run that changes the
+integration, after the merges — the number has to count the version the
+merged tree carries, and an upstream merge can move it — and merges it in as
+the last commit, so it is inside the `main` commit it identifies.
+
+The restart is safe, but only under that rule: reset when the core moves, never
 otherwise. Two things depend on it.
 
 The desktop's in-app updater compares semver, and `0.7.3-panrafal.1` sorts
@@ -260,9 +266,9 @@ so `panrafal.10` really is newer than `panrafal.9`.
 
 The same number is the iOS `CFBundleVersion`, which App Store Connect requires
 to increase within one `CFBundleShortVersionString`.
-`packages/app/native-release-version.js` reports the bare base as the short
+`packages/app/native-release-version.js` reports the bare core as the short
 version, so a restart lands exactly when that string changes. Restarting while
-the base held would be rejected at upload. Upstream's 1..999 build slot is a
+the core held would be rejected at upload. Upstream's 1..999 build slot is a
 per-release counter and would run out.
 
 That file also parses the version with a hardcoded pattern. Change the suffix
