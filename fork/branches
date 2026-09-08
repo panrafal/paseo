@@ -17,19 +17,9 @@
 # When a PR lands upstream, delete its line and rebuild. The commits arrive
 # through upstream/main instead.
 
-
 # Open PRs against getpaseo/paseo.
 origin/add-daemon-loopback-password-bypass
 origin/add-paseo-deeplink-hash-prompts
-
-# PRs maintained by their authors; fetched from their GitHub forks.
-colonelpanic8:codex-astra-support
-ragokan:fix/claude-native-tool-details
-stackia:fix/cursor-usage-official-display
-cleiter:plan-visible-after-answer
-fidelix:fix/cursor-per-model-thinking
-
-# Soon to be PRs against getpaseo/paseo.
 origin/paseo-ls/add-labels-filter
 origin/add-search-transcript-terminal
 origin/feat/terminal-close-confirm
@@ -37,15 +27,23 @@ origin/sidebar-grouping-toggle
 origin/allowedorigins-domain-patterns
 origin/history-navigation-shortcuts
 origin/host-selection-pill-color
-
-# Fork features not yet sent upstream.
-origin/vscode
-origin/fix/plugin-host-react-free-sdk-import
 origin/video-file-preview
-origin/assign-schedule-labels
-origin/usage-shortcuts
-add-profile-selector-schedules
-fix-duplicate-chat-creation
-fix/timeline-image-width
+
+# PRs maintained by their authors; fetched from their GitHub forks.
+colonelpanic8:codex-astra-support
+ragokan:fix/claude-native-tool-details
+stackia:fix/cursor-usage-official-display
+cleiter:plan-visible-after-answer
+fidelix:fix/cursor-per-model-thinking
 colonelpanic8:codex-banked-resets
 KiraPC:feat/open-in-editor-remote-authority
+
+# Fork features not yet sent upstream.
+origin/assign-schedule-labels
+origin/usage-shortcuts
+origin/add-profile-selector-schedules
+origin/fix-duplicate-chat-creation
+origin/fix/timeline-image-width
+
+# Last on rebuild, so it wins conflicts with the rest of the stack.
+origin/vscode
