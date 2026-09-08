@@ -5,6 +5,10 @@ and selected upstream PRs on top. It is what I build and run. It is not a branch
 derived from `fork-integration` on every run of `fork/integrate.sh`, so
 anything committed directly to it is lost.
 
+This is my running fork. To make your own, start from
+`getpaseo/paseo`, not from this repository — see
+[How to make your own fork](#how-to-make-your-own-fork).
+
 `main` is deliberately not a mirror of upstream. Cloning the fork should give
 you the build I actually use, and upstream's workflows only fire on a branch
 literally called `main` (`ci.yml` is `push: branches: [main]`), so mirroring
@@ -574,3 +578,116 @@ The first `rebase` starts the local `fork-integration` from
 `origin/fork-integration`. A clone that has only `main` — the published
 copy is gone — rebuilds the integration's ancestry from `main`'s commit
 message, which names every branch tip that went in.
+
+## How to make your own fork
+
+Start from [`getpaseo/paseo`](https://github.com/getpaseo/paseo). Fork that
+repository on GitHub, not this one. This repo's `main` is one integration of
+someone else's patches, app identifiers, and secrets layout; a GitHub fork
+of it copies that stack and makes `main` the default branch.
+
+Copy the machinery from this repo's `fork-base` branch. `main` here is a
+derived publish; taking it copies the patches and the identifiers with it.
+`fork-base` is the only branch that is allowed to know it is a fork.
+
+### What to copy
+
+From `panrafal/paseo`'s `fork-base` onto a `fork-base` you cut from
+`upstream/main`:
+
+- The `fork/` scripts, tests, and this README.
+- `.github/workflows/fork-desktop.yml`.
+- The move of every upstream workflow into `.github/workflows/disabled/`
+  (GitHub does not recurse, so `ci.yml` no longer fires on `main`). Start
+  from `upstream/main`, so those workflows still sit at the top level —
+  move them; checking out `disabled/` from here without removing the
+  originals leaves both, and Actions would still run.
+- The `lefthook.yml` pre-commit `skip: true`.
+- The `🍱` scripts in `paseo.json`.
+- The identity hooks in `packages/app/app.config.js` (bundle id and EAS
+  project from the environment) and the prerelease parser in
+  `packages/app/native-release-version.js`.
+- The `.env.keys` gitignore rule, and the `scripts/ci-workflow.test.mjs`
+  paths that follow the workflow move.
+- The fork notes in `CLAUDE.md` and the top of `README.md`, rewritten for you.
+
+The copy still contains this fork's identity. Replace it before the first
+build:
+
+- `fork/dist.env` — keep the keys, replace every value.
+- `fork/.env.fork` — delete it; create yours when you set up iOS.
+- `fork/branches` — empty except the header comments. That file is this
+  fork's patch list.
+- `fork/build-number` — the first `rebuild` writes it.
+
+Leave this fork's patch branches behind, including `vscode`, unless you
+want one of them as a patch of your own. Fetch that one branch, rebase it
+onto _your_ `fork-upstream`, and list it. Do not take `main`.
+
+### What to change
+
+`panrafal` is hardcoded as the GitHub owner and as the semver prerelease
+suffix (`0.7.2-panrafal.7`). Replace both with yours. The suffix has to be
+a valid semver prerelease identifier, and the same string has to appear in
+every place that stamps or parses the version — see [Versions](#versions):
+
+| File                                                                         | What                                                                        |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `fork/dist.env`                                                              | `FORK_GH_OWNER`, `FORK_GH_REPO`, iOS / EAS / App Store Connect / Apple team |
+| `fork/config.sh`                                                             | `FORK_GH_OWNER` default, and `$base-<suffix>.$number` in `fork_version`     |
+| `fork/integrate.sh`                                                          | the `BUILD_VERSION` and log line that embed the suffix                      |
+| `fork/update-macos.sh`                                                       | `REPO` default                                                              |
+| `packages/app/native-release-version.js`                                     | `forkVersionPattern`                                                        |
+| `packages/app/app.config.js`                                                 | `expo.slug` — must match the EAS project slug                               |
+| `packages/app/e2e/mobile/composer-keyboard/android.sh`                       | `exp+<slug>://`                                                             |
+| `fork/integrate.test.sh`, `fork/update-macos.test.py`, `fork/deploy.test.py` | assertions that use the old suffix                                          |
+
+`FORK_DEVBOX_*` in `fork/config.sh` is this fork's laptop/devbox layout.
+Override the variables or change the defaults.
+
+The iOS bundle identifier must differ from upstream's `sh.paseo`. See
+[iOS / TestFlight](#ios--testflight).
+
+### External prerequisites
+
+To run the integration loop:
+
+- A GitHub fork of **getpaseo/paseo**, with Actions enabled.
+- `git`, `gh` authenticated to that repo, `node`, bash 4 or newer
+  (`brew install bash` on a Mac; the scripts use `#!/usr/bin/env bash`).
+- Remotes: `origin` → your fork, `upstream` → `getpaseo/paseo`.
+
+To ship a signed Mac app, in addition:
+
+- A Developer ID Application certificate, stored as the `APPLE_CERTIFICATE`
+  and `APPLE_CERTIFICATE_PASSWORD` GitHub secrets on your fork. See
+  [macOS](#macos).
+
+To ship iOS to TestFlight, in addition:
+
+- Your own bundle id, EAS project (slug matching `expo.slug`), and App
+  Store Connect app record.
+- An Expo access token, encrypted with [dotenvx](https://dotenvx.com) into
+  `fork/.env.fork`. See [EXPO_TOKEN](#expo_token).
+- Optional: your own Firebase `GoogleService-Info.plist` as an EAS file
+  environment variable. See [Push notifications](#push-notifications).
+
+Deploying the way this fork does also needs a macOS laptop and a Linux
+host with passwordless `sudo`. That layout is this fork's; change
+`FORK_DEVBOX_*` to match yours. See [Deploying](#deploying).
+
+### First run
+
+```bash
+git clone https://github.com/YOU/paseo.git && cd paseo
+git remote add upstream https://github.com/getpaseo/paseo.git
+git fetch upstream
+git switch -c fork-base upstream/main
+# copy the machinery from panrafal/paseo's fork-base, then change identity
+git push -u origin fork-base
+fork/integrate.sh rebuild --push
+```
+
+`rebuild` is the first integration: `upstream/main` + `fork-base` +
+whatever you listed in `fork/branches`. After that, daily updates are
+`fork/integrate.sh rebase --push`, same as [The quick route](#the-quick-route).
