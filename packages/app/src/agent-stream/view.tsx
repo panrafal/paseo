@@ -89,6 +89,13 @@ import {
 } from "./bottom-anchor-controller";
 import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
 import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
+import { FindBar } from "@/find/bar";
+import { domElementOf } from "@/find/dom/element";
+import { FindHighlightColorsSync } from "@/find/dom/highlight-colors";
+import {
+  useTranscriptFind,
+  type UseTranscriptFindResult,
+} from "@/find/transcript/use-transcript-find";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
@@ -109,6 +116,12 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins/timeline";
 import { projectPluginTimelineItems } from "@/plugins/timeline/projection";
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
+import { dispatchComposerAgentMessage } from "@/composer/actions";
+import { createMessageSubmissionWriter } from "@/composer/submission/writer";
+import { encodeImages } from "@/utils/encode-images";
+import { AssistantQuestionCard } from "./assistant-question-card";
+import { collectUnansweredQuestionItemIds } from "./assistant-question-state";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -129,6 +142,27 @@ function renderLiveAuxiliaryNode(input: {
       {input.bottomOverlayInset > 0 ? (
         <BottomOverlayInset height={input.bottomOverlayInset} />
       ) : null}
+    </>
+  );
+}
+
+/** Overlays the pane rather than taking layout space, so the transcript never reflows. */
+function TranscriptFindOverlay({ find }: { find: UseTranscriptFindResult }) {
+  if (!find.isOpen) {
+    return null;
+  }
+  return (
+    <>
+      <FindHighlightColorsSync />
+      <FindBar
+        query={find.query}
+        result={find.result}
+        inputRef={find.inputRef}
+        onChangeQuery={find.setQuery}
+        onNext={find.next}
+        onPrevious={find.previous}
+        onClose={find.close}
+      />
     </>
   );
 }
@@ -353,6 +387,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
+    // The find surface's root: the one container holding both the stream and the bar.
+    const findRootRef = useRef<View>(null);
+    const getFindRoot = useCallback(() => domElementOf(findRootRef.current), []);
     const pendingClientMessageIds = useMemo(
       () => new Set(pendingMessageSubmissions.map((submission) => submission.clientMessageId)),
       [pendingMessageSubmissions],
@@ -373,6 +410,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const showFileExplorer = getWorkspaceSurfaceConfig().showFileExplorer;
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -475,6 +513,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               target: createWorkspaceFileTabTarget(location),
             });
           }
+          return;
+        }
+
+        if (!showFileExplorer) {
           return;
         }
 
@@ -721,6 +763,34 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [context.capabilities, agentId, client, pendingClientMessageIds, resolvedServerId],
     );
 
+    const unansweredQuestionItemIds = useMemo(
+      () => collectUnansweredQuestionItemIds(effectiveStreamItems, effectiveStreamHead ?? []),
+      [effectiveStreamHead, effectiveStreamItems],
+    );
+    const isQuestionAnsweredInTimeline = useCallback(
+      (itemId: string) => !unansweredQuestionItemIds.has(itemId),
+      [unansweredQuestionItemIds],
+    );
+
+    // The agent asked without pausing its turn, so the answer steers the live turn instead of
+    // interrupting it.
+    const submitQuestionAnswer = useStableEvent(async (text: string) => {
+      if (!client) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      const session = useSessionStore.getState().sessions[resolvedServerId];
+      await dispatchComposerAgentMessage({
+        client,
+        agentId,
+        text,
+        attachments: [],
+        encodeImages,
+        submission: createMessageSubmissionWriter(resolvedServerId),
+        activeTurnBehavior: "steer",
+        activeTurnId: session?.agents.get(agentId)?.activeTurn?.turnId ?? undefined,
+      });
+    });
+
     const renderAssistantMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "assistant_message" }>) => {
         return (
@@ -741,10 +811,28 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               spacing={layoutItem.assistantSpacing}
               phase={layoutItem.phase}
             />
+            {item.questions?.length ? (
+              <AssistantQuestionCard
+                questions={item.questions}
+                answeredInTimeline={isQuestionAnsweredInTimeline(item.id)}
+                readOnly={readOnly}
+                onSubmit={submitQuestionAnswer}
+              />
+            ) : null}
           </AssistantFileLinkResolverProvider>
         );
       },
-      [agentId, client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
+      [
+        agentId,
+        client,
+        handleInlinePathPress,
+        isQuestionAnsweredInTimeline,
+        readOnly,
+        resolvedServerId,
+        submitQuestionAnswer,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     const renderThoughtItem = useCallback(
@@ -1087,9 +1175,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
     );
 
+    const find = useTranscriptFind({
+      history: streamLayout.history,
+      liveHead: streamLayout.liveHead,
+      viewportRef,
+      getRoot: getFindRoot,
+    });
+
     return (
       <ToolCallSheetProvider>
-        <AssistantSelectionCopySurface style={stylesheet.container}>
+        <AssistantSelectionCopySurface ref={findRootRef} style={stylesheet.container}>
           <MessageOuterSpacingProvider disableOuterSpacing>
             {streamRenderStrategy.render({
               agentId,
@@ -1100,6 +1195,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               renderers,
               listEmptyComponent,
               viewportRef,
+              onViewportReady: find.onViewportReady,
               routeBottomAnchorRequest,
               isAuthoritativeHistoryReady,
               onNearBottomChange: setIsNearBottom,
@@ -1119,6 +1215,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             activePrompt={chatOutline.activePrompt}
             onJumpToPrompt={chatOutline.jumpToPrompt}
           />
+          <TranscriptFindOverlay find={find} />
           {(!isNearBottom || isTimelineDetached) && (
             <View style={scrollToBottomContainerStyle} pointerEvents="box-none">
               <Animated.View entering={scrollIndicatorFadeIn} exiting={scrollIndicatorFadeOut}>

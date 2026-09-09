@@ -23,6 +23,7 @@ function createWorkspaceDescriptor(input: Partial<WorkspaceDescriptor> = {}): Wo
     workspaceKind: "local_checkout",
     name: "feat/workspace-sot",
     status: "running",
+    activityAt: null,
     diffStat: null,
     scripts: [],
     statusEnteredAt: null,

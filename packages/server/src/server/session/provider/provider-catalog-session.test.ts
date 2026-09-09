@@ -667,3 +667,51 @@ it.each(["full", "embedded", "references"])(
     client.subsystem.dispose();
   },
 );
+
+it("forwards banked reset redemption and correlates the outcome", async () => {
+  const consumeCodexBankedReset = vi.fn(async () => "nothing_to_reset");
+  const { subsystem, emitted } = makeSubsystem({ usage: { consumeCodexBankedReset } });
+  await subsystem.handleCodexBankedResetConsumeRequest({
+    type: "provider.codex.consume_banked_reset.request",
+    requestId: "request-1",
+    creditId: "reset-1",
+    idempotencyKey: "attempt-1",
+  });
+  expect(consumeCodexBankedReset).toHaveBeenCalledWith({
+    creditId: "reset-1",
+    idempotencyKey: "attempt-1",
+  });
+  expect(emitted).toEqual([
+    {
+      type: "provider.codex.consume_banked_reset.response",
+      payload: { requestId: "request-1", outcome: "nothing_to_reset" },
+    },
+  ]);
+});
+
+it("returns a correlated error when banked reset redemption fails", async () => {
+  const { subsystem, emitted } = makeSubsystem({
+    usage: {
+      consumeCodexBankedReset: async () => {
+        throw new Error("Request timed out");
+      },
+    },
+  });
+  await subsystem.handleCodexBankedResetConsumeRequest({
+    type: "provider.codex.consume_banked_reset.request",
+    requestId: "request-1",
+    creditId: "reset-1",
+    idempotencyKey: "attempt-1",
+  });
+  expect(emitted).toEqual([
+    {
+      type: "rpc_error",
+      payload: {
+        requestId: "request-1",
+        requestType: "provider.codex.consume_banked_reset.request",
+        error: "Could not use banked reset: Request timed out",
+        code: "codex_banked_reset_failed",
+      },
+    },
+  ]);
+});

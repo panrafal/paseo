@@ -246,6 +246,10 @@ export const TOOL_CALL_ICON_NAMES = [
   "sparkles",
   "brain",
   "mic_vocal",
+  "calendar_clock",
+  "alarm_clock",
+  "message_square",
+  "bell",
 ] as const;
 
 export type ToolCallIconName = (typeof TOOL_CALL_ICON_NAMES)[number];
@@ -401,9 +405,20 @@ export interface PluginTimelineItem {
   data: JsonValue;
 }
 
+/** A question asked mid-turn without blocking; the answer arrives as a later user message. */
+export interface AsyncQuestion {
+  title: string;
+  options?: string[];
+}
+
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
-  | { type: "assistant_message"; text: string; messageId?: string }
+  | {
+      type: "assistant_message";
+      text: string;
+      messageId?: string;
+      questions?: AsyncQuestion[];
+    }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
