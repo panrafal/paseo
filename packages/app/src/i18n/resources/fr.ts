@@ -757,6 +757,11 @@ export const fr: TranslationResources = {
           pending: "S'engager...",
           success: "Engagé",
         },
+        commitAndPush: {
+          label: "Valider et pousser",
+          pending: "Validation et poussée...",
+          success: "Validé et poussé",
+        },
         pull: {
           label: "Tirer",
           pending: "Tirer...",
@@ -828,6 +833,8 @@ export const fr: TranslationResources = {
           pullUpToDate: "Pull n'est pas disponible car cette branche est déjà à jour",
           pushNoRemote:
             "Push n'est pas disponible ici car cette branche n'est pas encore connectée à une télécommande",
+          commitAndPushNoRemote:
+            "Valider et pousser n'est pas disponible ici car cette branche n'est pas encore connectée à un dépôt distant",
           pushBehind:
             "Push n'est pas encore disponible, car de nouvelles modifications doivent être apportées en premier.",
           pushNothing: "Push n'est pas disponible car il n'y a rien de nouveau à envoyer",
@@ -881,6 +888,7 @@ export const fr: TranslationResources = {
         },
         toasts: {
           failedCommit: "Échec de la validation",
+          failedCommitAndPush: "Échec de la validation et de la poussée",
           failedPull: "Échec de l'extraction",
           failedPush: "Échec de la poussée",
           failedPullAndPush: "Impossible de tirer et de pousser",

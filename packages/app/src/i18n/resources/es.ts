@@ -757,6 +757,11 @@ export const es: TranslationResources = {
           pending: "Comprometiéndose...",
           success: "Comprometido",
         },
+        commitAndPush: {
+          label: "Confirmar y enviar",
+          pending: "Confirmando y enviando...",
+          success: "Confirmado y enviado",
+        },
         pull: {
           label: "Jalar",
           pending: "Tracción...",
@@ -828,6 +833,8 @@ export const es: TranslationResources = {
           pullUpToDate: "La extracción no está disponible porque esta rama ya está actualizada",
           pushNoRemote:
             "Push no está disponible aquí porque esta rama aún no está conectada a un control remoto",
+          commitAndPushNoRemote:
+            "Confirmar y enviar no está disponible aquí porque esta rama aún no está conectada a un remoto",
           pushBehind:
             "Push aún no está disponible porque hay cambios más nuevos que implementar primero",
           pushNothing: "Push no está disponible porque no hay nada nuevo que enviar",
@@ -882,6 +889,7 @@ export const es: TranslationResources = {
         },
         toasts: {
           failedCommit: "No se pudo comprometer",
+          failedCommitAndPush: "No se pudo confirmar y enviar",
           failedPull: "No se pudo tirar",
           failedPush: "No se pudo empujar",
           failedPullAndPush: "No se pudo tirar y empujar",

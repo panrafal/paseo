@@ -753,6 +753,11 @@ export const ja: TranslationResources = {
           pending: "コミット中...",
           success: "コミットしました",
         },
+        commitAndPush: {
+          label: "コミットしてプッシュ",
+          pending: "コミットしてプッシュ中...",
+          success: "コミットしてプッシュしました",
+        },
         pull: {
           label: "プル",
           pending: "プル中...",
@@ -823,6 +828,8 @@ export const ja: TranslationResources = {
           pullUpToDate: "このブランチはすでに最新のため、プルは利用できません",
           pushNoRemote:
             "このブランチはまだリモートに接続されていないため、プッシュはここでは利用できません",
+          commitAndPushNoRemote:
+            "このブランチはまだリモートに接続されていないため、コミットしてプッシュは利用できません",
           pushBehind: "取り込む必要がある新しい変更があるため、まだプッシュは利用できません",
           pushNothing: "プッシュする変更がないため、プッシュは利用できません",
           pullAndPushNoRemote:
@@ -862,6 +869,7 @@ export const ja: TranslationResources = {
         },
         toasts: {
           failedCommit: "コミットに失敗しました",
+          failedCommitAndPush: "コミットとプッシュに失敗しました",
           failedPull: "プルに失敗しました",
           failedPush: "プッシュに失敗しました",
           failedPullAndPush: "プル＆プッシュに失敗しました",

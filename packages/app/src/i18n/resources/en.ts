@@ -747,6 +747,11 @@ export const en = {
           pending: "Committing...",
           success: "Committed",
         },
+        commitAndPush: {
+          label: "Commit and push",
+          pending: "Committing and pushing...",
+          success: "Committed and pushed",
+        },
         pull: {
           label: "Pull",
           pending: "Pulling...",
@@ -818,6 +823,8 @@ export const en = {
           pullUpToDate: "Pull isn't available because this branch is already up to date",
           pushNoRemote:
             "Push isn't available here because this branch is not connected to a remote yet",
+          commitAndPushNoRemote:
+            "Commit and push isn't available here because this branch is not connected to a remote yet",
           pushBehind: "Push isn't available yet because there are newer changes to bring in first",
           pushNothing: "Push isn't available because there is nothing new to send",
           pullAndPushNoRemote:
@@ -860,6 +867,7 @@ export const en = {
         },
         toasts: {
           failedCommit: "Failed to commit",
+          failedCommitAndPush: "Failed to commit and push",
           failedPull: "Failed to pull",
           failedPush: "Failed to push",
           failedPullAndPush: "Failed to pull and push",
