@@ -34,7 +34,7 @@ colonelpanic8:codex-astra-support
 ragokan:fix/claude-native-tool-details
 stackia:fix/cursor-usage-official-display
 cleiter:plan-visible-after-answer
-fidelix:fix/cursor-per-model-thinking
+# fidelix:fix/cursor-per-model-thinking
 colonelpanic8:codex-banked-resets
 KiraPC:feat/open-in-editor-remote-authority
 
