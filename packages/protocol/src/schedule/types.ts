@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  WorkspaceLabelDefinitionSchema,
+  type WorkspaceLabelDefinition,
+} from "../workspace-labels.js";
 import { AgentProviderSchema } from "../provider-manifest.js";
 
 export const ScheduleStatusSchema = z.enum(["active", "paused", "completed"]);
@@ -31,6 +35,7 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
       model: z.string().trim().min(1).optional(),
       thinkingOptionId: z.string().trim().min(1).optional(),
       archiveOnFinish: z.boolean().optional(),
+      workspaceLabels: z.array(WorkspaceLabelDefinitionSchema).optional(),
       isolation: z.enum(["local", "worktree"]).optional(),
       title: z.string().trim().min(1).nullable().optional(),
       providerOptions: z.record(z.string(), z.json()).optional(),
@@ -94,6 +99,7 @@ export interface UpdateScheduleNewAgentConfig {
   modeId?: string | null;
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
+  workspaceLabels?: WorkspaceLabelDefinition[];
   isolation?: "local" | "worktree";
   cwd?: string;
 }

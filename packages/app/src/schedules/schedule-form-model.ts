@@ -1,3 +1,7 @@
+import {
+  workspaceLabelKey,
+  type WorkspaceLabelDefinition,
+} from "@getpaseo/protocol/workspace-labels";
 import type {
   AgentMode,
   AgentModelDefinition,
@@ -38,6 +42,7 @@ export interface ScheduleFormHost {
   serverId: string;
   label: string;
   supportsWorkspaceMultiplicity?: boolean;
+  supportsScheduleWorkspaceLabels?: boolean;
 }
 
 export interface ScheduleFormSnapshot {
@@ -105,6 +110,8 @@ export interface ScheduleFormState {
   modelSelectorProviders: ProviderSelectorProvider[];
   modeOptions: AgentMode[];
   availableThinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
+  workspaceLabels: WorkspaceLabelDefinition[];
+  submitWorkspaceLabels: WorkspaceLabelDefinition[] | undefined;
   archiveOnFinish: boolean;
   isolation: "local" | "worktree";
   effectiveIsolation: "local" | "worktree";
@@ -137,6 +144,7 @@ export interface ScheduleFormModel {
   setCadence: (value: ScheduleCadence) => void;
   setIsolation: (value: "local" | "worktree") => void;
   setArchiveOnFinish: (value: boolean) => void;
+  toggleWorkspaceLabel: (label: WorkspaceLabelDefinition) => void;
   setSubmitError: (value: string | null) => void;
 }
 
@@ -624,9 +632,18 @@ function updateDerivedState(input: {
       ? input.state.archiveOnFinish
       : undefined,
     submitIsolation: canSubmitWorkspaceLifecycleOptions ? effectiveIsolation : undefined,
+    submitWorkspaceLabels: input.hosts.find(
+      (host) => host.serverId === input.state.selectedServerId,
+    )?.supportsScheduleWorkspaceLabels
+      ? input.state.workspaceLabels
+      : undefined,
   };
   const disclosure = resolveDisclosure(nextState);
   return { ...nextState, disclosure, canSubmit: resolveCanSubmit({ ...nextState, disclosure }) };
+}
+
+function initialWorkspaceLabels(snapshot: ScheduleFormSnapshot): WorkspaceLabelDefinition[] {
+  return [...(newAgentConfig(snapshot.schedule)?.workspaceLabels ?? [])];
 }
 
 function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
@@ -679,6 +696,8 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     modelSelectorProviders: [],
     modeOptions: [],
     availableThinkingOptions: [],
+    workspaceLabels: initialWorkspaceLabels(snapshot),
+    submitWorkspaceLabels: undefined,
     archiveOnFinish: config?.archiveOnFinish ?? true,
     isolation: resolveInitialIsolation({ config, preferences: snapshot.defaults.preferences }),
     effectiveIsolation: "local",
@@ -1013,6 +1032,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         clearProviderSelection({
           ...state,
           selectedServerId: serverId,
+          workspaceLabels: [],
           workingDir: "",
           projectDisplay: null,
           selectedProjectOptionId: "",
@@ -1117,6 +1137,16 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
     setIsolation(value) {
       userModified = { ...userModified, isolation: true };
       publish({ ...state, isolation: value });
+    },
+    toggleWorkspaceLabel(label) {
+      const key = workspaceLabelKey(label.name);
+      const assigned = state.workspaceLabels.some((entry) => workspaceLabelKey(entry.name) === key);
+      publish({
+        ...state,
+        workspaceLabels: assigned
+          ? state.workspaceLabels.filter((entry) => workspaceLabelKey(entry.name) !== key)
+          : [...state.workspaceLabels, label],
+      });
     },
     setArchiveOnFinish(value) {
       publish({ ...state, archiveOnFinish: value });
