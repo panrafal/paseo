@@ -8,6 +8,7 @@ import type { MergeCapability } from "./merge-capability";
 
 export type GitActionId =
   | "commit"
+  | "commit-and-push"
   | "pull"
   | "push"
   | "pull-and-push"
@@ -207,6 +208,21 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     handler: input.runtime.commit.handler,
   });
 
+  allActions.set("commit-and-push", {
+    id: "commit-and-push",
+    label: i18n.t("workspace.git.actions.commitAndPush.label"),
+    pendingLabel: i18n.t("workspace.git.actions.commitAndPush.pending"),
+    successLabel: i18n.t("workspace.git.actions.commitAndPush.success"),
+    disabled: input.runtime["commit-and-push"].disabled,
+    status: input.runtime["commit-and-push"].status,
+    unavailableMessage: input.runtime["commit-and-push"].disabled
+      ? undefined
+      : getCommitAndPushUnavailableMessage(input),
+    icon: input.runtime["commit-and-push"].icon,
+    startsGroup: false,
+    handler: input.runtime["commit-and-push"].handler,
+  });
+
   allActions.set("pull", {
     id: "pull",
     label: i18n.t("workspace.git.actions.pull.label"),
@@ -297,7 +313,11 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
   const primaryActionId = getPrimaryActionId(input);
   const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
 
-  const secondaryIds = [...REMOTE_ACTION_IDS];
+  const secondaryIds: GitActionId[] = [];
+  if (canCommit(input)) {
+    secondaryIds.push("commit-and-push");
+  }
+  secondaryIds.push(...REMOTE_ACTION_IDS);
   if (!input.isOnBaseBranch) {
     secondaryIds.push(...getFeatureActionIds(input));
   }
@@ -316,7 +336,7 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   if (input.shouldPromoteArchive) {
     return "archive-workspace";
   }
-  if (input.hasUncommittedChanges) {
+  if (canCommit(input)) {
     return "commit";
   }
   if (canPull(input)) {
@@ -507,6 +527,21 @@ function getEnablePullRequestAutoMergeActionLabel(id: PullRequestAutoMergeEnable
     case "enable-pr-auto-merge-rebase":
       return i18n.t("workspace.git.actions.autoMerge.enableRebase");
   }
+}
+
+function canCommit(input: BuildGitActionsInput): boolean {
+  return input.hasUncommittedChanges;
+}
+
+/**
+ * Commit and push shares the commit gate, so the only thing that can hold it
+ * back is the push half: a branch with nowhere to send the new commit.
+ */
+function getCommitAndPushUnavailableMessage(input: BuildGitActionsInput): string | undefined {
+  if (!input.hasRemote) {
+    return i18n.t("workspace.git.actions.unavailable.commitAndPushNoRemote");
+  }
+  return undefined;
 }
 
 function canPull(input: BuildGitActionsInput): boolean {
