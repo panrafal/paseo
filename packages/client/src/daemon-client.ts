@@ -734,6 +734,10 @@ export type WorkspaceLabelListPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.list.response" }
 >["payload"];
+export type WorkspaceLabelCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.label.create.response" }
+>["payload"];
 export type WorkspaceLabelAssignmentPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.assignment.set.response" }
@@ -2422,6 +2426,20 @@ export class DaemonClient {
       { type: "workspace.label.list.request", subscribe: {} },
       options,
     );
+  }
+
+  async createWorkspaceLabel(options: {
+    label: Extract<SessionInboundMessage, { type: "workspace.label.create.request" }>["label"];
+    requestId?: string;
+  }): Promise<WorkspaceLabelCreatePayload> {
+    // COMPAT(workspaceLabelCreation): added in v0.7.3, remove after 2027-03-06.
+    if (this.lastServerInfoMessage?.features?.workspaceLabelCreation !== true) {
+      throw new Error("Update the host to create workspace labels.");
+    }
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.label.create.response">({
+      requestId: options.requestId,
+      message: { type: "workspace.label.create.request", label: options.label },
+    });
   }
 
   setWorkspaceLabel(options: {

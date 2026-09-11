@@ -54,12 +54,11 @@ for (const isolation of ["local", "worktree"] as const) {
     });
     const client = workspace.client as unknown as DaemonClient;
     const label = { name: "Scheduled review", color: "red" } as const;
-    const secondLabel = { name: "Automation", color: "sky" } as const;
+    const secondLabel = { name: "Zebra automation", color: "sky" } as const;
     let labelName: string = label.name;
     let scheduleId: string | undefined;
     const failNextSave = await installSaveFailure(page);
     try {
-      await client.setWorkspaceLabel({ workspaceId: workspace.workspaceId, label, assigned: true });
       await client.setWorkspaceLabel({
         workspaceId: workspace.workspaceId,
         label: secondLabel,
@@ -86,7 +85,22 @@ for (const isolation of ["local", "worktree"] as const) {
       }
       await page.getByTestId("schedule-archive-on-finish-switch").click();
       await page.getByTestId("schedule-labels-trigger").click();
-      await page.getByTestId(`schedule-label-option-${label.name}`).click();
+      await page.getByTestId("workspace-label-picker-create").click();
+      await page.getByTestId("workspace-label-picker-create-name").fill(label.name);
+      await page.getByTestId(`workspace-label-swatch-${label.color}`).click();
+      await page.getByTestId("workspace-label-picker-create-submit").click();
+      await expect(page.getByTestId(`schedule-label-option-${label.name}`)).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      await expect(page.getByTestId(/^schedule-label-option-/)).toHaveText([
+        label.name,
+        secondLabel.name,
+      ]);
+      expect(
+        (await client.fetchWorkspaces()).entries.find((entry) => entry.id === workspace.workspaceId)
+          ?.labels,
+      ).toEqual([secondLabel.name]);
       await page.getByTestId(`schedule-label-option-${secondLabel.name}`).click();
       await page.keyboard.press("Escape");
       await expect(page.getByTestId("schedule-labels-trigger")).toContainText(label.name);
@@ -128,7 +142,14 @@ for (const isolation of ["local", "worktree"] as const) {
       await page.getByTestId("schedule-labels-trigger").click();
       await page.getByTestId(`schedule-label-option-${labelName}`).click();
       await page.getByTestId(`schedule-label-option-${secondLabel.name}`).click();
-      await page.keyboard.press("Escape");
+      if (isolation === "worktree") {
+        await page
+          .getByRole("button", { name: "Bottom sheet backdrop", exact: true })
+          .last()
+          .click();
+      } else {
+        await page.keyboard.press("Escape");
+      }
       await expect(page.getByTestId("schedule-labels-trigger")).toContainText("Unlabelled");
       failNextSave();
       await page.getByRole("button", { name: "Save changes" }).click();
@@ -158,6 +179,8 @@ for (const isolation of ["local", "worktree"] as const) {
       await page.screenshot({ path: `/tmp/schedule-labels-${isolation}.png` });
     } finally {
       if (scheduleId) await client.scheduleDelete({ id: scheduleId });
+      await client.deleteWorkspaceLabel({ name: labelName });
+      await client.deleteWorkspaceLabel({ name: secondLabel.name });
       await workspace.cleanup();
     }
   });
