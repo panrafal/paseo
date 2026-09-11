@@ -2,18 +2,40 @@ import type { Command } from "commander";
 import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandError, CommandOptions, ListResult } from "../../output/index.js";
-import { toWorkspaceRow, workspaceSchema, type WorkspaceRow } from "./shared.js";
+import {
+  toWorkspaceRow,
+  workspaceSchema,
+  type WorkspaceRow,
+  type WorkspaceRowSource,
+} from "./shared.js";
 
 export interface WorkspaceLsOptions extends CommandOptions {
   /** Label names; a workspace must carry every one of them. */
   label?: string[];
 }
 
+export type FetchWorkspacesOptions = NonNullable<
+  Parameters<Awaited<ReturnType<typeof connectToDaemon>>["fetchWorkspaces"]>[0]
+>;
+
+/** The slice of the daemon client the listing uses, so tests drive the command with an in-memory fake. */
+export interface WorkspaceLsClient {
+  getLastServerInfoMessage(): { features?: { workspaceLabels?: boolean } | null } | null;
+  fetchWorkspaces(
+    options: FetchWorkspacesOptions,
+  ): Promise<{ entries: WorkspaceRowSource[]; pageInfo: { nextCursor?: string | null } }>;
+  close(): Promise<void>;
+}
+
+export interface WorkspaceLsDeps {
+  connectToDaemon(options: Parameters<typeof connectToDaemon>[0]): Promise<WorkspaceLsClient>;
+}
+
 /**
  * Labels match by the same key the host catalog uses, so `--label blocked`
  * finds a workspace labelled "Blocked".
  */
-export function parseWorkspaceLabelFilters(labels: string[] | undefined): string[] {
+function parseLabelFilters(labels: string[] | undefined): string[] {
   const keys: string[] = [];
   for (const label of labels ?? []) {
     const key = workspaceLabelKey(label);
@@ -27,10 +49,7 @@ export function parseWorkspaceLabelFilters(labels: string[] | undefined): string
   return keys;
 }
 
-export function matchesWorkspaceLabelFilters(
-  labels: readonly string[],
-  labelKeys: readonly string[],
-): boolean {
+function matchesLabelFilters(labels: readonly string[], labelKeys: readonly string[]): boolean {
   if (labelKeys.length === 0) {
     return true;
   }
@@ -42,15 +61,24 @@ export async function runLsCommand(
   options: WorkspaceLsOptions,
   _command: Command,
 ): Promise<ListResult<WorkspaceRow>> {
-  const labelKeys = parseWorkspaceLabelFilters(options.label);
+  return runLsCommandWithDeps(options, { connectToDaemon });
+}
+
+export async function runLsCommandWithDeps(
+  options: WorkspaceLsOptions,
+  deps: WorkspaceLsDeps,
+): Promise<ListResult<WorkspaceRow>> {
+  const labelKeys = parseLabelFilters(options.label);
   const host = getDaemonHost({ target: options.daemonTarget });
-  const client = await connectToDaemon({ target: options.daemonTarget }).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    throw {
-      code: "DAEMON_NOT_RUNNING",
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-    } satisfies CommandError;
-  });
+  const client = await deps
+    .connectToDaemon({ target: options.daemonTarget })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      throw {
+        code: "DAEMON_NOT_RUNNING",
+        message: `Cannot connect to daemon at ${host}: ${message}`,
+      } satisfies CommandError;
+    });
   try {
     // COMPAT(workspaceLabels): added in v0.5.0, remove gate after 2027-08-14.
     if (
@@ -71,7 +99,7 @@ export async function runLsCommand(
       workspaces.push(...payload.entries.map(toWorkspaceRow));
       cursor = payload.pageInfo.nextCursor ?? undefined;
     } while (cursor);
-    const data = workspaces.filter((row) => matchesWorkspaceLabelFilters(row.labels, labelKeys));
+    const data = workspaces.filter((row) => matchesLabelFilters(row.labels, labelKeys));
     return { type: "list", data, schema: workspaceSchema };
   } finally {
     await client.close().catch(() => undefined);
