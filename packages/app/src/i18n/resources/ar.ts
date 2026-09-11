@@ -216,6 +216,15 @@ export const ar: TranslationResources = {
       implement: "ينفذ",
       question: "كيف تريد المتابعة؟",
       proposedPlan: "الخطة المقترحة",
+      planApproved: "تمت الموافقة",
+      planRejected: "مرفوض",
+      planDismissed: "تم التجاهل",
+    },
+    questions: {
+      answerPlaceholder: "اكتب إجابتك...",
+      submit: "إرسال الإجابة",
+      answered: "تمت الإجابة",
+      sendFailed: "تعذر إرسال إجابتك",
     },
   },
   agentPanel: {
@@ -651,6 +660,7 @@ export const ar: TranslationResources = {
         reloadedAgent: "وكيل إعادة تحميل",
         failedToReloadAgent: "فشل في إعادة تحميل الوكيل",
         failedToCloseAgent: "فشل في إغلاق الوكيل",
+        failedToSaveClosePreference: "تعذّر حفظ تفضيل إغلاق المحطة",
       },
       confirmations: {
         unsavedTitle: "تغييرات غير محفوظة",
@@ -665,6 +675,8 @@ export const ar: TranslationResources = {
         archive: "أرشيف",
         closeTerminalTitle: "إغلاق المحطة؟",
         closeTerminalMessage: "سيتم إيقاف أي عملية جارية في هذه المحطة على الفور.",
+        rememberChoice: "تذكر هذا الاختيار",
+        closeAndDontAskAgain: "إغلاق وعدم السؤال مرة أخرى",
         archiveRunningAgentTitle: "وكيل تشغيل الأرشيف؟",
         archiveRunningAgentMessage:
           "هذا الوكيل لا يزال قيد التشغيل. ستؤدي أرشفته إلى إيقاف الوكيل وإغلاق علامة التبويب.",
@@ -751,6 +763,11 @@ export const ar: TranslationResources = {
           pending: "ارتكاب...",
           success: "ملتزم",
         },
+        commitAndPush: {
+          label: "الالتزام والدفع",
+          pending: "جارٍ الالتزام والدفع...",
+          success: "تم الالتزام والدفع",
+        },
         pull: {
           label: "يحذب",
           pending: "سحب...",
@@ -818,6 +835,8 @@ export const ar: TranslationResources = {
           pullDirty: "السحب غير متاح أثناء وجود تغييرات محلية، لذا قم بتنفيذها أو تخزينها أولاً",
           pullUpToDate: "السحب غير متاح لأن هذا الفرع محدث بالفعل",
           pushNoRemote: "الدفع غير متاح هنا لأن هذا الفرع غير متصل بجهاز التحكم عن بعد بعد",
+          commitAndPushNoRemote:
+            "الالتزام والدفع غير متاح هنا لأن هذا الفرع غير متصل بجهاز التحكم عن بعد بعد",
           pushBehind: "الدفع غير متاح حتى الآن نظرًا لوجود تغييرات أحدث يجب إدخالها أولاً",
           pushNothing: "خدمة الدفع غير متاحة لأنه لا يوجد شيء جديد لإرساله",
           pullAndPushNoRemote:
@@ -851,6 +870,7 @@ export const ar: TranslationResources = {
         },
         toasts: {
           failedCommit: "فشل في الالتزام",
+          failedCommitAndPush: "فشل الالتزام والدفع",
           failedPull: "فشل في السحب",
           failedPush: "فشل في الدفع",
           failedPullAndPush: "فشل في السحب والدفع",
@@ -931,6 +951,10 @@ export const ar: TranslationResources = {
         openIn: "افتح مساحة العمل في{{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "فشل في فتح مساحة العمل",
+        failedOpenFile: "تعذر فتح الملف",
+        setUp: "الإعداد…",
+        setUpRemoteHost: "إعداد فتح هذا المضيف في محرر",
+        setUpToast: 'لفتح {{host}} في محرر، حدّد مضيف SSH الخاص به ضمن "الفتح في المحرر".',
       },
       pr: {
         actions: {
@@ -1002,6 +1026,7 @@ export const ar: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "بعض التصنيفات المحددة لم تعد موجودة. أزلها للمتابعة.",
     title: "التسميات",
     unlabelled: "بلا تسمية",
     create: "إنشاء تسمية",
@@ -1059,6 +1084,8 @@ export const ar: TranslationResources = {
       heading: "العرض",
       grouping: {
         label: "التجميع",
+        currentLabel: "التجميع الحالي: {{current}}",
+        toggleLabel: "التجميع الحالي: {{current}}. تبديل التجميع",
         project: "المشروع",
         status: "الحالة",
         labels: "التسميات",
@@ -1429,6 +1456,11 @@ export const ar: TranslationResources = {
     errorTitle: "حدث خطأ ما",
     errorDescription:
       "فشل الخادم المحلي في البدء. إذا استمر حدوث ذلك، فيرجى الإبلاغ عن المشكلة على GitHub وتضمين السجلات أدناه.",
+    status: {
+      connecting: "جارٍ الاتصال ببرنامج Paseo الخفي…",
+      loadingWorkspaces: "جارٍ تحميل مساحات العمل الخاصة بك…",
+      opening: "جارٍ فتح هذا المجلد في Paseo…",
+    },
     logs: {
       loading: "جارٍ تحميل سجلات البرنامج الخفي...",
       unavailable: "لا توجد سجلات خفية متاحة.",
@@ -1775,6 +1807,16 @@ export const ar: TranslationResources = {
     archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
     archiveFinishedRetry: "إعادة المحاولة ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "بحث",
+    matchPosition: "{{current}} من {{count}}",
+    matchPositionCapped: "{{current}} من أكثر من {{count}}",
+    noResults: "لا توجد نتائج",
+    cappedCount: "أكثر من {{count}} نتيجة",
+    previous: "النتيجة السابقة",
+    next: "النتيجة التالية",
+    close: "إغلاق البحث",
+  },
   panels: {
     draft: {
       newAgent: "وكيل جديد",
@@ -1785,6 +1827,8 @@ export const ar: TranslationResources = {
       loading: "جارٍ تحميل الملف...",
       noPreview: "لا تتوفر معاينة",
       binaryPreviewUnavailable: "المعاينة الثنائية غير متاحة",
+      videoPlaybackFailed:
+        "تعذر تشغيل هذا الفيديو. قد يكون الملف تالفًا أو تنسيقه غير مدعوم على هذا الجهاز.",
       tooLargeToDisplay: "هذا الملف كبير جدًا بحيث لا يمكن عرضه",
       failedToLoad: "فشل تحميل الملف",
       failedToLoadPreview: "فشل تحميل معاينة الملف",
@@ -2018,6 +2062,10 @@ export const ar: TranslationResources = {
         description: "يتم الاحتفاظ بالخطوط في المخزن المؤقت الطرفي المدمج",
         accessibilityLabel: "خطوط التمرير Terminal",
       },
+      confirmTerminalClose: {
+        label: "تأكيد إغلاق المحطات",
+        description: "اسأل قبل إغلاق علامة تبويب المحطة",
+      },
       autoExpandReasoning: {
         label: "عرض التفكير دائماً",
         description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
@@ -2197,6 +2245,7 @@ export const ar: TranslationResources = {
         jumpToTab: "انتقل إلى علامة التبويب",
         previousWorkspace: "مساحة العمل السابقة",
         nextWorkspace: "مساحة العمل التالية",
+        cycleSidebarGrouping: "تبديل التجميع",
         previousTab: "علامة التبويب السابقة",
         nextTab: "علامة التبويب التالية",
         splitPaneRight: "تقسيم الجزء الأيمن",
@@ -2212,6 +2261,11 @@ export const ar: TranslationResources = {
         closePane: "إغلاق الجزء",
         newTerminal: "محطة جديدة",
         searchFiles: "البحث في الملفات",
+        findInPane: "البحث في اللوحة",
+        findNext: "البحث عن التالي",
+        findPrevious: "البحث عن السابق",
+        historyBack: "الرجوع في السجل",
+        historyForward: "التقدم في السجل",
         toggleCommandCenter: "تبديل مركز القيادة",
         showKeyboardShortcuts: "إظهار اختصارات لوحة المفاتيح",
         toggleLeftSidebar: "تبديل الشريط الجانبي الأيسر",
@@ -2231,6 +2285,7 @@ export const ar: TranslationResources = {
         switchProject: "تبديل المشروع",
       },
       helpNotes: {
+        findWhileOpen: "فقط أثناء فتح شريط البحث.",
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",
       },
     },
@@ -2296,6 +2351,22 @@ export const ar: TranslationResources = {
         },
         preview: {
           workspaceName: "my-workspace",
+        },
+      },
+      openInEditor: {
+        title: "الفتح في المحرر",
+        info: 'يشغّل "الفتح في المحرر" المحرر المثبّت على هذا الحاسوب. عندما يعمل الخادم على جهاز آخر، يصل المحرر إليه عبر SSH — VS Code وCursor عبر Remote-SSH، وZed عبر عنوان ssh://.',
+        sshHost: {
+          label: "مضيف SSH",
+          hint: "يتيح للمحررات على هذا الحاسوب فتح ملفات هذا المضيف عبر SSH",
+          notSet: "غير محدد",
+          editLabel: "تعديل مضيف SSH",
+          modalTitle: "مضيف SSH",
+          modalHint:
+            "عادةً اسم مستعار من ملف ~/.ssh/config لديك، مثل my-dev-host. اتركه فارغًا لتعطيل ذلك.",
+          placeholder: "my-dev-host",
+          save: "حفظ",
+          invalid: "استخدم مضيف SSH واحدًا، بدون مسافات أو شرطات مائلة.",
         },
       },
       notFound: "لم يتم العثور على Host",

@@ -11,6 +11,7 @@ const SERVER_ID = "diff-stat-pill";
 const WORKSPACE_ID = "workspace";
 
 const workspace: WorkspaceDescriptor = {
+  activityAt: null,
   id: WORKSPACE_ID,
   projectId: "project",
   projectDisplayName: "Project",
