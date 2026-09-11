@@ -206,8 +206,15 @@ default is Codex `gpt-5.6-luna` with `max` thinking and `auto-review` mode.
 Override `FORK_AGENT_PROVIDER`, `FORK_AGENT_MODEL`, `FORK_AGENT_THINKING`, or
 `FORK_AGENT_MODE` before running if needed.
 
-Without `--agent`, or when the agent gives up, the run stops and leaves the
-scratch worktree in place. Resolve there, commit, and re-run the same
+For `rebase-branches --agent`, one agent takes over at the first conflicting
+commit and continues the rebase through all remaining commits. It runs typecheck
+and lint on the final result. The script checks that the rebase finished on
+upstream with a clean worktree before updating and pushing the branch. An
+unfinished or failed agent run preserves the rebase worktree; recover it or
+explicitly remove it before retrying. Retrying refuses to overwrite that work.
+
+For integration merges, without `--agent` or when the agent gives up, the run
+stops and leaves the scratch worktree in place. Resolve there, commit, and re-run the same
 command: it continues from the merge you committed, so a fix made outside
 the conflict hunks — an import, a call site — is kept too. A re-run whose
 integration moved in the meantime starts over and says so.
