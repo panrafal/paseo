@@ -419,6 +419,11 @@ One file per schedule. ID is 8 hex characters.
 
 ### Nested: ScheduleTarget (discriminated union on `type`)
 
+Scheduled workspace labels store name/color definitions so you can select a label from
+another host's catalog. Each run uses the target host's existing definition when the name
+already exists. Editing a schedule's labels affects future workspaces only; catalog renames
+and deletions do not rewrite the schedule's saved definitions.
+
 - `{ type: "agent", agentId: string }` — send to existing agent
 - `{ type: "new-agent", config: { provider, cwd, modeId?, model?, thinkingOptionId?, title?, providerOptions?, featureValues?, systemPrompt?, mcpServers? } }` — create a new agent
 

@@ -6,6 +6,7 @@ import {
   DEFAULT_CLIENT_CAPABILITIES,
   type TimelineSubscription,
 } from "./connection/index.js";
+import type { WorkspaceLabelDefinition } from "@getpaseo/protocol/workspace-labels";
 import type { z } from "zod";
 import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
 import type { ClientCapability } from "@getpaseo/protocol/client-capabilities";
@@ -752,6 +753,7 @@ export interface CreateScheduleOptions {
           model?: string;
           thinkingOptionId?: string;
           archiveOnFinish?: boolean;
+          workspaceLabels?: WorkspaceLabelDefinition[];
           isolation?: "local" | "worktree";
           title?: string | null;
           providerOptions?: AgentSessionConfig["providerOptions"];
@@ -774,6 +776,7 @@ export interface UpdateScheduleNewAgentConfig {
   modeId?: string | null;
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
+  workspaceLabels?: WorkspaceLabelDefinition[];
   isolation?: "local" | "worktree";
   cwd?: string;
 }

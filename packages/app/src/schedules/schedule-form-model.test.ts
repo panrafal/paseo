@@ -16,6 +16,64 @@ const HOSTS = [
   { serverId: "host-b", label: "Host B", supportsWorkspaceMultiplicity: true },
 ] as const;
 
+describe("schedule workspace labels", () => {
+  it("only submits labels to a host advertising schedule label support", () => {
+    const model = openScheduleForm({
+      mode: "create",
+      hosts: HOSTS,
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS },
+    });
+    const label = { name: "Review", color: "sky" } as const;
+    model.toggleWorkspaceLabel(label);
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
+    model.applyHosts(HOSTS.map((host) => ({ ...host, supportsScheduleWorkspaceLabels: true })));
+    expect(model.getState().submitWorkspaceLabels).toEqual([label]);
+    model.toggleWorkspaceLabel(label);
+    expect(model.getState().submitWorkspaceLabels).toEqual([]);
+    model.close();
+  });
+
+  it("seeds edit labels, toggles selections, and keeps drafts through refreshed inputs", () => {
+    const schedule = scheduleOnHost({
+      serverId: "host-a",
+      serverName: "Host A",
+      cwd: "/repo/a",
+      model: "model-a",
+    });
+    const label = { name: "Review", color: "sky" } as const;
+    if (schedule.target.type !== "new-agent") throw new Error("Expected new-agent schedule");
+    schedule.target.config.workspaceLabels = [label];
+    const model = openScheduleForm({
+      mode: "edit",
+      schedule,
+      hosts: HOSTS,
+      defaults: { projectTargets: PROJECT_TARGETS },
+    });
+    expect(model.getState().workspaceLabels).toEqual([label]);
+    model.toggleWorkspaceLabel(label);
+    expect(model.getState().workspaceLabels).toEqual([]);
+    model.toggleWorkspaceLabel(label);
+    model.applyProjectTargets([...PROJECT_TARGETS]);
+    expect(model.getState().workspaceLabels).toEqual([label]);
+    model.toggleWorkspaceLabel({ ...label, name: "review" });
+    expect(model.getState().workspaceLabels).toEqual([]);
+    model.close();
+  });
+
+  it("starts without labels and clears selections when changing hosts", () => {
+    const model = openScheduleForm({
+      mode: "create",
+      hosts: HOSTS,
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS },
+    });
+    expect(model.getState().workspaceLabels).toEqual([]);
+    model.toggleWorkspaceLabel({ name: "Review", color: "sky" });
+    model.setHost("host-b");
+    expect(model.getState().workspaceLabels).toEqual([]);
+    model.close();
+  });
+});
+
 const MOCK_MODES: AgentMode[] = [{ id: "load-test", label: "Load test" }];
 
 const HOST_A_MODELS: AgentModelDefinition[] = [
