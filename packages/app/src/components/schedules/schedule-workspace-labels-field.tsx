@@ -1,21 +1,16 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
+import { workspaceLabelKey, type WorkspaceLabelColor } from "@getpaseo/protocol/workspace-labels";
 import { Field } from "@/components/ui/form-field";
 import { SelectFieldTrigger } from "@/components/ui/select-field";
 import type { FieldControlSize } from "@/components/ui/control-geometry";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuHint,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  buildWorkspaceLabelPickerRows,
-  useWorkspaceLabelProjection,
-  type WorkspaceLabelPickerRow,
-} from "@/workspace-labels";
+import { useWorkspaceLabelProjection } from "@/workspace-labels";
 import { WorkspaceLabelDot } from "@/workspace-labels/swatch";
 import type { ScheduleFormModel, ScheduleFormState } from "@/schedules/schedule-form-model";
 
@@ -29,22 +24,33 @@ export function ScheduleWorkspaceLabelsField({
   size: FieldControlSize;
 }) {
   const { t } = useTranslation();
-  const { labels, targetHost } = useWorkspaceLabelProjection(state.selectedServerId ?? undefined);
+  const { targetHost } = useWorkspaceLabelProjection(state.selectedServerId ?? undefined);
   const rows = useMemo(() => {
-    // Keep saved selections removable even if their catalog entries have been deleted.
-    const catalog = new Map(labels.map((label) => [workspaceLabelKey(label.name), label]));
-    for (const label of state.workspaceLabels) {
-      if (!catalog.has(workspaceLabelKey(label.name)))
-        catalog.set(workspaceLabelKey(label.name), label);
+    const catalog = new Map<string, { name: string; color?: WorkspaceLabelColor }>(
+      (targetHost?.labels ?? []).map((label) => [workspaceLabelKey(label.name), label]),
+    );
+    for (const name of state.workspaceLabels) {
+      if (!catalog.has(workspaceLabelKey(name))) catalog.set(workspaceLabelKey(name), { name });
     }
-    return buildWorkspaceLabelPickerRows({
-      labels: [...catalog.values()],
-      assigned: state.workspaceLabels.map((label) => label.name),
-    });
-  }, [labels, state.workspaceLabels]);
+    const assigned = new Set(state.workspaceLabels.map(workspaceLabelKey));
+    return [...catalog.values()].map((label) => ({
+      name: label.name,
+      color: label.color,
+      assigned: assigned.has(workspaceLabelKey(label.name)),
+    }));
+  }, [targetHost?.labels, state.workspaceLabels]);
+
+  if (
+    !state.hosts.find((host) => host.serverId === state.selectedServerId)
+      ?.supportsScheduleWorkspaceLabels
+  )
+    return null;
 
   return (
-    <Field label={t("workspaceLabels.title")}>
+    <Field
+      label={t("workspaceLabels.title")}
+      error={state.workspaceLabelsInvalid ? t("workspaceLabels.staleSelection") : undefined}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger
           accessibilityRole="button"
@@ -53,7 +59,7 @@ export function ScheduleWorkspaceLabelsField({
         >
           {({ hovered, pressed, open }) => (
             <SelectFieldTrigger
-              label={state.workspaceLabels.map((label) => label.name).join(", ") || undefined}
+              label={state.workspaceLabels.join(", ") || undefined}
               isPlaceholder={state.workspaceLabels.length === 0}
               placeholder={t("workspaceLabels.unlabelled")}
               active={hovered || pressed || open}
@@ -69,10 +75,6 @@ export function ScheduleWorkspaceLabelsField({
               onToggle={model.toggleWorkspaceLabel}
             />
           ))}
-          {rows.length === 0 ? (
-            <DropdownMenuHint>{t("workspaceLabels.manage.empty")}</DropdownMenuHint>
-          ) : null}
-          {targetHost?.error ? <DropdownMenuHint>{targetHost.error}</DropdownMenuHint> : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </Field>
@@ -83,14 +85,14 @@ function ScheduleLabelRow({
   row,
   onToggle,
 }: {
-  row: WorkspaceLabelPickerRow;
+  row: { name: string; color?: WorkspaceLabelColor; assigned: boolean };
   onToggle: ScheduleFormModel["toggleWorkspaceLabel"];
 }) {
-  const leading = useMemo(() => <WorkspaceLabelDot color={row.color} />, [row.color]);
-  const onSelect = useCallback(
-    () => onToggle({ name: row.name, color: row.color }),
-    [onToggle, row.name, row.color],
+  const leading = useMemo(
+    () => (row.color ? <WorkspaceLabelDot color={row.color} /> : undefined),
+    [row.color],
   );
+  const onSelect = useCallback(() => onToggle(row.name), [onToggle, row.name]);
   return (
     <DropdownMenuItem
       leading={leading}

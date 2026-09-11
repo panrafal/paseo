@@ -1056,6 +1056,7 @@ export const ptBR: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "Alguns rótulos selecionados não existem mais. Remova-os para continuar.",
     title: "Etiquetas",
     unlabelled: "Sem etiqueta",
     create: "Criar etiqueta",

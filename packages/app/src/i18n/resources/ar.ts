@@ -1033,6 +1033,7 @@ export const ar: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "بعض التصنيفات المحددة لم تعد موجودة. أزلها للمتابعة.",
     title: "التسميات",
     unlabelled: "بلا تسمية",
     create: "إنشاء تسمية",

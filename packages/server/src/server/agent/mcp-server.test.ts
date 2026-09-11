@@ -4147,6 +4147,7 @@ describe("create_schedule MCP tool", () => {
       cron: "*/15 * * * *",
       provider: "codex",
       isolation: "worktree",
+      workspaceLabels: ["Review"],
     });
 
     expect(createOrReplace).toHaveBeenNthCalledWith(
@@ -4183,6 +4184,7 @@ describe("create_schedule MCP tool", () => {
             provider: "codex",
             cwd: process.cwd(),
             isolation: "worktree",
+            workspaceLabels: ["Review"],
           },
         },
       }),
@@ -4220,6 +4222,7 @@ describe("create_schedule MCP tool", () => {
     const response = await tool.handler({
       prompt: "say hello",
       cron: "*/5 * * * *",
+      workspaceLabels: ["Review"],
     });
 
     expect(response.structuredContent.target).toEqual({
@@ -4230,6 +4233,7 @@ describe("create_schedule MCP tool", () => {
         modeId: "build",
         model: "openai/gpt-5.5",
         featureValues: { auto_accept: true },
+        workspaceLabels: ["Review"],
       },
     });
   });
@@ -4514,12 +4518,19 @@ describe("update_schedule MCP tool", () => {
       id: "schedule-1",
       name: "updated name",
       prompt: "new prompt",
+      workspaceLabels: ["Review"],
     });
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
       name: "updated name",
       prompt: "new prompt",
+      newAgentConfig: { workspaceLabels: ["Review"] },
+    });
+    await tool.handler({ id: "schedule-1", workspaceLabels: [] });
+    expect(update).toHaveBeenLastCalledWith({
+      id: "schedule-1",
+      newAgentConfig: { workspaceLabels: [] },
     });
   });
 
