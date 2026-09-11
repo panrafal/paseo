@@ -27,9 +27,16 @@
 # External PRs: add owner:branch to fetch from https://github.com/owner/paseo.git.
 # These branches follow their authors, including force-pushes; we never rebase them.
 
+# Load the script before running it. rebase-branches can move the branch this
+# file is executing from; Bash otherwise reads the changed tail from disk.
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+  source_path="${BASH_SOURCE[0]}"
+  exec bash -c "$(<"$source_path")" "$source_path" "$@"
+fi
+
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=fork/config.sh
 . "$HERE/config.sh"
 
