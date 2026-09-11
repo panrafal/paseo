@@ -1481,6 +1481,67 @@ describe("create_agent MCP tool", () => {
     );
   });
 
+  it("fills omitted profile features when create_agent uniquely matches a configured profile", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.createAgent.mockResolvedValue({
+      id: "profile-agent",
+      cwd: REPO_CWD,
+      lifecycle: "idle",
+      currentModeId: "auto",
+      availableModes: [],
+      config: { title: "Profile test", featureValues: { fast_mode: true } },
+    } as ManagedAgent);
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      ensureWorkspaceForCreate,
+      daemonConfigStore: daemonConfigStoreStub([
+        {
+          id: "profile_codex_medium",
+          name: "Codex Medium",
+          provider: "codex",
+          model: "gpt-5.4",
+          modeId: "auto",
+          thinkingOptionId: "high",
+          featureValues: { fast_mode: true },
+        },
+        {
+          id: "profile_codex_reader",
+          name: "Codex Reader",
+          provider: "codex",
+          model: "gpt-5.4",
+          modeId: "auto",
+          thinkingOptionId: "low",
+          featureValues: { fast_mode: false },
+        },
+      ]),
+      logger,
+    });
+    const tool = registeredTool(server, "create_agent");
+    await tool.handler({
+      ...detachedDirectoryWorkspace(existingCwd),
+      title: "Profile test",
+      provider: "codex/gpt-5.4",
+      initialPrompt: "Do work",
+      background: true,
+      settings: { modeId: "auto", thinkingOptionId: "high" },
+    });
+
+    expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        model: "gpt-5.4",
+        modeId: "auto",
+        thinkingOptionId: "high",
+        featureValues: { fast_mode: true },
+      }),
+      undefined,
+      { workspaceId: "workspace-created" },
+    );
+  });
+
   it("returns create_agent structured content with full provider modes", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
