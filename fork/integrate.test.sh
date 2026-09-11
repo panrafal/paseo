@@ -541,6 +541,79 @@ scenario_rebase_branches() {
   assert_fails "no rebase worktree left" test -e "$FORK_WORK_ROOT/rebase"
 }
 
+scenario_rebase_agent() {
+  fixture rebase-agent
+  patch_branch feat-a a.txt $'patch one\n'
+  git -C "$R" worktree add -q "$F/patch" feat-a
+  printf 'patch two\n' >"$F/patch/a.txt"
+  git -C "$F/patch" commit -qam "patch: second change"
+  git -C "$F/patch" push -q origin feat-a
+  git -C "$R" worktree remove "$F/patch"
+  list_branch origin/feat-a
+  run rebuild --push
+  upstream_commit a.txt $'upstream\n' "upstream: conflicting change"
+  local tip original_path="$PATH"
+  tip="$(at feat-a)"
+  mkdir -p "$F/bin"
+  cat >"$F/bin/paseo" <<'AGENT'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "$1" = run ]
+shift
+while [ "$#" -gt 1 ]; do
+  if [ "$1" = --cwd ]; then dir="$2"; fi
+  shift 2
+done
+printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
+echo call >>"$FORK_WORK_ROOT/calls"
+cd "$dir"
+if [ "${TEST_AGENT_MODE:-}" = abort ]; then
+  git rebase --abort
+  exit 0
+fi
+while [ -d "$(git rev-parse --git-path rebase-merge)" ]; do
+  echo conflict >>"$FORK_WORK_ROOT/conflicts"
+  printf 'upstream + %s\n' "$(git show REBASE_HEAD:a.txt)" >a.txt
+  git add a.txt
+  if [ "${TEST_AGENT_MODE:-}" = partial ]; then exit 0; fi
+  GIT_EDITOR=true git rebase --continue || true
+done
+case "${TEST_AGENT_MODE:-}" in
+  dirty) echo uncommitted >leftover.txt ;;
+  failed) exit 1 ;;
+esac
+AGENT
+  chmod +x "$F/bin/paseo"
+  export PATH="$F/bin:$PATH"
+  local mode
+  for mode in partial abort dirty failed; do
+    export TEST_AGENT_MODE="$mode"
+    assert_fails "$mode agent result refused" run rebase-branches --agent --push
+    assert_eq "$mode branch unchanged" "$(at feat-a)" "$tip"
+    assert_eq "$mode branch not pushed" "$(at origin/feat-a)" "$tip"
+    assert "$mode worktree preserved" test -d "$FORK_WORK_ROOT/rebase"
+    assert_log "Worktree preserved"
+    assert_fails "$mode saved worktree protected on retry" run rebase-branches --agent --push
+    assert_log "saved rebase worktree"
+    git -C "$FORK_WORK_ROOT/rebase" rebase --abort >/dev/null 2>&1 || true
+    git -C "$R" worktree remove --force "$FORK_WORK_ROOT/rebase"
+    git -C "$R" rerere clear
+    rm -rf "$R/.git/rr-cache"
+  done
+  unset TEST_AGENT_MODE
+  rm -f "$FORK_WORK_ROOT/calls" "$FORK_WORK_ROOT/conflicts"
+  assert "one agent finishes multi-conflict rebase" run rebase-branches --agent --push
+  assert_eq "one agent call" "$(wc -l <"$FORK_WORK_ROOT/calls" | tr -d ' ')" 1
+  assert_eq "two conflicting commits resolved" "$(wc -l <"$FORK_WORK_ROOT/conflicts" | tr -d ' ')" 2
+  assert "agent instructed to continue" grep -q 'git rebase --continue' "$FORK_WORK_ROOT/prompt"
+  assert "agent instructed to validate final result" grep -q 'on the final result' "$FORK_WORK_ROOT/prompt"
+  assert "branch based on upstream" git -C "$R" merge-base --is-ancestor upstream/main feat-a
+  assert_eq "both patch commits kept" "$(git -C "$R" rev-list --count upstream/main..feat-a)" 2
+  assert_eq "resolved content published" "$(git -C "$R" show origin/feat-a:a.txt)" 'upstream + patch two'
+  assert_fails "completed worktree removed" test -e "$FORK_WORK_ROOT/rebase"
+  export PATH="$original_path"
+}
+
 scenario_seed() {
   fixture seed
   patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
@@ -725,7 +798,7 @@ run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; 
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args upstream_mirror new_branch)
+all=(rebase_agent rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"

@@ -406,7 +406,23 @@ attribution() {
 # Hand a stopped merge or rebase to a Paseo agent. Returns non-zero if the
 # agent did not finish the job.
 resolve_with_agent() {
-  local dir="$1" what="$2" sides="$3"
+  local dir="$1" what="$2" sides="$3" operation="${4:-merge}" agent_status=0 steps
+  if [ "$operation" = rebase ]; then
+    steps="4. Own the remaining rebase through completion. For each stopped commit,
+   read 'git rebase --show-current-patch', resolve and 'git add -A', then run
+   'GIT_EDITOR=true git rebase --continue'. Repeat for every later conflict.
+   Use 'git rebase --skip' only when the entire commit is already implemented
+   upstream. Do not abort or restart the rebase, or change its todo list.
+5. After the rebase finishes, run 'npm run typecheck' and 'npm run lint' once
+   on the final result if conflicts touched source files. Fix regressions and
+   commit those fixes. Leave a clean worktree with no rebase in progress.
+6. Do not push or update any branch ref, and do not touch another worktree."
+  else
+    steps="4. Run 'npm run typecheck' and 'npm run lint' if the conflicts touched source
+   files, and fix what you broke.
+5. 'git add -A' and 'git commit --no-edit'. Do not push, do not amend history,
+   do not touch any other branch or worktree."
+  fi
   command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
   section "🤖" "Resolve $what"
   say "Handing the conflict to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING)"
@@ -437,13 +453,17 @@ Do this and nothing else:
    upstream change to make a patch apply, and never drop a patch's feature
    because its lines no longer fit — re-express it on the new code.
 3. Leave no conflict markers anywhere.
-4. Run 'npm run typecheck' and 'npm run lint' if the conflicts touched source
-   files, and fix what you broke.
-5. 'git add -A' and 'git commit --no-edit'. Do not push, do not amend history,
-   do not touch any other branch or worktree.
+$steps
 
 If a conflict genuinely cannot be resolved without a decision only the repo
-owner can make, stop, leave the conflict in place, and explain why." || true
+owner can make, stop, leave the worktree in place, and explain why." || agent_status=$?
+
+  if [ "$operation" = rebase ]; then
+    [ "$agent_status" -eq 0 ] || return 1
+    ! rebase_in_progress "$dir" || return 1
+    git -C "$dir" merge-base --is-ancestor "$BASE" HEAD || return 1
+    [ -z "$(git -C "$dir" status --porcelain)" ] || return 1
+  fi
 
   [ -z "$(unmerged "$dir")" ] || return 1
   if git -C "$dir" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1; then
@@ -962,7 +982,7 @@ abandon_rebase() {
 # A rebase can stop once per commit, so keep resolving until it is done.
 rebase_branch() {
   local branch="$1" position stopped_at sha
-  rm -rf "$REBASE_DIR"
+  [ ! -e "$REBASE_DIR" ] || die "saved rebase worktree at $REBASE_DIR — recover it or explicitly remove it before retrying"
   git worktree prune
   git worktree add --detach "$REBASE_DIR" "$branch" >/dev/null
   git -C "$REBASE_DIR" rebase "$BASE" >/dev/null 2>&1 || true
@@ -970,13 +990,16 @@ rebase_branch() {
     position="$(rebase_position "$REBASE_DIR")"
     stopped_at="$(git -C "$REBASE_DIR" rev-parse HEAD)"
     if [ -n "$(unmerged "$REBASE_DIR")" ]; then
-      if [ "$use_agent" -eq 0 ] ||
-        ! resolve_with_agent "$REBASE_DIR" "rebase of $branch onto $BASE" "$(sides_rebase)"; then
+      if [ "$use_agent" -eq 0 ]; then
         abandon_rebase
         die "rebase of $branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
       fi
+      if ! resolve_with_agent "$REBASE_DIR" "rebase of $branch onto $BASE" "$(sides_rebase)" rebase; then
+        die "agent did not finish rebase of $branch onto $BASE. Worktree preserved at $REBASE_DIR; recover it before retrying."
+      fi
+      break
     fi
-    # Resolved, by rerere or by the agent. A resolution that leaves nothing to
+    # Resolved by rerere. A resolution that leaves nothing to
     # commit means upstream already has this change: the commit is dropped.
     if [ "$(git -C "$REBASE_DIR" rev-parse HEAD)" = "$stopped_at" ] &&
       git -C "$REBASE_DIR" diff --quiet HEAD --; then
