@@ -1338,6 +1338,7 @@ export async function createPaseoDaemon(
     createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    setWorkspaceLabel: (input) => workspaceLabelService.setAssignment(input),
   });
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {

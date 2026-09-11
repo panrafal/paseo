@@ -24,7 +24,8 @@ import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "./agent-title-limits.js";
 import { AgentProviderSchema } from "./provider-manifest.js";
 import { ProviderPaseoToolsPolicySchema } from "./provider-config.js";
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
-import { WORKSPACE_LABEL_COLORS } from "./workspace-labels.js";
+import { WorkspaceLabelColorSchema, WorkspaceLabelDefinitionSchema } from "./workspace-labels.js";
+export { WorkspaceLabelColorSchema, WorkspaceLabelDefinitionSchema } from "./workspace-labels.js";
 import {
   ChatCreateRequestSchema,
   ChatListRequestSchema,
@@ -978,11 +979,6 @@ export const WorkspacePinSetRequestSchema = z.object({
   requestId: z.string(),
 });
 
-export const WorkspaceLabelColorSchema = z.enum(WORKSPACE_LABEL_COLORS);
-export const WorkspaceLabelDefinitionSchema = z.object({
-  name: z.string(),
-  color: WorkspaceLabelColorSchema,
-});
 const WorkspaceLabelSyncCursorSchema = z.object({
   generation: z.string(),
   afterSeq: z.number().int().nonnegative(),
@@ -3539,6 +3535,7 @@ export const ServerInfoStatusPayloadSchema = z
         directorySync: z.boolean().optional(),
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         workspaceLabels: z.boolean().optional(),
+        scheduleWorkspaceLabels: z.boolean().optional(),
         // COMPAT(workspaceSetupRun): added in v0.8.0, remove gate after 2027-09-02.
         workspaceSetupRun: z.boolean().optional(),
         // COMPAT(workspaceTerminals): added in v0.8.0, remove gate after 2027-09-05.

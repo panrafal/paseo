@@ -16,6 +16,7 @@ import { resolveCreateAgentTitles } from "../agent/create-agent-title.js";
 import { type BoundCreateAgentCommand, formatProviderModel } from "../agent/create-agent/create.js";
 import type { PersistedWorkspaceRecord } from "../workspace-registry.js";
 import type { CreatePaseoWorktreeWorkflowResult } from "../worktree-session.js";
+import type { WorkspaceLabelService } from "../workspace-labels/index.js";
 import { ScheduleStore } from "./store.js";
 import { computeNextRunAt, validateScheduleCadence } from "./cron.js";
 import type {
@@ -112,6 +113,9 @@ function applyNewAgentConfig(
   }
   if (patch.isolation !== undefined) {
     config.isolation = patch.isolation;
+  }
+  if (patch.workspaceLabels !== undefined) {
+    config.workspaceLabels = patch.workspaceLabels;
   }
   return { ...target, config };
 }
@@ -237,6 +241,7 @@ export interface ScheduleServiceOptions {
   createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
+  setWorkspaceLabel: WorkspaceLabelService["setAssignment"];
   archiveWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
@@ -254,6 +259,7 @@ export class ScheduleService {
   private readonly createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
+  private readonly setWorkspaceLabel: WorkspaceLabelService["setAssignment"];
   private readonly archiveWorkspace: (workspaceId: string) => Promise<void>;
   private readonly now: () => Date;
   private readonly runner: (
@@ -272,6 +278,7 @@ export class ScheduleService {
     this.createDirectoryWorkspace = options.createDirectoryWorkspace;
     this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
+    this.setWorkspaceLabel = options.setWorkspaceLabel;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
   }
@@ -893,6 +900,7 @@ export class ScheduleService {
         workspaceId: workspace.workspaceId,
         agentId: null,
       });
+      await this.assignScheduleWorkspaceLabels(workspace.workspaceId, config);
       const runConfig = { ...config, cwd: workspace.cwd };
       const created = await this.createAgent({
         kind: "mcp",
@@ -966,6 +974,15 @@ export class ScheduleService {
           );
         }
       }
+    }
+  }
+
+  private async assignScheduleWorkspaceLabels(
+    workspaceId: string,
+    config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
+  ): Promise<void> {
+    for (const label of config.workspaceLabels ?? []) {
+      await this.setWorkspaceLabel({ workspaceId, label, assigned: true });
     }
   }
 
