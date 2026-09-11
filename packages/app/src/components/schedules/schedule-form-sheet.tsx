@@ -804,7 +804,7 @@ function ScheduleTargetFields({
         <ScheduleIsolationField model={model} state={state} size={controlSize} />
       ) : null}
 
-      {state.disclosure.showModelField && state.submitWorkspaceLabels !== undefined ? (
+      {state.disclosure.showModelField ? (
         <ScheduleWorkspaceLabelsField model={model} state={state} size={controlSize} />
       ) : null}
 

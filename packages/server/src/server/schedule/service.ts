@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
@@ -115,7 +114,8 @@ function applyNewAgentConfig(
     config.isolation = patch.isolation;
   }
   if (patch.workspaceLabels !== undefined) {
-    config.workspaceLabels = patch.workspaceLabels;
+    if (patch.workspaceLabels.length) config.workspaceLabels = patch.workspaceLabels;
+    else delete config.workspaceLabels;
   }
   return { ...target, config };
 }
@@ -230,7 +230,7 @@ interface ScheduleWorkspaceCreateInput {
 }
 
 export interface ScheduleServiceOptions {
-  paseoHome: string;
+  store: ScheduleStore;
   logger: Logger;
   agentManager: ScheduleAgentManager;
   agentStorage: AgentStorage;
@@ -241,7 +241,7 @@ export interface ScheduleServiceOptions {
   createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
-  setWorkspaceLabel: WorkspaceLabelService["setAssignment"];
+  workspaceLabels: Pick<WorkspaceLabelService, "resolveNames" | "assignLabels">;
   archiveWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
@@ -259,7 +259,7 @@ export class ScheduleService {
   private readonly createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
-  private readonly setWorkspaceLabel: WorkspaceLabelService["setAssignment"];
+  private readonly workspaceLabels: Pick<WorkspaceLabelService, "resolveNames" | "assignLabels">;
   private readonly archiveWorkspace: (workspaceId: string) => Promise<void>;
   private readonly now: () => Date;
   private readonly runner: (
@@ -270,7 +270,7 @@ export class ScheduleService {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: ScheduleServiceOptions) {
-    this.store = new ScheduleStore(join(options.paseoHome, "schedules"));
+    this.store = options.store;
     this.logger = options.logger.child({ module: "schedule-service" });
     this.agentManager = options.agentManager;
     this.agentStorage = options.agentStorage;
@@ -278,7 +278,7 @@ export class ScheduleService {
     this.createDirectoryWorkspace = options.createDirectoryWorkspace;
     this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
-    this.setWorkspaceLabel = options.setWorkspaceLabel;
+    this.workspaceLabels = options.workspaceLabels;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
   }
@@ -311,7 +311,7 @@ export class ScheduleService {
     return this.createScheduleRecord(input, {
       name: trimOptionalName(input.name),
       prompt,
-      target: input.target,
+      target: await this.resolveTargetLabels(input.target),
     });
   }
 
@@ -353,11 +353,11 @@ export class ScheduleService {
     const name = trimOptionalName(input.name);
     const prompt = normalizePrompt(input.prompt);
     validateScheduleCadence(input.cadence);
+    const inputTarget = await this.resolveTargetLabels(input.target);
     if (name === null) {
-      return this.createScheduleRecord(input, { name, prompt, target: input.target });
+      return this.createScheduleRecord(input, { name, prompt, target: inputTarget });
     }
 
-    const inputTarget = input.target;
     return this.store.upsertByNameAndTarget(name, inputTarget, {
       create: async () => {
         return this.buildScheduleRecord(input, { name, prompt, target: inputTarget });
@@ -441,7 +441,19 @@ export class ScheduleService {
     return requireSchedule(resumed, id);
   }
 
+  private async resolveTargetLabels(target: ScheduleTarget): Promise<ScheduleTarget> {
+    if (target.type !== "new-agent" || target.config.workspaceLabels === undefined) return target;
+    return applyNewAgentConfig(target, {
+      workspaceLabels: await this.workspaceLabels.resolveNames(target.config.workspaceLabels),
+    });
+  }
+
   async update(input: UpdateScheduleInput): Promise<StoredSchedule> {
+    // Resolve before taking the schedule lock: catalog renames also update schedules.
+    const workspaceLabels =
+      input.newAgentConfig?.workspaceLabels === undefined
+        ? undefined
+        : await this.workspaceLabels.resolveNames(input.newAgentConfig.workspaceLabels);
     const next = await this.store.update(input.id, async (schedule) => {
       const now = this.now();
       let updated: StoredSchedule = schedule;
@@ -466,7 +478,10 @@ export class ScheduleService {
         if (updated.target.type !== "new-agent") {
           throw new Error("new-agent config updates are only valid for new-agent target schedules");
         }
-        const patchedTarget = applyNewAgentConfig(updated.target, input.newAgentConfig);
+        const patchedTarget = applyNewAgentConfig(updated.target, {
+          ...input.newAgentConfig,
+          workspaceLabels,
+        });
         updated = {
           ...updated,
           target: patchedTarget,
@@ -900,7 +915,10 @@ export class ScheduleService {
         workspaceId: workspace.workspaceId,
         agentId: null,
       });
-      await this.assignScheduleWorkspaceLabels(workspace.workspaceId, config);
+      await this.workspaceLabels.assignLabels({
+        workspaceId: workspace.workspaceId,
+        names: config.workspaceLabels,
+      });
       const runConfig = { ...config, cwd: workspace.cwd };
       const created = await this.createAgent({
         kind: "mcp",
@@ -974,15 +992,6 @@ export class ScheduleService {
           );
         }
       }
-    }
-  }
-
-  private async assignScheduleWorkspaceLabels(
-    workspaceId: string,
-    config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
-  ): Promise<void> {
-    for (const label of config.workspaceLabels ?? []) {
-      await this.setWorkspaceLabel({ workspaceId, label, assigned: true });
     }
   }
 
