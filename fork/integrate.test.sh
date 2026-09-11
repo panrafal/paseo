@@ -726,6 +726,35 @@ scenario_args() {
   assert "main's message lists it with an id" grep -qE "^  origin/feat-a [0-9a-f]{40}\$" <(git -C "$R" log -1 --format=%B main)
 }
 
+scenario_script_rewrite() {
+  fixture script-rewrite
+  local runner="$F/runner" bin="$F/bin" original_integrate="$INTEGRATE" original_path="$PATH"
+  mkdir -p "$runner" "$bin"
+  cp "$HERE/integrate.sh" "$HERE/config.sh" "$runner/"
+  INTEGRATE="$runner/integrate.sh"
+  export REAL_GIT
+  REAL_GIT="$(command -v git)"
+  export MUTATE_SCRIPT="$INTEGRATE" MUTATION_MARKER="$F/mutated"
+  cat >"$bin/git" <<'GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ ! -e "$MUTATION_MARKER" ]; then
+  : >"$MUTATION_MARKER"
+  printf '\nbuild\n' >>"$MUTATE_SCRIPT"
+fi
+exec "$REAL_GIT" "$@"
+GIT
+  chmod +x "$bin/git"
+  export PATH="$bin:$PATH"
+
+  assert "run survives its script changing on disk" run rebuild --no-fetch
+  assert_fails "changed tail is not executed" grep -q "command not found" "$F/last.log"
+
+  PATH="$original_path"
+  INTEGRATE="$original_integrate"
+  unset REAL_GIT MUTATE_SCRIPT MUTATION_MARKER
+}
+
 scenario_upstream_mirror() {
   fixture upstream-mirror
   run rebuild --push
@@ -798,7 +827,7 @@ run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; 
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebase_agent rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args upstream_mirror new_branch)
+all=(rebase_agent rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"
