@@ -174,6 +174,25 @@ export class WorkspaceLabelService {
     });
   }
 
+  async create(input: WorkspaceLabelDefinition): Promise<WorkspaceLabelDefinition> {
+    return this.exclusive(async () => {
+      const name = requireName(input.name);
+      const result = await this.catalog.commit((catalog) => {
+        const existing = catalog.find(
+          (label) => workspaceLabelKey(label.name) === workspaceLabelKey(name),
+        );
+        const label = existing ?? { name, color: input.color };
+        return {
+          labels: existing ? [...catalog] : [...catalog, label],
+          workspaceUpdates: [],
+          result: { label, created: !existing },
+        };
+      });
+      if (result.created) this.sequence.publish({ kind: "upsert", label: result.label });
+      return result.label;
+    });
+  }
+
   async setAssignment(input: {
     workspaceId: string;
     label: WorkspaceLabelDefinition;
