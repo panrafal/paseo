@@ -1,6 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { workspaceLabelKey, type WorkspaceLabelColor } from "@getpaseo/protocol/workspace-labels";
+import {
+  workspaceLabelKey,
+  type WorkspaceLabelColor,
+  type WorkspaceLabelDefinition,
+} from "@getpaseo/protocol/workspace-labels";
 import { Field } from "@/components/ui/form-field";
 import { SelectFieldTrigger } from "@/components/ui/select-field";
 import type { FieldControlSize } from "@/components/ui/control-geometry";
@@ -9,8 +13,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  type MenuPageDefinition,
 } from "@/components/ui/dropdown-menu";
-import { useWorkspaceLabelProjection } from "@/workspace-labels";
+import { useWorkspaceLabelProjection, workspaceLabels } from "@/workspace-labels";
+import {
+  WorkspaceLabelCreatePage,
+  WorkspaceLabelCreateTrigger,
+  WORKSPACE_LABEL_CREATE_PAGE_ID,
+} from "@/workspace-labels/picker";
 import { WorkspaceLabelDot } from "@/workspace-labels/swatch";
 import type { ScheduleFormModel, ScheduleFormState } from "@/schedules/schedule-form-model";
 
@@ -33,25 +44,58 @@ export function ScheduleWorkspaceLabelsField({
       if (!catalog.has(workspaceLabelKey(name))) catalog.set(workspaceLabelKey(name), { name });
     }
     const assigned = new Set(state.workspaceLabels.map(workspaceLabelKey));
-    return [...catalog.values()].map((label) => ({
-      name: label.name,
-      color: label.color,
-      assigned: assigned.has(workspaceLabelKey(label.name)),
-    }));
+    return [...catalog.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((label) => ({
+        name: label.name,
+        color: label.color,
+        assigned: assigned.has(workspaceLabelKey(label.name)),
+      }));
   }, [targetHost?.labels, state.workspaceLabels]);
 
-  if (
-    !state.hosts.find((host) => host.serverId === state.selectedServerId)
-      ?.supportsScheduleWorkspaceLabels
-  )
-    return null;
+  const host = state.hosts.find((entry) => entry.serverId === state.selectedServerId);
+  const create = useCallback(
+    async (label: WorkspaceLabelDefinition) => {
+      const serverId = state.selectedServerId;
+      if (!serverId) return;
+      const result = await workspaceLabels.create({ serverId, label });
+      const draft = model.getState();
+      if (
+        draft.selectedServerId === serverId &&
+        !draft.workspaceLabels.some(
+          (name) => workspaceLabelKey(name) === workspaceLabelKey(result.label.name),
+        )
+      ) {
+        model.toggleWorkspaceLabel(result.label.name);
+      }
+    },
+    [model, state.selectedServerId],
+  );
+  const pages = useMemo<readonly MenuPageDefinition[]>(
+    () =>
+      state.selectedServerId && host?.supportsWorkspaceLabelCreation
+        ? [
+            {
+              id: WORKSPACE_LABEL_CREATE_PAGE_ID,
+              title: t("workspaceLabels.create"),
+              hoverIntent: false,
+              content: (
+                <WorkspaceLabelCreatePage serverId={state.selectedServerId} onCreate={create} />
+              ),
+            },
+          ]
+        : [],
+    [create, host?.supportsWorkspaceLabelCreation, state.selectedServerId, t],
+  );
+
+  if (!host?.supportsScheduleWorkspaceLabels) return null;
 
   return (
     <Field
       label={t("workspaceLabels.title")}
       error={state.workspaceLabelsInvalid ? t("workspaceLabels.staleSelection") : undefined}
     >
-      <DropdownMenu>
+      <DropdownMenu compactMode="sheet">
         <DropdownMenuTrigger
           accessibilityRole="button"
           accessibilityLabel={t("workspaceLabels.title")}
@@ -67,7 +111,7 @@ export function ScheduleWorkspaceLabelsField({
             />
           )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sheetTitle={t("workspaceLabels.title")}>
+        <DropdownMenuContent align="start" sheetTitle={t("workspaceLabels.title")} pages={pages}>
           {rows.map((row) => (
             <ScheduleLabelRow
               key={workspaceLabelKey(row.name)}
@@ -75,6 +119,12 @@ export function ScheduleWorkspaceLabelsField({
               onToggle={model.toggleWorkspaceLabel}
             />
           ))}
+          {pages.length > 0 ? (
+            <>
+              {rows.length > 0 ? <DropdownMenuSeparator /> : null}
+              <WorkspaceLabelCreateTrigger disabled={targetHost?.status !== "online"} />
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </Field>

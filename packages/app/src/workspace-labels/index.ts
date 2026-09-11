@@ -213,6 +213,10 @@ class WorkspaceLabelsController {
     if (replica) this.publish(serverId, replica, "offline", null);
   }
 
+  async create(input: { serverId: string; label: WorkspaceLabelDefinition }) {
+    return this.mutate(input.serverId, (client) => client.createWorkspaceLabel(input));
+  }
+
   async setAssignment(input: {
     serverId: string;
     workspaceId: string;

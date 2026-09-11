@@ -419,8 +419,8 @@ One file per schedule. ID is 8 hex characters.
 
 ### Nested: ScheduleTarget (discriminated union on `type`)
 
-Scheduled workspace labels reference canonical names in the host's catalog. Schedules never
-create labels. Catalog renames and deletions rewrite schedule references with best-effort
+Scheduled workspace labels reference canonical names in the host's catalog. Schedule execution never
+creates labels. Catalog renames and deletions rewrite schedule references with best-effort
 updates after the catalog commit, outside the transaction journal. A crash between these
 steps can leave dangling names; each run resolves against the current catalog and skips them.
 

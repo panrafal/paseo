@@ -41,6 +41,7 @@ export interface ScheduleFormHost {
   label: string;
   supportsWorkspaceMultiplicity?: boolean;
   supportsScheduleWorkspaceLabels?: boolean;
+  supportsWorkspaceLabelCreation?: boolean;
 }
 
 export interface ScheduleFormSnapshot {

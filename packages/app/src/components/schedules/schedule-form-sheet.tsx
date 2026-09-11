@@ -120,6 +120,8 @@ function selectScheduleHosts(
     hosts.map((host) => ({
       serverId: host.serverId,
       label: host.label,
+      supportsWorkspaceLabelCreation:
+        state.sessions[host.serverId]?.serverInfo?.features?.workspaceLabelCreation === true,
       supportsScheduleWorkspaceLabels:
         state.sessions[host.serverId]?.serverInfo?.features?.scheduleWorkspaceLabels === true,
       supportsWorkspaceMultiplicity:
