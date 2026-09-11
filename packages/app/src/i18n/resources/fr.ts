@@ -1032,6 +1032,8 @@ export const fr: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection:
+      "Certaines étiquettes sélectionnées n’existent plus. Retirez-les pour continuer.",
     title: "Étiquettes",
     unlabelled: "Sans étiquette",
     create: "Créer une étiquette",

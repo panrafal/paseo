@@ -1,7 +1,5 @@
-import {
-  workspaceLabelKey,
-  type WorkspaceLabelDefinition,
-} from "@getpaseo/protocol/workspace-labels";
+import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
+import type { WorkspaceLabelChange } from "@/workspace-labels";
 import type {
   AgentMode,
   AgentModelDefinition,
@@ -110,8 +108,10 @@ export interface ScheduleFormState {
   modelSelectorProviders: ProviderSelectorProvider[];
   modeOptions: AgentMode[];
   availableThinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
-  workspaceLabels: WorkspaceLabelDefinition[];
-  submitWorkspaceLabels: WorkspaceLabelDefinition[] | undefined;
+  workspaceLabels: string[];
+  workspaceLabelsDirty: boolean;
+  workspaceLabelsInvalid: boolean;
+  submitWorkspaceLabels: string[] | undefined;
   archiveOnFinish: boolean;
   isolation: "local" | "worktree";
   effectiveIsolation: "local" | "worktree";
@@ -129,6 +129,8 @@ export interface ScheduleFormModel {
   getState: () => ScheduleFormState;
   subscribe: (listener: () => void) => () => void;
   close: () => void;
+  applyWorkspaceLabelCatalog: (serverId: string | null, names: readonly string[]) => void;
+  applyWorkspaceLabelChange: (serverId: string, change: WorkspaceLabelChange) => void;
   applyHosts: (hosts: readonly ScheduleFormHost[]) => void;
   applyProjectTargets: (targets: readonly ScheduleProjectTarget[]) => void;
   applyPreferences: (preferences: FormPreferences | undefined) => void;
@@ -144,7 +146,7 @@ export interface ScheduleFormModel {
   setCadence: (value: ScheduleCadence) => void;
   setIsolation: (value: "local" | "worktree") => void;
   setArchiveOnFinish: (value: boolean) => void;
-  toggleWorkspaceLabel: (label: WorkspaceLabelDefinition) => void;
+  toggleWorkspaceLabel: (name: string) => void;
   setSubmitError: (value: string | null) => void;
 }
 
@@ -551,6 +553,7 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
 }
 
 function resolveCanSubmit(state: ScheduleFormState): boolean {
+  if (state.workspaceLabelsInvalid) return false;
   if (state.targetKind === "agent") {
     return state.submitCadence !== undefined;
   }
@@ -632,17 +635,17 @@ function updateDerivedState(input: {
       ? input.state.archiveOnFinish
       : undefined,
     submitIsolation: canSubmitWorkspaceLifecycleOptions ? effectiveIsolation : undefined,
-    submitWorkspaceLabels: input.hosts.find(
-      (host) => host.serverId === input.state.selectedServerId,
-    )?.supportsScheduleWorkspaceLabels
-      ? input.state.workspaceLabels
-      : undefined,
+    submitWorkspaceLabels:
+      input.hosts.find((host) => host.serverId === input.state.selectedServerId)
+        ?.supportsScheduleWorkspaceLabels && input.state.workspaceLabelsDirty
+        ? input.state.workspaceLabels
+        : undefined,
   };
   const disclosure = resolveDisclosure(nextState);
   return { ...nextState, disclosure, canSubmit: resolveCanSubmit({ ...nextState, disclosure }) };
 }
 
-function initialWorkspaceLabels(snapshot: ScheduleFormSnapshot): WorkspaceLabelDefinition[] {
+function initialWorkspaceLabels(snapshot: ScheduleFormSnapshot): string[] {
   return [...(newAgentConfig(snapshot.schedule)?.workspaceLabels ?? [])];
 }
 
@@ -697,6 +700,8 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     modeOptions: [],
     availableThinkingOptions: [],
     workspaceLabels: initialWorkspaceLabels(snapshot),
+    workspaceLabelsDirty: false,
+    workspaceLabelsInvalid: false,
     submitWorkspaceLabels: undefined,
     archiveOnFinish: config?.archiveOnFinish ?? true,
     isolation: resolveInitialIsolation({ config, preferences: snapshot.defaults.preferences }),
@@ -880,13 +885,24 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
   let userModified = { ...INITIAL_USER_MODIFIED, isolation: false };
   const timezone = snapshot.defaults.timezone ?? DEFAULT_TIMEZONE;
   let state = buildInitialState(snapshot);
+  let workspaceLabelCatalog: readonly string[] = [];
 
   function publish(nextState: ScheduleFormState): void {
     if (closed) {
       return;
     }
     state = updateDerivedState({
-      state: nextState,
+      state: {
+        ...nextState,
+        workspaceLabelsInvalid:
+          nextState.workspaceLabelsDirty &&
+          nextState.workspaceLabels.some(
+            (name) =>
+              !workspaceLabelCatalog.some(
+                (entry) => workspaceLabelKey(entry) === workspaceLabelKey(name),
+              ),
+          ),
+      },
       hosts,
       targets: projectTargets,
       providerEntries,
@@ -970,6 +986,26 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       closed = true;
       listeners.clear();
     },
+    applyWorkspaceLabelCatalog(serverId, names) {
+      if (serverId !== state.selectedServerId) return;
+      workspaceLabelCatalog = names;
+      publish(state);
+    },
+    applyWorkspaceLabelChange(serverId, change) {
+      if (serverId !== state.selectedServerId) return;
+      const oldName = change.kind === "remove" ? change.name : change.previousName;
+      if (!oldName) return;
+      const rewrite = (names: readonly string[]) => [
+        ...new Set(
+          names.flatMap((name) => {
+            if (workspaceLabelKey(name) !== workspaceLabelKey(oldName)) return [name];
+            return change.kind === "upsert" ? [change.label.name] : [];
+          }),
+        ),
+      ];
+      workspaceLabelCatalog = rewrite(workspaceLabelCatalog);
+      publish({ ...state, workspaceLabels: rewrite(state.workspaceLabels) });
+    },
     applyHosts(nextHosts) {
       if (closed || hosts === nextHosts) {
         return;
@@ -1033,6 +1069,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
           ...state,
           selectedServerId: serverId,
           workspaceLabels: [],
+          workspaceLabelsDirty: false,
           workingDir: "",
           projectDisplay: null,
           selectedProjectOptionId: "",
@@ -1056,6 +1093,9 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       const nextState = {
         ...state,
         selectedServerId: target.serverId,
+        workspaceLabels: state.selectedServerId === target.serverId ? state.workspaceLabels : [],
+        workspaceLabelsDirty:
+          state.selectedServerId === target.serverId && state.workspaceLabelsDirty,
         workingDir: target.cwd,
         projectDisplay: display,
         selectedProjectOptionId: target.optionId,
@@ -1138,14 +1178,15 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       userModified = { ...userModified, isolation: true };
       publish({ ...state, isolation: value });
     },
-    toggleWorkspaceLabel(label) {
-      const key = workspaceLabelKey(label.name);
-      const assigned = state.workspaceLabels.some((entry) => workspaceLabelKey(entry.name) === key);
+    toggleWorkspaceLabel(name) {
+      const key = workspaceLabelKey(name);
+      const assigned = state.workspaceLabels.some((entry) => workspaceLabelKey(entry) === key);
       publish({
         ...state,
+        workspaceLabelsDirty: true,
         workspaceLabels: assigned
-          ? state.workspaceLabels.filter((entry) => workspaceLabelKey(entry.name) !== key)
-          : [...state.workspaceLabels, label],
+          ? state.workspaceLabels.filter((entry) => workspaceLabelKey(entry) !== key)
+          : [...state.workspaceLabels, name],
       });
     },
     setArchiveOnFinish(value) {

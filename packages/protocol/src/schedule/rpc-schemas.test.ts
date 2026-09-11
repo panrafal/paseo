@@ -13,7 +13,7 @@ describe("schedule RPC schemas", () => {
         config: {
           provider: "claude",
           cwd: "/tmp/project",
-          workspaceLabels: [{ name: "Review", color: "sky" }],
+          workspaceLabels: ["Review"],
         },
       },
     };
@@ -32,7 +32,7 @@ describe("schedule RPC schemas", () => {
           ...request.target,
           config: {
             ...request.target.config,
-            workspaceLabels: [{ name: "Review", color: "invalid" }],
+            workspaceLabels: ["   "],
           },
         },
       }).success,

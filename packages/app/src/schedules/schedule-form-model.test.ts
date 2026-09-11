@@ -17,59 +17,83 @@ const HOSTS = [
 ] as const;
 
 describe("schedule workspace labels", () => {
-  it("only submits labels to a host advertising schedule label support", () => {
+  it("only submits dirty labels to a supported host and clears them on host changes", () => {
     const model = openScheduleForm({
       mode: "create",
       hosts: HOSTS,
       defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS },
     });
-    const label = { name: "Review", color: "sky" } as const;
-    model.toggleWorkspaceLabel(label);
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
+    model.toggleWorkspaceLabel("Review");
     expect(model.getState().submitWorkspaceLabels).toBeUndefined();
     model.applyHosts(HOSTS.map((host) => ({ ...host, supportsScheduleWorkspaceLabels: true })));
-    expect(model.getState().submitWorkspaceLabels).toEqual([label]);
-    model.toggleWorkspaceLabel(label);
+    expect(model.getState().submitWorkspaceLabels).toEqual(["Review"]);
+    model.toggleWorkspaceLabel("review");
     expect(model.getState().submitWorkspaceLabels).toEqual([]);
+    model.toggleWorkspaceLabel("Review");
+    model.setProject(buildProjectOptionId("host-b", "project-b"), { label: "Project B" });
+    expect(model.getState().workspaceLabels).toEqual([]);
+    model.toggleWorkspaceLabel("Review");
+    model.setHost("host-a");
+    expect(model.getState().workspaceLabels).toEqual([]);
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
     model.close();
   });
 
-  it("seeds edit labels, toggles selections, and keeps drafts through refreshed inputs", () => {
+  it("omits untouched edit labels, blocks stale selections, and follows live rename/remove events", () => {
     const schedule = scheduleOnHost({
       serverId: "host-a",
       serverName: "Host A",
       cwd: "/repo/a",
       model: "model-a",
     });
-    const label = { name: "Review", color: "sky" } as const;
     if (schedule.target.type !== "new-agent") throw new Error("Expected new-agent schedule");
-    schedule.target.config.workspaceLabels = [label];
+    schedule.target.config.workspaceLabels = ["Review"];
     const model = openScheduleForm({
       mode: "edit",
       schedule,
-      hosts: HOSTS,
+      hosts: HOSTS.map((host) => ({ ...host, supportsScheduleWorkspaceLabels: true })),
       defaults: { projectTargets: PROJECT_TARGETS },
     });
-    expect(model.getState().workspaceLabels).toEqual([label]);
-    model.toggleWorkspaceLabel(label);
-    expect(model.getState().workspaceLabels).toEqual([]);
-    model.toggleWorkspaceLabel(label);
-    model.applyProjectTargets([...PROJECT_TARGETS]);
-    expect(model.getState().workspaceLabels).toEqual([label]);
-    model.toggleWorkspaceLabel({ ...label, name: "review" });
-    expect(model.getState().workspaceLabels).toEqual([]);
-    model.close();
-  });
-
-  it("starts without labels and clears selections when changing hosts", () => {
-    const model = openScheduleForm({
-      mode: "create",
-      hosts: HOSTS,
-      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS },
+    model.applyProviderSnapshot("host-a", providerSnapshot(HOST_A_MODELS));
+    expect(model.getState()).toMatchObject({ workspaceLabels: ["Review"], canSubmit: true });
+    expect(model.getState().submitWorkspaceLabels).toBeUndefined();
+    model.toggleWorkspaceLabel("Missing");
+    model.applyWorkspaceLabelCatalog("host-a", ["Review"]);
+    expect(model.getState()).toMatchObject({ workspaceLabelsInvalid: true, canSubmit: false });
+    model.toggleWorkspaceLabel("Missing");
+    expect(model.getState()).toMatchObject({ workspaceLabelsInvalid: false, canSubmit: true });
+    model.applyWorkspaceLabelChange("host-b", {
+      kind: "remove",
+      name: "Review",
+      generation: "g",
+      seq: 1,
     });
-    expect(model.getState().workspaceLabels).toEqual([]);
-    model.toggleWorkspaceLabel({ name: "Review", color: "sky" });
-    model.setHost("host-b");
-    expect(model.getState().workspaceLabels).toEqual([]);
+    expect(model.getState().workspaceLabels).toEqual(["Review"]);
+    model.applyWorkspaceLabelChange("host-a", {
+      kind: "upsert",
+      previousName: "Review",
+      label: { name: "Ready", color: "sky" },
+      generation: "g",
+      seq: 2,
+    });
+    model.applyProjectTargets([...PROJECT_TARGETS]);
+    expect(model.getState()).toMatchObject({
+      workspaceLabels: ["Ready"],
+      workspaceLabelsInvalid: false,
+      submitWorkspaceLabels: ["Ready"],
+    });
+    model.applyWorkspaceLabelChange("host-a", {
+      kind: "remove",
+      name: "Ready",
+      generation: "g",
+      seq: 3,
+    });
+    expect(model.getState()).toMatchObject({
+      workspaceLabels: [],
+      workspaceLabelsInvalid: false,
+      submitWorkspaceLabels: [],
+    });
     model.close();
   });
 });

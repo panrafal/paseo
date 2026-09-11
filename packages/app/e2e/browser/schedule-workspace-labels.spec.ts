@@ -55,6 +55,7 @@ for (const isolation of ["local", "worktree"] as const) {
     const client = workspace.client as unknown as DaemonClient;
     const label = { name: "Scheduled review", color: "red" } as const;
     const secondLabel = { name: "Automation", color: "sky" } as const;
+    let labelName: string = label.name;
     let scheduleId: string | undefined;
     const failNextSave = await installSaveFailure(page);
     try {
@@ -99,7 +100,7 @@ for (const isolation of ["local", "worktree"] as const) {
       const listed = await client.scheduleList();
       const schedule = listed.schedules.find((entry) => entry.name === "Labelled schedule");
       expect(schedule?.target).toMatchObject({
-        config: { workspaceLabels: [label, secondLabel], isolation },
+        config: { workspaceLabels: [labelName, secondLabel.name], isolation },
       });
       scheduleId = schedule!.id;
       const firstRun = await client.scheduleRunOnce({ id: scheduleId });
@@ -117,10 +118,15 @@ for (const isolation of ["local", "worktree"] as const) {
       await page.getByTestId(`schedule-row-${scheduleId}`).click();
       await expect(page.getByTestId("schedule-labels-trigger")).toContainText(label.name);
       await expect(page.getByTestId("schedule-labels-trigger")).toContainText(secondLabel.name);
+      if (isolation === "local") {
+        labelName = "Renamed review";
+        await client.updateWorkspaceLabel({ name: label.name, newName: labelName });
+        await expect(page.getByTestId("schedule-labels-trigger")).toContainText(labelName);
+      }
       await page.getByTestId("schedule-labels-trigger").scrollIntoViewIfNeeded();
       await page.screenshot({ path: `/tmp/schedule-labels-${isolation}-edit.png` });
       await page.getByTestId("schedule-labels-trigger").click();
-      await page.getByTestId(`schedule-label-option-${label.name}`).click();
+      await page.getByTestId(`schedule-label-option-${labelName}`).click();
       await page.getByTestId(`schedule-label-option-${secondLabel.name}`).click();
       await page.keyboard.press("Escape");
       await expect(page.getByTestId("schedule-labels-trigger")).toContainText("Unlabelled");
@@ -129,13 +135,13 @@ for (const isolation of ["local", "worktree"] as const) {
       await expect(page.getByText(/Schedule storage unavailable/)).toBeVisible();
       await expect(page.getByTestId("schedule-labels-trigger")).toContainText("Unlabelled");
       expect((await client.scheduleInspect({ id: scheduleId })).schedule?.target).toMatchObject({
-        config: { workspaceLabels: [label, secondLabel] },
+        config: { workspaceLabels: [labelName, secondLabel.name] },
       });
       await page.getByRole("button", { name: "Save changes" }).click();
       await expect(page.getByTestId("schedule-form-sheet")).toHaveCount(0);
-      expect((await client.scheduleInspect({ id: scheduleId })).schedule?.target).toMatchObject({
-        config: { workspaceLabels: [] },
-      });
+      expect(
+        (await client.scheduleInspect({ id: scheduleId })).schedule?.target,
+      ).not.toHaveProperty("config.workspaceLabels");
 
       const secondRun = await client.scheduleRunOnce({ id: scheduleId });
       expect(secondRun.error).toBeNull();
@@ -147,7 +153,7 @@ for (const isolation of ["local", "worktree"] as const) {
       expect(secondWorkspace).toHaveProperty("id", secondRun.schedule!.runs[1]!.workspaceId);
       expect(secondWorkspace?.labels ?? []).toEqual([]);
       expect(afterSecondRun.entries.find((entry) => entry.id === firstWorkspaceId)?.labels).toEqual(
-        [label.name, secondLabel.name],
+        [labelName, secondLabel.name],
       );
       await page.screenshot({ path: `/tmp/schedule-labels-${isolation}.png` });
     } finally {

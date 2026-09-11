@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 export const WORKSPACE_LABEL_COLORS = [
   "violet",
   "sky",
@@ -27,9 +25,3 @@ export function normalizeWorkspaceLabelName(name: string): string {
 export function workspaceLabelKey(name: string): string {
   return normalizeWorkspaceLabelName(name).toLowerCase();
 }
-
-export const WorkspaceLabelColorSchema = z.enum(WORKSPACE_LABEL_COLORS);
-export const WorkspaceLabelDefinitionSchema = z.object({
-  name: z.string(),
-  color: WorkspaceLabelColorSchema,
-});

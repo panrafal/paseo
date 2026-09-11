@@ -994,6 +994,7 @@ export const zhCN: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "部分所选标签已不存在。请移除这些标签以继续。",
     title: "标签",
     unlabelled: "无标签",
     create: "新建标签",
