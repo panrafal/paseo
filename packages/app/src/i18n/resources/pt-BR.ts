@@ -768,6 +768,11 @@ export const ptBR: TranslationResources = {
           pending: "Fazendo commit...",
           success: "Commit concluído",
         },
+        commitAndPush: {
+          label: "Commit e push",
+          pending: "Fazendo commit e push...",
+          success: "Commit e push concluídos",
+        },
         pull: {
           label: "Pull",
           pending: "Fazendo pull...",
@@ -839,6 +844,8 @@ export const ptBR: TranslationResources = {
           pullUpToDate: "Pull não está disponível porque esta branch já está atualizada",
           pushNoRemote:
             "Push não está disponível aqui porque esta branch ainda não está conectada a um remoto",
+          commitAndPushNoRemote:
+            "Commit e push não está disponível aqui porque esta branch ainda não está conectada a um remoto",
           pushBehind:
             "Push ainda não está disponível porque há alterações mais recentes para trazer primeiro",
           pushNothing: "Push não está disponível porque não há nada novo para enviar",
@@ -887,6 +894,7 @@ export const ptBR: TranslationResources = {
         },
         toasts: {
           failedCommit: "Falha ao fazer commit",
+          failedCommitAndPush: "Falha ao fazer commit e push",
           failedPull: "Falha ao fazer pull",
           failedPush: "Falha ao fazer push",
           failedPullAndPush: "Falha ao fazer pull e push",
