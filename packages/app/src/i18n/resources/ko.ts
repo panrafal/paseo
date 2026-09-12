@@ -951,6 +951,7 @@ export const ko: TranslationResources = {
         openIn: "{{target}}에서 워크스페이스 열기",
         openFileIn: "{{target}}에서 {{fileName}} 열기",
         failedOpen: "워크스페이스를 열지 못했습니다",
+        failedOpenFile: "파일을 열지 못했습니다",
         setUp: "설정…",
         setUpRemoteHost: "이 호스트를 에디터에서 여는 설정",
         setUpToast: "{{host}}을(를) 에디터에서 열려면 에디터에서 열기에서 SSH 호스트를 설정하세요.",
@@ -1458,6 +1459,11 @@ export const ko: TranslationResources = {
     errorTitle: "문제가 발생했습니다",
     errorDescription:
       "로컬 서버를 시작하지 못했습니다. 이 문제가 계속되면 아래 로그를 포함하여 GitHub에 문제를 보고해 주세요.",
+    status: {
+      connecting: "Paseo 데몬에 연결 중…",
+      loadingWorkspaces: "워크스페이스를 불러오는 중…",
+      opening: "Paseo에서 이 폴더를 여는 중…",
+    },
     logs: {
       loading: "데몬 로그 불러오는 중...",
       unavailable: "사용 가능한 데몬 로그가 없습니다.",

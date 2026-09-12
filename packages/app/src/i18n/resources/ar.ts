@@ -944,6 +944,7 @@ export const ar: TranslationResources = {
         openIn: "افتح مساحة العمل في{{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "فشل في فتح مساحة العمل",
+        failedOpenFile: "تعذر فتح الملف",
         setUp: "الإعداد…",
         setUpRemoteHost: "إعداد فتح هذا المضيف في محرر",
         setUpToast: 'لفتح {{host}} في محرر، حدّد مضيف SSH الخاص به ضمن "الفتح في المحرر".',
@@ -1448,6 +1449,11 @@ export const ar: TranslationResources = {
     errorTitle: "حدث خطأ ما",
     errorDescription:
       "فشل الخادم المحلي في البدء. إذا استمر حدوث ذلك، فيرجى الإبلاغ عن المشكلة على GitHub وتضمين السجلات أدناه.",
+    status: {
+      connecting: "جارٍ الاتصال ببرنامج Paseo الخفي…",
+      loadingWorkspaces: "جارٍ تحميل مساحات العمل الخاصة بك…",
+      opening: "جارٍ فتح هذا المجلد في Paseo…",
+    },
     logs: {
       loading: "جارٍ تحميل سجلات البرنامج الخفي...",
       unavailable: "لا توجد سجلات خفية متاحة.",

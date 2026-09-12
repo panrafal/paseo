@@ -289,6 +289,18 @@ PASEO_DESKTOP_WINDOW_CONTROLS=linux npm run dev:desktop
 
 The override is rejected in packaged builds. Restart the desktop process when changing it.
 
+### VS Code extension webview debugging
+
+`packages/vscode/scripts/cdp-debug.mjs` launches a real VS Code instance with
+the development extension and connects Playwright over CDP. Use it for webview
+debugging that cannot be proven by unit tests, such as bridge commands and
+composer interactions.
+
+VS Code webviews rewrite initial HTML asset URLs, but Metro async chunks can
+still try to load from the raw `vscode-webview://` origin and fail with 403s.
+Keep code required by the VS Code runtime in the main web bundle instead of a
+dynamic `import()`, then verify it with the CDP harness console output.
+
 ### Desktop macOS compositor watchdog
 
 macOS display sleep can leave Chromium's GPU-process display link — the vsync
