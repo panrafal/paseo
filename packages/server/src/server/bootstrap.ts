@@ -147,6 +147,7 @@ import {
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
+import { ScheduleStore } from "./schedule/store.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { createOrchestrationSkills } from "./orchestration-skills/index.js";
@@ -862,7 +863,10 @@ export async function createPaseoDaemon(
     path.join(config.paseoHome, "projects", "workspaces.json"),
     logger,
   );
+  const scheduleStore = new ScheduleStore(path.join(config.paseoHome, "schedules"));
   const workspaceLabelService = createWorkspaceLabelService({
+    scheduleStore,
+    logger,
     paseoHome: config.paseoHome,
     workspaceRegistry,
   });
@@ -1327,7 +1331,7 @@ export async function createPaseoDaemon(
     );
   };
   const scheduleService = new ScheduleService({
-    paseoHome: config.paseoHome,
+    store: scheduleStore,
     logger,
     agentManager,
     agentStorage,
@@ -1335,6 +1339,7 @@ export async function createPaseoDaemon(
     createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    workspaceLabels: workspaceLabelService,
   });
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
