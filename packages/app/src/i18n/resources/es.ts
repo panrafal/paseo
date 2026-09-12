@@ -1101,6 +1101,8 @@ export const es: TranslationResources = {
       heading: "Visualización",
       grouping: {
         label: "Agrupación",
+        currentLabel: "Agrupación actual: {{current}}",
+        toggleLabel: "Agrupación actual: {{current}}. Cambiar agrupación",
         project: "Proyecto",
         status: "Estado",
         labels: "Etiquetas",
@@ -2271,6 +2273,7 @@ export const es: TranslationResources = {
         jumpToTab: "Saltar a la pestaña",
         previousWorkspace: "Espacio de trabajo anterior",
         nextWorkspace: "Siguiente espacio de trabajo",
+        cycleSidebarGrouping: "Cambiar agrupación",
         previousTab: "Pestaña anterior",
         nextTab: "Pestaña siguiente",
         splitPaneRight: "Panel dividido a la derecha",
