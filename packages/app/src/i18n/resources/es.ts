@@ -2292,6 +2292,8 @@ export const es: TranslationResources = {
         findInPane: "Buscar en el panel",
         findNext: "Buscar siguiente",
         findPrevious: "Buscar anterior",
+        historyBack: "Atrás en el historial",
+        historyForward: "Adelante en el historial",
         toggleCommandCenter: "Alternar centro de comando",
         showKeyboardShortcuts: "Mostrar atajos de teclado",
         toggleLeftSidebar: "Alternar barra lateral izquierda",
