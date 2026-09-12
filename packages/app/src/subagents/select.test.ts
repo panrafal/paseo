@@ -176,6 +176,54 @@ describe("selectSubagentsForParent", () => {
     ).toEqual(["nested"]);
   });
 
+  it("sorts provider children by createdAt descending", () => {
+    const store = useProviderSubagentStore.getState();
+    const base = {
+      parentAgentId: "parent-a",
+      provider: "claude" as const,
+      title: "general-purpose",
+      description: null,
+      subtitle: null,
+      status: "completed" as const,
+      toolCallId: null,
+    };
+    store.applyUpdate(SERVER_ID, {
+      kind: "upsert",
+      subagent: {
+        ...base,
+        id: "third",
+        createdAt: "2026-03-08T10:03:00.000Z",
+        updatedAt: "2026-03-08T10:03:00.000Z",
+      },
+    });
+    store.applyUpdate(SERVER_ID, {
+      kind: "upsert",
+      subagent: {
+        ...base,
+        id: "first",
+        createdAt: "2026-03-08T10:01:00.000Z",
+        updatedAt: "2026-03-08T10:01:00.000Z",
+      },
+    });
+    store.applyUpdate(SERVER_ID, {
+      kind: "upsert",
+      subagent: {
+        ...base,
+        id: "second",
+        createdAt: "2026-03-08T10:02:00.000Z",
+        updatedAt: "2026-03-08T10:02:00.000Z",
+      },
+    });
+
+    expect(
+      selectProviderSubagentsForParent(
+        useProviderSubagentStore.getState(),
+        { serverId: SERVER_ID, parentAgentId: "parent-a" },
+        true,
+      ).map((row) => row.id),
+    ).toEqual(["third", "second", "first"]);
+  });
+
   it("returns only non-archived children for the requested parent", () => {
     setAgents([
       makeAgent({ id: "parent-a" }),
@@ -249,7 +297,7 @@ describe("selectSubagentsForParent", () => {
     expect(childRows.map((row) => row.id)).toEqual(["grandchild"]);
   });
 
-  it("sorts by createdAt ascending", () => {
+  it("sorts by createdAt descending", () => {
     setAgents([
       makeAgent({ id: "parent" }),
       makeAgent({
@@ -278,7 +326,7 @@ describe("selectSubagentsForParent", () => {
       EMPTY_PENDING_ARCHIVE_IDS,
     );
 
-    expect(rows.map((row) => row.id)).toEqual(["first", "second", "third"]);
+    expect(rows.map((row) => row.id)).toEqual(["third", "second", "first"]);
   });
 
   it("maps only row-rendered fields and does not expose onOpen", () => {
