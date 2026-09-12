@@ -221,6 +221,12 @@ export const ar: TranslationResources = {
       question: "كيف تريد المتابعة؟",
       proposedPlan: "الخطة المقترحة",
     },
+    questions: {
+      answerPlaceholder: "اكتب إجابتك...",
+      submit: "إرسال الإجابة",
+      answered: "تمت الإجابة",
+      sendFailed: "تعذر إرسال إجابتك",
+    },
   },
   agentPanel: {
     states: {
