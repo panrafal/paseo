@@ -1,9 +1,13 @@
 import type { ComponentType } from "react";
 import {
+  AlarmClock,
+  Bell,
   Bot,
   Brain,
+  CalendarClock,
   Clock,
   Eye,
+  MessageSquare,
   MicVocal,
   Pencil,
   Search,
@@ -27,6 +31,10 @@ const ICON_COMPONENTS: Record<ToolCallIcon, ToolCallIconComponent> = {
   sparkles: Sparkles,
   brain: Brain,
   mic_vocal: MicVocal,
+  calendar_clock: CalendarClock,
+  alarm_clock: AlarmClock,
+  message_square: MessageSquare,
+  bell: Bell,
   paseo: PaseoLogo,
   clock: Clock,
 };
