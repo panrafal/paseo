@@ -56,14 +56,14 @@ export function selectMetaRowItems(input: {
   } = input;
   const items: MetaRowItem[] = [];
 
+  if (hasHostBadge) {
+    items.push({ kind: "host" });
+  }
   if (currentBranch && visible.branch) {
     items.push({ kind: "branch", name: currentBranch });
   }
   if (projectName && visible.project) {
     items.push({ kind: "project", name: projectName });
-  }
-  if (hasHostBadge) {
-    items.push({ kind: "host" });
   }
   if (prHint && visible.changeRequest) {
     items.push({ kind: "changeRequest", hint: prHint });
