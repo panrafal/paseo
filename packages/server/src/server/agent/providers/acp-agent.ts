@@ -17,6 +17,7 @@ import {
   type AgentCapabilities as ACPAgentCapabilities,
   type Error as ACPError,
   type AnyMessage,
+  type AvailableCommand,
   type Client as ACPClient,
   type ClientCapabilities as ACPClientCapabilities,
   type ConfigOptionUpdate,
@@ -81,6 +82,7 @@ import {
   type AgentSession,
   type AgentSessionConfig,
   type AgentSlashCommand,
+  type AgentSlashCommandKind,
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
@@ -386,6 +388,11 @@ export type ACPExtensionCommandsParser = (
   params: Record<string, unknown>,
 ) => AgentSlashCommand[] | null;
 
+// Lets a provider classify entries from the standard `available_commands_update`
+// session update (e.g. telling skills apart from built-in commands) without the
+// generic session carrying vendor knowledge.
+export type ACPSlashCommandKindResolver = (command: AvailableCommand) => AgentSlashCommandKind;
+
 /**
  * Context handed to an {@link ACPCatalogModelResolver} during `fetchCatalog`. It exposes
  * the already-derived models plus the live probe session so a resolver can refine them
@@ -438,6 +445,7 @@ interface ACPAgentClientOptions {
   ) => Promise<void>;
   capabilities?: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  slashCommandKindResolver?: ACPSlashCommandKindResolver;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
@@ -469,6 +477,7 @@ interface ACPAgentSessionOptions {
   ) => Promise<void>;
   capabilities: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  slashCommandKindResolver?: ACPSlashCommandKindResolver;
   handle?: AgentPersistenceHandle;
   agentId?: string;
   launchEnv?: Record<string, string>;
@@ -901,6 +910,7 @@ export class ACPAgentClient implements AgentClient {
   private readonly waitForInitialCommands: boolean;
   private readonly initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly slashCommandKindResolver?: ACPSlashCommandKindResolver;
   private readonly importPromptCache = new Map<string, ACPImportPromptCacheEntry>();
   private readonly now: () => number;
   protected readonly terminateProcess: ProcessTerminator;
@@ -931,6 +941,7 @@ export class ACPAgentClient implements AgentClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.slashCommandKindResolver = options.slashCommandKindResolver;
     this.now = options.now ?? Date.now;
   }
 
@@ -962,6 +973,7 @@ export class ACPAgentClient implements AgentClient {
         agentId: launchContext?.agentId,
         launchEnv: launchContext?.env,
         extensionCommandsParser: this.extensionCommandsParser,
+        slashCommandKindResolver: this.slashCommandKindResolver,
         waitForInitialCommands: this.waitForInitialCommands,
         initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
       },
@@ -1013,6 +1025,7 @@ export class ACPAgentClient implements AgentClient {
       agentId: launchContext?.agentId,
       launchEnv: launchContext?.env,
       extensionCommandsParser: this.extensionCommandsParser,
+      slashCommandKindResolver: this.slashCommandKindResolver,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
     });
@@ -1680,6 +1693,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly slashCommandKindResolver?: ACPSlashCommandKindResolver;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
   private fallbackAssistantMessageId: string | null = null;
@@ -1720,6 +1734,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.slashCommandKindResolver = options.slashCommandKindResolver;
   }
 
   get id(): string | null {
@@ -2907,14 +2922,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.handleSessionInfoUpdate(update);
         return pendingUserEvents;
       case "usage_update":
-        this.handleUsageUpdate(update);
-        return pendingUserEvents;
+        return [...pendingUserEvents, ...this.handleUsageUpdate(update)];
       case "available_commands_update":
         this.cachedCommands = update.availableCommands.map((command) => ({
           name: command.name,
           description: command.description,
-          argumentHint: "",
-          kind: "command",
+          argumentHint: command.input?.hint ?? "",
+          kind: this.slashCommandKindResolver?.(command) ?? "command",
         }));
         this.settleCommandsReady();
         return pendingUserEvents;
@@ -3068,12 +3082,33 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
   }
 
-  private handleUsageUpdate(update: UsageUpdate): void {
-    void update;
+  private handleUsageUpdate(update: UsageUpdate): AgentStreamEvent[] {
+    if (!(update.size > 0)) {
+      return [];
+    }
+    const usage: AgentUsage = {
+      contextWindowUsedTokens: update.used,
+      contextWindowMaxTokens: update.size,
+    };
+    if (update.cost && update.cost.currency === "USD") {
+      usage.totalCostUsd = update.cost.amount;
+    }
+    this.currentTurnUsage = { ...this.currentTurnUsage, ...usage };
+    return [
+      {
+        type: "usage_updated",
+        provider: this.provider,
+        usage,
+        ...(this.activeForegroundTurnId ? { turnId: this.activeForegroundTurnId } : {}),
+      },
+    ];
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
-    this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
+    const mappedUsage = mapACPUsage(response.usage);
+    this.currentTurnUsage = mappedUsage
+      ? { ...this.currentTurnUsage, ...mappedUsage }
+      : this.currentTurnUsage;
 
     switch (response.stopReason) {
       case "cancelled":
