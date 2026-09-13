@@ -81,8 +81,15 @@ function openURLInNewTab(url: string): void {
   void openExternalUrl(url);
 }
 
-function isActionDisabled(actionsDisabled: boolean, status: CheckoutGitActionStatus): boolean {
-  return actionsDisabled || status === "pending";
+/**
+ * An action is disabled while it or any action it conflicts with is pending.
+ * Commit and push overlaps both commit and push, so the three block each other.
+ */
+function isActionDisabled(
+  actionsDisabled: boolean,
+  ...statuses: CheckoutGitActionStatus[]
+): boolean {
+  return actionsDisabled || statuses.includes("pending");
 }
 
 function resolveBranchLabel(input: {
@@ -722,13 +729,18 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       shipDefault,
       runtime: {
         commit: {
-          disabled: isActionDisabled(actionsDisabled, commitStatus),
+          disabled: isActionDisabled(actionsDisabled, commitStatus, commitAndPushStatus),
           status: commitStatus,
           icon: icons.commit,
           handler: handleCommit,
         },
         "commit-and-push": {
-          disabled: isActionDisabled(actionsDisabled, commitAndPushStatus),
+          disabled: isActionDisabled(
+            actionsDisabled,
+            commitAndPushStatus,
+            commitStatus,
+            pushStatus,
+          ),
           status: commitAndPushStatus,
           icon: icons.commitAndPush,
           handler: handleCommitAndPush,
@@ -740,7 +752,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
           handler: handlePull,
         },
         push: {
-          disabled: isActionDisabled(actionsDisabled, pushStatus),
+          disabled: isActionDisabled(actionsDisabled, pushStatus, commitAndPushStatus),
           status: pushStatus,
           icon: icons.push,
           handler: handlePush,
