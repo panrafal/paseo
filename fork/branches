@@ -43,10 +43,10 @@ origin/usage-shortcuts
 origin/add-profile-selector-schedules
 origin/fix-duplicate-chat-creation
 origin/fix/timeline-image-width
+origin/workspace-commit-push
+origin/fix/cursor-agent-mcp
+origin/reverse-subagents-list
+origin/keep-screen-on-voice-mode
 
 # Last on rebuild, so it wins conflicts with the rest of the stack.
 origin/vscode
-origin/workspace-commit-push
-origin/fix/cursor-agent-mcp
-reverse-subagents-list
-origin/keep-screen-on-voice-mode
