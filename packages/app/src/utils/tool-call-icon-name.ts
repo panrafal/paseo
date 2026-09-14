@@ -1,5 +1,5 @@
 import type { ToolCallDetail, ToolCallIconName } from "@getpaseo/protocol/agent-types";
-import { isPaseoToolName } from "@getpaseo/protocol/tool-name-normalization";
+import { isPaseoToolName, isSubAgentToolName } from "@getpaseo/protocol/tool-name-normalization";
 
 export type ToolCallIcon = ToolCallIconName | "paseo" | "clock";
 
@@ -37,7 +37,7 @@ export function resolveToolCallIconName(toolName: string, detail?: ToolCallDetai
   if (isPaseoToolName(lowerName)) {
     return "paseo";
   }
-  if (lowerName === "task") {
+  if (isSubAgentToolName(lowerName)) {
     return "bot";
   }
 
