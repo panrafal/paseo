@@ -1075,6 +1075,28 @@ function parseMarkdownPlanSteps(
   return steps.length > 0 ? steps : null;
 }
 
+function isPureMarkdownChecklist(text: string): boolean {
+  let hasItem = false;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^[-*+]\s+/.test(line) || /^\d+\.\s+/.test(line)) {
+      hasItem = true;
+      continue;
+    }
+    return false;
+  }
+  return hasItem;
+}
+
+interface VisiblePlanTodo {
+  type: "todo";
+  item: Extract<AgentTimelineItem, { type: "todo" }>;
+  keepCard: boolean;
+}
+
+type VisiblePlanTimeline = { type: "suppress" } | VisiblePlanTodo;
+
 function normalizeCodexTaskStatus(status: string | null | undefined) {
   if (status === "completed") return "completed" as const;
   if (status === "inProgress" || status === "in_progress") return "in_progress" as const;
@@ -6493,19 +6515,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       return;
     }
     this.applyBufferedDeltaTextToTimelineItem(timelineItem, itemId);
-    const visiblePlanItem = this.visiblePlanTimelineItem(parsed.item, timelineItem);
-    if (visiblePlanItem === "suppress") {
-      return;
-    }
-    if (visiblePlanItem) {
-      this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: visiblePlanItem });
-      if (itemId) {
-        this.emittedItemCompletedIds.add(itemId);
-        this.emittedItemStartedIds.delete(itemId);
-        this.pendingCommandOutputDeltas.delete(itemId);
-        this.pendingFileChangeOutputDeltas.delete(itemId);
-      }
-      this.replayPendingSubAgentNotifications(registeredChildThreadIds);
+    if (this.emitCompletedPlanItem(parsed.item, timelineItem, itemId, registeredChildThreadIds)) {
       return;
     }
     if (timelineItem.type === "tool_call") {
@@ -6528,10 +6538,37 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.replayPendingSubAgentNotifications(registeredChildThreadIds);
   }
 
+  private emitCompletedPlanItem(
+    rawItem: Record<string, unknown>,
+    timelineItem: AgentTimelineItem,
+    itemId: string | null | undefined,
+    registeredChildThreadIds: readonly string[],
+  ): boolean {
+    const visiblePlanItem = this.visiblePlanTimelineItem(rawItem, timelineItem);
+    if (visiblePlanItem?.type === "suppress") {
+      return true;
+    }
+    if (visiblePlanItem?.type !== "todo") {
+      return false;
+    }
+    this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: visiblePlanItem.item });
+    if (visiblePlanItem.keepCard) {
+      return false;
+    }
+    if (itemId) {
+      this.emittedItemCompletedIds.add(itemId);
+      this.emittedItemStartedIds.delete(itemId);
+      this.pendingCommandOutputDeltas.delete(itemId);
+      this.pendingFileChangeOutputDeltas.delete(itemId);
+    }
+    this.replayPendingSubAgentNotifications(registeredChildThreadIds);
+    return true;
+  }
+
   private visiblePlanTimelineItem(
     rawItem: Record<string, unknown>,
     timelineItem: AgentTimelineItem,
-  ): Extract<AgentTimelineItem, { type: "todo" }> | "suppress" | null {
+  ): VisiblePlanTimeline | null {
     if (timelineItem.type !== "tool_call" || timelineItem.detail.type !== "plan") {
       return null;
     }
@@ -6539,9 +6576,18 @@ export class CodexAppServerAgentSession implements AgentSession {
     // Codex can surface plans both as turn/plan updates and as completed
     // thread items. In plan mode, approval owns the visible plan card.
     if (this.planModeEnabled) {
-      return "suppress";
+      return { type: "suppress" };
     }
-    return mapCodexPlanThreadItemToTodo(rawItem);
+    const item = mapCodexPlanThreadItemToTodo(rawItem);
+    if (!item) {
+      return null;
+    }
+    const text = typeof rawItem.text === "string" ? rawItem.text : "";
+    return {
+      type: "todo",
+      item,
+      keepCard: text.length > 0 && !isPureMarkdownChecklist(text),
+    };
   }
 
   private consumeStreamedTextCompletion(

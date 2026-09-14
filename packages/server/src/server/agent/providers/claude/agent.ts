@@ -3332,11 +3332,13 @@ class ClaudeAgentSession implements AgentSession {
   private buildSettingsOptions(
     providerOptions: ClaudeProviderOptions,
     input: { ultracode: boolean },
-  ): Pick<ClaudeOptions, "settings"> {
+  ): Pick<ClaudeOptions, "settings"> | Record<string, never> {
     const fastMode = this.resolveFastModeSetting();
+    if (fastMode === null && !input.ultracode) {
+      return {};
+    }
     return {
       settings: mergeClaudeSettings(providerOptions.settings, {
-        todoFeatureEnabled: true,
         ...(fastMode === null ? {} : { fastMode }),
         ...(input.ultracode ? { ultracode: true } : {}),
       }),

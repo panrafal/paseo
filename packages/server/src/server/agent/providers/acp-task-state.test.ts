@@ -19,14 +19,17 @@ describe("parseAcpTodoItems", () => {
           { id: "c", content: "Cancelled leftover", status: 3 },
         ],
       }),
-    ).toEqual([
-      { id: "a", text: "Inspect provider", status: "in_progress", completed: false },
-      { id: "b", text: "Ship fix", status: "completed", completed: true },
-    ]);
+    ).toEqual({
+      items: [
+        { id: "a", text: "Inspect provider", status: "in_progress", completed: false },
+        { id: "b", text: "Ship fix", status: "completed", completed: true },
+      ],
+      removedIds: ["c"],
+    });
   });
 
   test("returns an empty list for an explicit clear", () => {
-    expect(parseAcpTodoItems({ todos: [] })).toEqual([]);
+    expect(parseAcpTodoItems({ todos: [] })).toEqual({ items: [], removedIds: [] });
   });
 });
 
@@ -76,6 +79,19 @@ describe("AcpTaskState", () => {
         { id: "0", text: "Inspect", status: "in_progress", completed: false },
         { id: "1", text: "Ship", status: "completed", completed: true },
       ],
+    });
+  });
+
+  test("removes cancelled todos on merge updates", () => {
+    const state = new AcpTaskState();
+    state.replace([
+      { id: "a", text: "Keep", status: "pending", completed: false },
+      { id: "b", text: "Drop", status: "pending", completed: false },
+    ]);
+
+    expect(state.apply([], isAcpTodoMerge({ merge: true }), ["b"])).toEqual({
+      type: "todo",
+      items: [{ id: "a", text: "Keep", status: "pending", completed: false }],
     });
   });
 });

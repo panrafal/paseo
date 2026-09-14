@@ -4119,4 +4119,71 @@ describe("ACP task snapshots", () => {
       },
     ]);
   });
+
+  test("maps cursor/update_todos extension methods onto the Tasks track", async () => {
+    const session = createSessionWithConfig({ provider: "cursor" });
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await expect(
+      session.extMethod("cursor/update_todos", {
+        toolCallId: "todo-1",
+        merge: false,
+        todos: [
+          { id: "a", content: "Inspect provider", status: 1 },
+          { id: "b", content: "Ship fix", status: 2 },
+        ],
+      }),
+    ).resolves.toEqual({});
+
+    expect(events.filter((event) => event.type === "timeline")).toMatchObject([
+      {
+        type: "timeline",
+        provider: "cursor",
+        item: {
+          type: "todo",
+          items: [
+            { id: "a", text: "Inspect provider", status: "in_progress", completed: false },
+            { id: "b", text: "Ship fix", status: "completed", completed: true },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test("rejects unknown ACP extension methods", async () => {
+    const session = createSessionWithConfig({ provider: "cursor" });
+    await expect(session.extMethod("cursor/unknown_method", {})).rejects.toMatchObject({
+      code: -32601,
+    });
+  });
+
+  test("merge cursor/update_todos requests drop cancelled todos", async () => {
+    const session = createSessionWithConfig({ provider: "cursor" });
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.extMethod("cursor/update_todos", {
+      merge: false,
+      todos: [
+        { id: "a", content: "Keep", status: 0 },
+        { id: "b", content: "Drop", status: 0 },
+      ],
+    });
+    await session.extMethod("cursor/update_todos", {
+      merge: true,
+      todos: [{ id: "b", content: "Drop", status: 3 }],
+    });
+
+    expect(events.findLast((event) => event.type === "timeline")).toMatchObject({
+      type: "timeline",
+      provider: "cursor",
+      item: {
+        type: "todo",
+        items: [{ id: "a", text: "Keep", status: "pending", completed: false }],
+      },
+    });
+  });
 });
