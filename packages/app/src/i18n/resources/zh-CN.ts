@@ -760,6 +760,11 @@ export const zhCN: TranslationResources = {
           pending: "正在 commit...",
           success: "已 commit",
         },
+        commitAndPush: {
+          label: "Commit 并 push",
+          pending: "正在 commit 并 push...",
+          success: "已 commit 并 push",
+        },
         pull: {
           label: "Pull",
           pending: "正在 pull...",
@@ -827,6 +832,7 @@ export const zhCN: TranslationResources = {
           pullDirty: "有本地变更时无法 pull，请先 commit 或 stash",
           pullUpToDate: "无法 pull，因为此分支已是最新",
           pushNoRemote: "此处无法 push，因为此分支尚未连接到 remote",
+          commitAndPushNoRemote: "此处无法 commit 并 push，因为此分支尚未连接到 remote",
           pushBehind: "暂时无法 push，因为需要先拉取更新的变更",
           pushNothing: "无法 push，因为没有新的内容可发送",
           pullAndPushNoRemote: "此处无法 pull 并 push，因为此分支尚未连接到 remote",
@@ -856,6 +862,7 @@ export const zhCN: TranslationResources = {
         },
         toasts: {
           failedCommit: "Commit 失败",
+          failedCommitAndPush: "Commit 并 push 失败",
           failedPull: "Pull 失败",
           failedPush: "Push 失败",
           failedPullAndPush: "Pull 并 push 失败",

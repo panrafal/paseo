@@ -764,6 +764,11 @@ export const ko: TranslationResources = {
           pending: "커밋하는 중...",
           success: "커밋됨",
         },
+        commitAndPush: {
+          label: "커밋 후 푸시",
+          pending: "커밋하고 푸시하는 중...",
+          success: "커밋 후 푸시됨",
+        },
         pull: {
           label: "풀",
           pending: "가져오는 중...",
@@ -832,6 +837,8 @@ export const ko: TranslationResources = {
           pullUpToDate: "이 브랜치가 이미 최신 상태이므로 풀을 사용할 수 없습니다",
           pushNoRemote:
             "이 브랜치가 아직 원격에 연결되어 있지 않아 여기서 푸시를 사용할 수 없습니다",
+          commitAndPushNoRemote:
+            "이 브랜치가 아직 원격에 연결되지 않아 커밋 후 푸시를 사용할 수 없습니다",
           pushBehind: "먼저 가져와야 할 최신 변경 사항이 있어 아직 푸시를 사용할 수 없습니다",
           pushNothing: "새로 보낼 항목이 없어 푸시를 사용할 수 없습니다",
           pullAndPushNoRemote:
@@ -871,6 +878,7 @@ export const ko: TranslationResources = {
         },
         toasts: {
           failedCommit: "커밋하지 못했습니다",
+          failedCommitAndPush: "커밋 후 푸시하지 못했습니다",
           failedPull: "가져오지 못했습니다",
           failedPush: "푸시하지 못했습니다",
           failedPullAndPush: "풀 후 푸시하지 못했습니다",
