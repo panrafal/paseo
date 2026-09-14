@@ -1706,6 +1706,12 @@ export const zhCN: TranslationResources = {
       unableToPair: "无法配对 host",
       errorTitle: "错误",
     },
+    relayAuth: {
+      pairAgain: "此设备已不再与主机配对。请在主机上扫描新的配对码。",
+      passwordChanged: "主机密码已更改。请在主机上扫描新的配对码。",
+      linkUsed: "此配对链接已被使用或已过期。请在主机上创建新的链接。",
+      rateLimited: "登录失败次数过多。请等待一分钟后重试。",
+    },
     device: {
       loadingOffer: "正在加载配对 offer...",
       failedToLoadOffer: "加载配对 offer 失败。",
@@ -1723,6 +1729,9 @@ export const zhCN: TranslationResources = {
       unavailable: "配对 offer 不可用。",
       hint: "用手机上的 Paseo 扫描此二维码，或复制下方链接。",
       securityWarning: "请像保管密码一样保管此配对链接。任何获得此链接的人都可以访问此守护进程。",
+      oneTimeWarning: "此链接只能配对一台设备，5 分钟后失效。请勿分享。",
+      expiresIn: "{{time}} 后过期",
+      newLink: "获取新链接",
       qrUnavailable: "二维码不可用。",
       qrAccessibility: "配对二维码",
       retry: "重试",

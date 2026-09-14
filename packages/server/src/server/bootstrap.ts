@@ -170,6 +170,8 @@ import { createConfiguredTerminalManager } from "../terminal/terminal-manager-fa
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
+import { createRelayPasswordBinding, RelayAuthenticator } from "./relay-auth/authenticator.js";
+import { RelayDeviceStore } from "./relay-auth/store.js";
 import type { PushNotificationSender } from "./push/index.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
@@ -417,6 +419,7 @@ export interface PaseoDaemonConfig {
   relayPublicEndpoint?: string;
   relayUseTls?: boolean;
   relayPublicUseTls?: boolean;
+  relayDeviceAuth?: boolean;
   serviceProxy?: {
     publicBaseUrl: string | null;
     standaloneListen: string | null;
@@ -1712,6 +1715,7 @@ export async function createPaseoDaemon(
                   return appBaseUrl;
                 },
                 desktopManaged: config.desktopManaged === true,
+                relayDeviceAuth: config.relayDeviceAuth === true,
                 getRelayConfig: () =>
                   relayRuntime?.getConfig() ?? {
                     enabled: daemonConfigStore.get().relay?.enabled ?? relayEnabled,
@@ -1747,6 +1751,17 @@ export async function createPaseoDaemon(
               },
               serverId,
               daemonKeyPair: daemonKeyPair.keyPair,
+              // COMPAT(relayDeviceAuth): remove the unauthenticated branch after 2027-03-14.
+              authenticator: config.relayDeviceAuth
+                ? new RelayAuthenticator({
+                    store: new RelayDeviceStore({ paseoHome: config.paseoHome, logger }),
+                    password: createRelayPasswordBinding({
+                      hash: config.auth?.password,
+                      environmentPassword: process.env.PASEO_PASSWORD,
+                      salt: daemonKeyPair.publicKeyB64,
+                    }),
+                  })
+                : null,
             });
             daemonConfigStore.onFieldChange("relay.enabled", (value) => {
               relayRuntime?.setEnabled(value === true);

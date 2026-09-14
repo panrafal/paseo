@@ -310,6 +310,7 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     formatPairingInstructions({
       url: pairing.url,
       qr: pairing.qr,
+      expiresAt: pairing.expiresAt,
       columns: process.stdout.columns,
     }),
   );

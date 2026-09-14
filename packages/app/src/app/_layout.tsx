@@ -717,6 +717,14 @@ function OfferLinkListener({
           if (cancelled) return;
           const serverId = (profile as { serverId?: unknown } | null)?.serverId;
           if (typeof serverId !== "string" || !serverId) return;
+          // The pairing token is spent; keep it out of browser history.
+          if (isWeb && window.location.hash.includes("offer=")) {
+            window.history.replaceState(
+              null,
+              "",
+              `${window.location.pathname}${window.location.search}`,
+            );
+          }
           router.replace(buildOpenProjectRoute());
           return;
         })
