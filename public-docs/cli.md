@@ -373,6 +373,16 @@ paseo daemon pair --json   # structured output; never prompts
 
 Relay is off for new installations. A disabled relay returns a `RELAY_DISABLED` error; pass `--relay` to provide explicit consent. For a stopped home, pairing is labelled offline; `--relay` saves relay enablement and the offer includes a start instruction. A live but unreachable home never falls back to an offline identity. Relay pairing is end-to-end encrypted. See [Security](/docs/security).
 
+With `daemon.relay.deviceAuth` on, each link works once and expires after 5 minutes. An offer URL passed to `--host` spends that token. To reuse one link, set `PASEO_PASSWORD` to the daemon password; the CLI then signs in with the password instead and doesn't add itself to the device list.
+
+List and revoke paired devices on the daemon machine:
+
+```bash
+paseo daemon devices
+paseo daemon devices revoke <id>
+paseo daemon devices revoke --all
+```
+
 Use it from anywhere:
 
 ```bash

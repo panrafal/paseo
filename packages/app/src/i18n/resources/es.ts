@@ -1772,6 +1772,15 @@ export const es: TranslationResources = {
       unableToPair: "No se puede emparejar el host",
       errorTitle: "Error",
     },
+    relayAuth: {
+      pairAgain:
+        "Este dispositivo ya no está vinculado al host. Escanea un nuevo código de vinculación en el host.",
+      passwordChanged:
+        "La contraseña del host cambió. Escanea un nuevo código de vinculación en el host.",
+      linkUsed: "Este enlace de vinculación ya se usó o ha caducado. Crea uno nuevo en el host.",
+      rateLimited:
+        "Demasiados intentos de inicio de sesión fallidos. Espera un minuto y vuelve a intentarlo.",
+    },
     device: {
       loadingOffer: "Cargando oferta de maridaje...",
       failedToLoadOffer: "No se pudo cargar la oferta de emparejamiento.",
@@ -1791,6 +1800,10 @@ export const es: TranslationResources = {
       hint: "Escanee este códigoQRconPaseoen su teléfono o copie el enlace a continuación.",
       securityWarning:
         "Trata este enlace de emparejamiento como una contraseña. Cualquiera que lo tenga puede acceder a este daemon.",
+      oneTimeWarning:
+        "Este enlace vincula un solo dispositivo y deja de funcionar a los 5 minutos. No lo compartas.",
+      expiresIn: "Caduca en {{time}}",
+      newLink: "Obtener nuevo enlace",
       qrUnavailable: "CódigoQRno disponible.",
       qrAccessibility: "Código QR de emparejamiento",
       retry: "Rever",

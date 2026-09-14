@@ -1733,6 +1733,13 @@ export const ko: TranslationResources = {
       unableToPair: "호스트를 페어링할 수 없습니다",
       errorTitle: "오류",
     },
+    relayAuth: {
+      pairAgain:
+        "이 기기는 더 이상 호스트와 페어링되어 있지 않습니다. 호스트에서 새 페어링 코드를 스캔하세요.",
+      passwordChanged: "호스트 비밀번호가 변경되었습니다. 호스트에서 새 페어링 코드를 스캔하세요.",
+      linkUsed: "이 페어링 링크는 이미 사용되었거나 만료되었습니다. 호스트에서 새 링크를 만드세요.",
+      rateLimited: "로그인 실패가 너무 많습니다. 1분 후에 다시 시도하세요.",
+    },
     device: {
       loadingOffer: "페어링 정보 불러오는 중...",
       failedToLoadOffer: "페어링 정보를 불러오지 못했습니다.",
@@ -1753,6 +1760,9 @@ export const ko: TranslationResources = {
       hint: "휴대폰의 Paseo로 이 QR 코드를 스캔하거나 아래 링크를 복사하세요.",
       securityWarning:
         "이 페어링 링크는 비밀번호처럼 취급하세요. 링크를 가진 사람은 누구나 이 데몬에 접근할 수 있습니다.",
+      oneTimeWarning: "이 링크는 기기 한 대만 페어링하며 5분 후에 만료됩니다. 공유하지 마세요.",
+      expiresIn: "{{time}} 후 만료",
+      newLink: "새 링크 받기",
       qrUnavailable: "QR 코드를 사용할 수 없습니다.",
       qrAccessibility: "페어링 QR 코드",
       retry: "다시 시도",

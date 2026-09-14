@@ -1742,6 +1742,15 @@ export const ja: TranslationResources = {
       unableToPair: "ホストをペアリングできません",
       errorTitle: "エラー",
     },
+    relayAuth: {
+      pairAgain:
+        "このデバイスはホストとのペアリングが解除されています。ホストで新しいペアリングコードをスキャンしてください。",
+      passwordChanged:
+        "ホストのパスワードが変更されました。ホストで新しいペアリングコードをスキャンしてください。",
+      linkUsed:
+        "このペアリングリンクは使用済みか期限切れです。ホストで新しいリンクを作成してください。",
+      rateLimited: "サインインの失敗が多すぎます。1 分待ってから再試行してください。",
+    },
     device: {
       loadingOffer: "ペアリングオファーを読み込み中...",
       failedToLoadOffer: "ペアリングオファーの読み込みに失敗しました。",
@@ -1762,6 +1771,10 @@ export const ja: TranslationResources = {
       hint: "スマートフォンのPaseoでこのQRコードをスキャンするか、以下のリンクをコピーしてください。",
       securityWarning:
         "このペアリングリンクはパスワードと同様に扱ってください。リンクを知っている人は誰でもこのデーモンにアクセスできます。",
+      oneTimeWarning:
+        "このリンクでペアリングできるデバイスは 1 台だけで、5 分後に無効になります。共有しないでください。",
+      expiresIn: "残り {{time}} で期限切れ",
+      newLink: "新しいリンクを取得",
       qrUnavailable: "QRコードが利用できません。",
       qrAccessibility: "ペアリング QR コード",
       retry: "再試行",

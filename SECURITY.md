@@ -38,9 +38,31 @@ The daemon requires a valid cryptographic handshake before processing any comman
 - **Forge messages** — NaCl box provides authenticated encryption; tampered messages are rejected
 - **Replay old messages across sessions** — Each session derives fresh encryption keys, so ciphertext from one session cannot be replayed into another session. Within a live session, replay protection is not yet implemented; the protocol uses random nonces and does not track nonce reuse or message counters.
 
+### Client authentication
+
+The daemon public key authenticates the daemon to the client. It does not authenticate the client: anyone holding the public key can complete the E2EE handshake. When `daemon.relay.deviceAuth` is `true`, the daemon announces `relayAuth` in `e2ee_ready` and attaches no session until the client's first encrypted frame proves it may connect. The setting is off by default and read only from `config.json`, because turning it off is the dangerous direction:
+
+- **Pairing token.** Each pairing link carries a random token that works once and expires after 5 minutes. The daemon exchanges it for a device credential.
+- **Device credential.** The client stores it and presents it on every later connection.
+- **Daemon password.** When a password is set, it also mints a device credential. The CLI signs in with it and asks for no credential, so a run neither spends a link nor adds a device.
+
+`$PASEO_HOME/relay-devices.json` (mode `0600`) holds only SHA-256 hashes of tokens and credential secrets. Each credential records a fingerprint of the daemon password it was issued under, so setting, changing, or removing the password rejects every existing credential. A `PASEO_PASSWORD` password is fingerprinted with scrypt over the plaintext, because its bcrypt hash changes on every start. Failed password attempts are rate limited.
+
+Revoke one device with `paseo daemon devices revoke <id>`, or every device with `--all`. The daemon rereads the file on each connection and rechecks open sessions every 15 seconds, so a revoked device is disconnected within that window and refused when it reconnects. A password change closes open sessions the same way once the daemon restarts with the new password. Password sign-ins that saved no device can only be ended by changing the password.
+
+Wrong pairing tokens don't count toward that limit. Tokens are 192-bit random values, and counting misses would let anyone holding a spent link lock out valid ones.
+
+A client that sends application traffic without authenticating, including an app released before this check, is closed with code `4401`.
+
 ### Trust model
 
-The QR code or pairing link is the trust anchor. It contains the daemon's public key, which is required to establish the encrypted connection. Treat it like a password — don't share it publicly.
+With `daemon.relay.deviceAuth` off, which is the default, the pairing link is a standing secret: anyone who has it can connect until you delete `daemon-keypair.json` and pair every device again.
+
+With it on, the pairing link is a one-time invitation, not a standing secret. Its public key is safe to disclose; its token stops working after one use or 5 minutes. A link that leaks after your device paired grants nothing. A link that leaks before you use it grants access to whoever uses it first, so revoke unknown devices.
+
+Paired devices have owner permissions.
+
+The relay addresses a session by server id alone, and the server id is in every pairing link. Someone who knows it can disrupt the daemon's relay connection, but cannot connect.
 
 ## Local daemon trust boundary
 
