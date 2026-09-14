@@ -1066,6 +1066,8 @@ export const ar: TranslationResources = {
       heading: "العرض",
       grouping: {
         label: "التجميع",
+        currentLabel: "التجميع الحالي: {{current}}",
+        toggleLabel: "التجميع الحالي: {{current}}. تبديل التجميع",
         project: "المشروع",
         status: "الحالة",
         labels: "التسميات",
@@ -2218,6 +2220,7 @@ export const ar: TranslationResources = {
         jumpToTab: "انتقل إلى علامة التبويب",
         previousWorkspace: "مساحة العمل السابقة",
         nextWorkspace: "مساحة العمل التالية",
+        cycleSidebarGrouping: "تبديل التجميع",
         previousTab: "علامة التبويب السابقة",
         nextTab: "علامة التبويب التالية",
         splitPaneRight: "تقسيم الجزء الأيمن",
