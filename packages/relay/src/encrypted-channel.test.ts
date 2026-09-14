@@ -110,6 +110,51 @@ describe("EncryptedChannel", () => {
     expect(completed).toBe(true);
   });
 
+  it("exposes the daemon relayAuth capability to the client", async () => {
+    const [daemonTransport, clientTransport] = createMockTransportPair();
+    const daemonKeyPair = generateKeyPair();
+    let resolveOpen: (() => void) | undefined;
+    const opened = new Promise<void>((resolve) => {
+      resolveOpen = resolve;
+    });
+
+    const daemonChannel = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      {},
+      { relayAuth: true },
+    );
+    const clientChannel = await createClientChannel(
+      clientTransport,
+      exportPublicKey(daemonKeyPair.publicKey),
+      { onopen: () => resolveOpen?.() },
+    );
+    await daemonChannel;
+    await opened;
+
+    expect(clientChannel.peerCapabilities()).toEqual({ binaryCiphertext: true, relayAuth: true });
+  });
+
+  it("reports no relayAuth capability for a daemon that does not announce it", async () => {
+    const [daemonTransport, clientTransport] = createMockTransportPair();
+    const daemonKeyPair = generateKeyPair();
+    let resolveOpen: (() => void) | undefined;
+    const opened = new Promise<void>((resolve) => {
+      resolveOpen = resolve;
+    });
+
+    const daemonChannel = createDaemonChannel(daemonTransport, daemonKeyPair);
+    const clientChannel = await createClientChannel(
+      clientTransport,
+      exportPublicKey(daemonKeyPair.publicKey),
+      { onopen: () => resolveOpen?.() },
+    );
+    await daemonChannel;
+    await opened;
+
+    expect(clientChannel.peerCapabilities()).toEqual({ binaryCiphertext: true });
+  });
+
   it("establishes encrypted channel between daemon and client", async () => {
     const [daemonTransport, clientTransport] = createMockTransportPair();
 

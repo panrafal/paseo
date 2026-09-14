@@ -1481,6 +1481,67 @@ describe("create_agent MCP tool", () => {
     );
   });
 
+  it("fills omitted profile features when create_agent uniquely matches a configured profile", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.createAgent.mockResolvedValue({
+      id: "profile-agent",
+      cwd: REPO_CWD,
+      lifecycle: "idle",
+      currentModeId: "auto",
+      availableModes: [],
+      config: { title: "Profile test", featureValues: { fast_mode: true } },
+    } as ManagedAgent);
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      ensureWorkspaceForCreate,
+      daemonConfigStore: daemonConfigStoreStub([
+        {
+          id: "profile_codex_medium",
+          name: "Codex Medium",
+          provider: "codex",
+          model: "gpt-5.4",
+          modeId: "auto",
+          thinkingOptionId: "high",
+          featureValues: { fast_mode: true },
+        },
+        {
+          id: "profile_codex_reader",
+          name: "Codex Reader",
+          provider: "codex",
+          model: "gpt-5.4",
+          modeId: "auto",
+          thinkingOptionId: "low",
+          featureValues: { fast_mode: false },
+        },
+      ]),
+      logger,
+    });
+    const tool = registeredTool(server, "create_agent");
+    await tool.handler({
+      ...detachedDirectoryWorkspace(existingCwd),
+      title: "Profile test",
+      provider: "codex/gpt-5.4",
+      initialPrompt: "Do work",
+      background: true,
+      settings: { modeId: "auto", thinkingOptionId: "high" },
+    });
+
+    expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        model: "gpt-5.4",
+        modeId: "auto",
+        thinkingOptionId: "high",
+        featureValues: { fast_mode: true },
+      }),
+      undefined,
+      { workspaceId: "workspace-created" },
+    );
+  });
+
   it("returns create_agent structured content with full provider modes", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockResolvedValue({
@@ -4146,6 +4207,7 @@ describe("create_schedule MCP tool", () => {
       cron: "*/15 * * * *",
       provider: "codex",
       isolation: "worktree",
+      workspaceLabels: ["Review"],
     });
 
     expect(createOrReplace).toHaveBeenNthCalledWith(
@@ -4182,6 +4244,7 @@ describe("create_schedule MCP tool", () => {
             provider: "codex",
             cwd: process.cwd(),
             isolation: "worktree",
+            workspaceLabels: ["Review"],
           },
         },
       }),
@@ -4219,6 +4282,7 @@ describe("create_schedule MCP tool", () => {
     const response = await tool.handler({
       prompt: "say hello",
       cron: "*/5 * * * *",
+      workspaceLabels: ["Review"],
     });
 
     expect(response.structuredContent.target).toEqual({
@@ -4229,6 +4293,7 @@ describe("create_schedule MCP tool", () => {
         modeId: "build",
         model: "openai/gpt-5.5",
         featureValues: { auto_accept: true },
+        workspaceLabels: ["Review"],
       },
     });
   });
@@ -4513,12 +4578,19 @@ describe("update_schedule MCP tool", () => {
       id: "schedule-1",
       name: "updated name",
       prompt: "new prompt",
+      workspaceLabels: ["Review"],
     });
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
       name: "updated name",
       prompt: "new prompt",
+      newAgentConfig: { workspaceLabels: ["Review"] },
+    });
+    await tool.handler({ id: "schedule-1", workspaceLabels: [] });
+    expect(update).toHaveBeenLastCalledWith({
+      id: "schedule-1",
+      newAgentConfig: { workspaceLabels: [] },
     });
   });
 

@@ -74,6 +74,7 @@ import { registerWorkspaceRouteNavigationRef } from "@/navigation/workspace-rout
 import { ThemedStack } from "@/navigation/themed-stack";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { AgentNavigationListener } from "@/desktop/agent-navigation";
+import { VscodeSendToComposerListener } from "@/desktop/vscode/send-to-composer";
 import { LegacyAgentSkillsMigration } from "@/agent-skills/legacy-migration";
 import { legacyFavoriteProfileMigration } from "@/agent-profiles/migration";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
@@ -716,6 +717,14 @@ function OfferLinkListener({
           if (cancelled) return;
           const serverId = (profile as { serverId?: unknown } | null)?.serverId;
           if (typeof serverId !== "string" || !serverId) return;
+          // The pairing token is spent; keep it out of browser history.
+          if (isWeb && window.location.hash.includes("offer=")) {
+            window.history.replaceState(
+              null,
+              "",
+              `${window.location.pathname}${window.location.search}`,
+            );
+          }
           router.replace(buildOpenProjectRoute());
           return;
         })
@@ -932,6 +941,7 @@ function AppShell() {
       <HorizontalScrollProvider>
         <OpenProjectListener />
         <AgentNavigationListener />
+        <VscodeSendToComposerListener />
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />

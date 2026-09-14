@@ -87,6 +87,11 @@ function createInput(
         status: "idle",
         handler: () => undefined,
       },
+      "commit-and-push": {
+        disabled: false,
+        status: "idle",
+        handler: () => undefined,
+      },
       pull: {
         disabled: false,
         status: "idle",
@@ -408,6 +413,28 @@ describe("git-actions-policy", () => {
 
     expect(action?.unavailableMessage).toBe(
       "Pull and push isn't available while you have local changes so commit or stash them first",
+    );
+  });
+
+  it("offers commit and push alongside commit whenever there are uncommitted changes", () => {
+    const actions = buildGitActions(createInput({ hasRemote: true, hasUncommittedChanges: true }));
+
+    expect(actions.primary?.id).toBe("commit");
+    expect(actions.secondary.some((action) => action.id === "commit-and-push")).toBe(true);
+  });
+
+  it("omits commit and push when there is nothing to commit", () => {
+    const actions = buildGitActions(createInput({ hasRemote: true }));
+
+    expect(actions.secondary.some((action) => action.id === "commit-and-push")).toBe(false);
+  });
+
+  it("explains why commit and push is unavailable without a remote", () => {
+    const actions = buildGitActions(createInput({ hasUncommittedChanges: true }));
+    const action = actions.secondary.find((entry) => entry.id === "commit-and-push");
+
+    expect(action?.unavailableMessage).toBe(
+      "Commit and push isn't available here because this branch is not connected to a remote yet",
     );
   });
 

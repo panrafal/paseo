@@ -7,6 +7,12 @@ const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
 const withPasteInput = require("./plugins/with-paste-input");
 const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
+// A fork builds under its own identity: its own bundle/package id, its own EAS
+// project, its own Expo account. Unset everywhere except a fork build, so
+// upstream builds are byte-identical.
+const forkPackageId = process.env.APP_PACKAGE_ID;
+const forkEasProjectId = process.env.EAS_PROJECT_ID;
+const forkEasOwner = process.env.EAS_OWNER;
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
 const isProfileBuild = process.env.PASEO_PROFILE_BUILD === "1";
 
@@ -67,7 +73,7 @@ function resolveSecretFile(params) {
 const variants = {
   production: {
     name: "Paseo",
-    packageId: "sh.paseo",
+    packageId: forkPackageId ?? "sh.paseo",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_PROD",
       fallbackRelativePath: "./.secrets/google-services.prod.json",
@@ -79,7 +85,7 @@ const variants = {
   },
   development: {
     name: "Paseo Debug",
-    packageId: "sh.paseo.debug",
+    packageId: forkPackageId ? `${forkPackageId}.debug` : "sh.paseo.debug",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_DEBUG",
       fallbackRelativePath: "./.secrets/google-services.debug.json",
@@ -97,7 +103,7 @@ const nativeReleaseVersion = getNativeReleaseVersion(pkg.version);
 export default {
   expo: {
     name: variant.name,
-    slug: "voice-mobile",
+    slug: "panrafal-paseo",
     version: nativeReleaseVersion.appVersion,
     orientation: "portrait",
     icon: "./assets/images/icon.png",
@@ -188,9 +194,9 @@ export default {
       profileBuild: isProfileBuild,
       router: {},
       eas: {
-        projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a",
+        projectId: forkEasProjectId ?? "0e7f65ce-0367-46c8-a238-2b65963d235a",
       },
     },
-    owner: "getpaseo",
+    owner: forkEasOwner ?? "getpaseo",
   },
 };

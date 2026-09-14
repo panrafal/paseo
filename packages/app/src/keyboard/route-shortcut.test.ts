@@ -37,6 +37,7 @@ describe("routeKeyboardShortcut — dispatch passthroughs", () => {
     ["workspace.project.pick", { id: "workspace.project.pick", scope: "workspace" }],
     ["workspace.archive", { id: "workspace.archive", scope: "sidebar" }],
     ["workspace.pin", { id: "workspace.pin", scope: "sidebar" }],
+    ["sidebar.grouping.cycle", { id: "sidebar.grouping.cycle", scope: "sidebar" }],
     ["worktree.new", { id: "worktree.new", scope: "sidebar" }],
     ["workspace.terminal.new", { id: "workspace.terminal.new", scope: "workspace" }],
     ["workspace.tab.close.current", { id: "workspace.tab.close-current", scope: "workspace" }],
@@ -53,6 +54,9 @@ describe("routeKeyboardShortcut — dispatch passthroughs", () => {
     ["workspace.pane.move-tab.down", { id: "workspace.pane.move-tab.down", scope: "workspace" }],
     ["workspace.pane.close", { id: "workspace.pane.close", scope: "workspace" }],
     ["view.toggle.focus", { id: "workspace.focus.toggle", scope: "workspace" }],
+    ["find.open", { id: "find.open", scope: "workspace" }],
+    ["find.next", { id: "find.next", scope: "workspace" }],
+    ["find.previous", { id: "find.previous", scope: "workspace" }],
   ])("%s → dispatch %j", (action, expected) => {
     expect(routeKeyboardShortcut({ action, payload: null }, makeCtx())).toEqual({
       kind: "dispatch",
@@ -353,6 +357,18 @@ describe("routeKeyboardShortcut — settings.toggle", () => {
         }),
       ),
     ).toEqual<ShortcutAction>({ kind: "router-back" });
+  });
+});
+
+describe("routeKeyboardShortcut — route history", () => {
+  it.each([
+    ["navigation.history.back", "back"],
+    ["navigation.history.forward", "forward"],
+  ] as const)("routes %s toward %s", (action, direction) => {
+    expect(routeKeyboardShortcut({ action, payload: null }, makeCtx())).toEqual<ShortcutAction>({
+      kind: "route-history",
+      direction,
+    });
   });
 });
 
