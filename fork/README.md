@@ -336,7 +336,7 @@ target comes from the same commit, then runs all four at once:
 
 | Target    | Built                                     | Installed                                                                                          |
 | --------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `daemon`  | on the devbox, over ssh                   | `npm install -g` on the devbox, `systemctl restart paseo`, then the healthcheck                    |
+| `daemon`  | on the devbox, over ssh                   | `npm install -g` on the devbox, `systemctl restart paseo`, then the healthcheck; the daemon tarballs are then uploaded to the `fork-v<version>` release for capitally-devhub's devflows |
 | `desktop` | by GitHub Actions, from a tag pushed here | After every job finishes, Terminal runs `fork/update-macos.sh` to install and relaunch the Mac app |
 | `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                   |
 | `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                  |
