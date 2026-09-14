@@ -30,6 +30,7 @@ class DeployTest(unittest.TestCase):
 [ "$PWD" = "$TEST_ROOT" ] || exit 90
 case "$*" in
   'rev-parse --git-dir') echo .git ;;
+  'rev-parse main') echo test-main-sha ;;
   'remote get-url '*) echo https://example.invalid/upstream ;;
   'show main:package.json') echo '{"version":"0.7.2"}' ;;
   'show main:fork/build-number') echo '0.7.2 9' ;;
@@ -37,7 +38,29 @@ case "$*" in
   *) exit 91 ;;
 esac
 ''')
-        self.script(self.bin / "gh", 'exit "${RELEASE_EXISTS:-1}"')
+        self.script(self.bin / "gh", '''
+printf '%s\n' "$*" >> "$TEST_ROOT/gh.calls"
+case "$*" in
+  'release view '*) exit "${RELEASE_EXISTS:-1}" ;;
+  'release create '*) exit 0 ;;
+  'release upload '*) exit 0 ;;
+  *) exit "${RELEASE_EXISTS:-1}" ;;
+esac
+''')
+        self.script(self.bin / "ssh", '''
+printf '%s\n' "$*" >> "$TEST_ROOT/ssh.calls"
+if [ "${DAEMON_EXIT:-0}" != 0 ] && [[ "$*" == *fork/build.sh* ]]; then
+  exit "$DAEMON_EXIT"
+fi
+if [[ "$*" == *"sudo cat"* ]]; then
+  printf ''
+  exit 0
+fi
+if [[ "$*" == *"git rev-parse"* ]]; then
+  echo test-main-sha
+  exit 0
+fi
+''')
         self.script(self.bin / "open", '''
 [ "$1" = -a ] && [ "$2" = Terminal ]
 [ ! -e "$TEST_ROOT/ios.started" ] || [ -e "$TEST_ROOT/ios.finished" ]
@@ -122,6 +145,26 @@ echo 'Update finished'
     def test_terminal_launch_failure_is_reported(self):
         result = self.deploy("desktop", OPEN_EXIT="9")
         self.assertEqual(result.returncode, 9, result.stdout + result.stderr)
+
+    def test_daemon_publishes_tarballs_to_release(self):
+        result = self.deploy("daemon")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = (self.root / "gh.calls").read_text()
+        self.assertIn("release upload fork-v0.7.2-panrafal.9", calls)
+        self.assertIn("--clobber", calls)
+        self.assertIn(
+            "https://github.com/panrafal/paseo/releases/tag/fork-v0.7.2-panrafal.9",
+            result.stdout,
+        )
+
+    def test_failed_daemon_does_not_publish(self):
+        result = self.deploy("daemon", DAEMON_EXIT="3")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        calls = ""
+        path = self.root / "gh.calls"
+        if path.exists():
+            calls = path.read_text()
+        self.assertNotIn("release upload", calls)
 
 
 if __name__ == "__main__":
