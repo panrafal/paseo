@@ -203,6 +203,8 @@ Kimi Code usage follows the CLI-managed credential file at `KIMI_CODE_HOME` or `
 
 Cursor usage uses `CURSOR_ACCESS_TOKEN` / `CURSOR_TOKEN` if set, otherwise the desktop `state.vscdb` token, then `cursor-agent`'s `~/.config/cursor/auth.json`. Headless hosts only have the CLI file.
 
+Kilo usage reads the CLI's OAuth token from `~/.local/share/kilo/auth.json` (`kilo.access`) and calls `GET https://api.kilo.ai/api/profile/balance`. Kilo's gateway has no limit/window endpoint yet, so this reports a single USD balance rather than a percentage window.
+
 ### Usage fetchers are read-only on credentials
 
 A fetcher reads the provider's credential file and never writes it. On a 401 or 403 it returns `unavailable` and leaves refresh to the provider's own CLI: redeeming a refresh token in the fetcher invalidates the CLI's copy (refresh tokens are single-use), and rewriting the file through the fetcher's Zod schema drops any field the schema does not model, corrupting the file for the CLI.
