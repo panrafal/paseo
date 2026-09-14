@@ -32,10 +32,11 @@ origin/video-file-preview
 # PRs maintained by their authors; fetched from their GitHub forks.
 colonelpanic8:codex-astra-support
 ragokan:fix/claude-native-tool-details
-stackia:fix/cursor-usage-official-display
 # cleiter:plan-visible-after-answer
 colonelpanic8:codex-banked-resets
 KiraPC:feat/open-in-editor-remote-authority
+
+fix/cursor-usage-official-display
 
 # Fork features not yet sent upstream.
 origin/assign-schedule-labels
