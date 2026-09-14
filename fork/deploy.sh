@@ -117,6 +117,28 @@ job_daemon() {
   note "service $FORK_DEVBOX_SERVICE restarted, healthcheck passed"
 }
 
+# dist is under a home the admin account cannot read, so sudo cat.
+publish_daemon_tarballs() {
+  local p dest tag="fork-v$VERSION" files=()
+  mkdir -p "$DEPLOY_DIR/publish"
+  rm -f "$DEPLOY_DIR/publish"/getpaseo-*.tgz
+  for p in "${FORK_DAEMON_PACKAGES[@]}"; do
+    dest="$DEPLOY_DIR/publish/getpaseo-$p-$VERSION.tgz"
+    devbox_admin "sudo cat $(sq "$FORK_DEVBOX_WORK_ROOT/dist/getpaseo-$p-$VERSION.tgz")" >"$dest"
+    files+=("$dest")
+  done
+  if ! gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
+    gh release create "$tag" \
+      --repo "$REPO" \
+      --target "$(git rev-parse "$TARGET")" \
+      --title "Fork build $VERSION" \
+      --prerelease \
+      --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the fork-base branch."
+  fi
+  gh release upload "$tag" "${files[@]}" --repo "$REPO" --clobber
+  say "published daemon tarballs: https://github.com/$REPO/releases/tag/$tag"
+}
+
 job_desktop() {
   local tag="fork-v$VERSION"
   if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
@@ -196,7 +218,7 @@ fi
 if wants desktop && [ "$(uname -s)" != "Darwin" ]; then
   die "the desktop target installs into /Applications, so this has to run on the Mac. Pick the other targets, or run it there."
 fi
-if wants desktop; then
+if wants desktop || wants daemon; then
   command -v gh >/dev/null 2>&1 || die "the gh CLI is required: brew install gh"
 fi
 if wants vscode || wants ios; then
@@ -345,6 +367,23 @@ while [ "${#EXIT_FILES[@]}" -gt 0 ]; do
 done
 wait
 
+# After wait, not inside job_daemon: job_desktop pushes a tag whose Actions
+# workflow creates the same release, so uploading from the parallel daemon
+# job would race it.
+publish_rc=0
+if wants daemon && [ "${STATUS[daemon]}" = 0 ]; then
+  set +e
+  (
+    set -euo pipefail
+    publish_daemon_tarballs
+  )
+  publish_rc=$?
+  set -e
+  if [ "$publish_rc" -ne 0 ]; then
+    warn "publishing daemon tarballs failed (exit $publish_rc)"
+  fi
+fi
+
 # -------------------------------------------------------------- summary ----
 
 failed=0
@@ -362,6 +401,10 @@ for t in "${targets[@]}"; do
   sed 's/^/           /' "$DEPLOY_DIR/$t.result"
   [ "${STATUS[$t]}" = 0 ] || printf '           stopped after the last line above\n'
 done
+if [ "$publish_rc" -ne 0 ]; then
+  failed=1
+  printf '  \033[31m%-8s\033[0m FAILED (exit %s)\n' "publish" "$publish_rc"
+fi
 
 # Terminal owns the updater process so it survives Paseo and its daemon quitting.
 if wants desktop && [ "${STATUS[desktop]}" = 0 ]; then
