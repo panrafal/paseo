@@ -32,4 +32,19 @@ describe("tool-call-parsers", () => {
     expect(tasks?.map((task) => task.text)).toEqual(["Task 1", "Task 2"]);
     expect(tasks?.map((task) => task.completed)).toEqual([false, true]);
   });
+
+  it("extracts Cursor updateTodos task entries from unknown ACP tool input", () => {
+    const tasks = extractTaskEntriesFromToolCall("other", {
+      _toolName: "updateTodos",
+      todos: [
+        { id: "a", content: "Inspect provider", status: 1 },
+        { id: "b", content: "Ship fix", status: 2 },
+      ],
+    });
+
+    expect(tasks).toEqual([
+      { text: "Inspect provider", status: "in_progress", completed: false },
+      { text: "Ship fix", status: "completed", completed: true },
+    ]);
+  });
 });

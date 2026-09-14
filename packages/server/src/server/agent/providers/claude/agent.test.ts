@@ -860,8 +860,39 @@ describe("ClaudeAgentSession features", () => {
       ).ensureQuery(),
     ).resolves.toBeDefined();
 
-    expect(queryFactory.mock.calls[0]?.[0].options.settings).toMatchObject({ fastMode: true });
+    expect(queryFactory.mock.calls[0]?.[0].options.settings).toMatchObject({
+      fastMode: true,
+      todoFeatureEnabled: true,
+    });
     expect(queryMock.applyFlagSettings).toHaveBeenCalledWith({ fastMode: true });
+
+    await session.close();
+  });
+
+  test("enables Claude todo tracking even when fast mode is off", async () => {
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      model: "claude-sonnet-4-6",
+    });
+
+    await expect(
+      (
+        session as unknown as {
+          ensureQuery(): Promise<unknown>;
+        }
+      ).ensureQuery(),
+    ).resolves.toBeDefined();
+
+    expect(queryFactory.mock.calls[0]?.[0].options.settings).toMatchObject({
+      todoFeatureEnabled: true,
+    });
 
     await session.close();
   });

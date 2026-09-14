@@ -52,9 +52,10 @@ ACP permission options are rendered as ordered actions and Paseo returns the sel
 ACP shims can own model discovery through `catalogModelResolver`; the shared client owns the probe
 process and refresh deadline. Keep vendor RPCs in the shim. Cursor uses
 `cursor/list_available_models` because switching models during discovery writes its saved CLI
-preferences and selection history. Cursor versions without that extension must be updated. Kimi
-still probes model selections in its own shim. The initial session supplies modes and the current
-model; it does not override the model list returned by a resolver.
+preferences and selection history. Cursor versions without that extension must be updated. Cursor
+todos use `cursor/update_todos` and `updateTodos` tool calls; ACP `sessionUpdate: "plan"` is the
+Create Plan tool. Kimi still probes model selections in its own shim. The initial session supplies
+modes and the current model; it does not override the model list returned by a resolver.
 
 ### Direct
 
