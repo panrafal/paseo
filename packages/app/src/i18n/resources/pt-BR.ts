@@ -2274,6 +2274,8 @@ export const ptBR: TranslationResources = {
         findInPane: "Localizar no painel",
         findNext: "Localizar próxima",
         findPrevious: "Localizar anterior",
+        historyBack: "Voltar no histórico",
+        historyForward: "Avançar no histórico",
         toggleCommandCenter: "Alternar central de comandos",
         showKeyboardShortcuts: "Mostrar atalhos de teclado",
         toggleLeftSidebar: "Alternar barra lateral esquerda",
