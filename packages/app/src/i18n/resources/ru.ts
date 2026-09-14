@@ -1810,6 +1810,16 @@ export const ru: TranslationResources = {
     archiveFinishedAction: "Архивировать завершенные субагенты",
     archiveFinishedRetry: "Повторить ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "Поиск",
+    matchPosition: "{{current}} из {{count}}",
+    matchPositionCapped: "{{current}} из более чем {{count}}",
+    noResults: "Нет результатов",
+    cappedCount: "Более {{count}} совпадений",
+    previous: "Предыдущее совпадение",
+    next: "Следующее совпадение",
+    close: "Закрыть поиск",
+  },
   panels: {
     draft: {
       newAgent: "Новый агент",
@@ -2255,6 +2265,9 @@ export const ru: TranslationResources = {
         closePane: "Закрыть панель",
         newTerminal: "Новый терминал",
         searchFiles: "Поиск файлов",
+        findInPane: "Поиск в панели",
+        findNext: "Найти далее",
+        findPrevious: "Найти ранее",
         toggleCommandCenter: "Переключить командный центр",
         showKeyboardShortcuts: "Показать сочетания клавиш",
         toggleLeftSidebar: "Переключить левую боковую панель",
@@ -2274,6 +2287,7 @@ export const ru: TranslationResources = {
         switchProject: "Сменить проект",
       },
       helpNotes: {
+        findWhileOpen: "Только когда открыта панель поиска.",
         showKeyboardShortcuts: "Доступно, когда фокус находится не в текстовом поле или терминале.",
       },
     },

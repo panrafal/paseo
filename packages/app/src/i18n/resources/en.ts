@@ -1805,6 +1805,16 @@ export const en = {
     archiveFinishedAction: "Archive finished subagents",
     archiveFinishedRetry: "Retry ({{failed}}/{{total}})",
   },
+  find: {
+    placeholder: "Find",
+    matchPosition: "{{current}} of {{count}}",
+    matchPositionCapped: "{{current}} of {{count}}+",
+    noResults: "No results",
+    cappedCount: "{{count}}+ matches",
+    previous: "Previous match",
+    next: "Next match",
+    close: "Close find",
+  },
   panels: {
     draft: {
       newAgent: "New Agent",
@@ -2336,6 +2346,9 @@ export const en = {
         closePane: "Close pane",
         newTerminal: "New terminal",
         searchFiles: "Search files",
+        findInPane: "Find in pane",
+        findNext: "Find next",
+        findPrevious: "Find previous",
         toggleCommandCenter: "Toggle command center",
         showKeyboardShortcuts: "Show keyboard shortcuts",
         toggleLeftSidebar: "Toggle left sidebar",
@@ -2355,6 +2368,7 @@ export const en = {
         switchProject: "Switch project",
       },
       helpNotes: {
+        findWhileOpen: "Only while the find bar is open.",
         showKeyboardShortcuts: "Available when focus is not in a text field or terminal.",
       },
     },
