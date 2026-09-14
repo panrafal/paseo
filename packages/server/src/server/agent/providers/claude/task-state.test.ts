@@ -120,6 +120,54 @@ describe("ClaudeTaskState", () => {
     });
   });
 
+  test("emits a TaskCreate snapshot before the result and remaps the pending id", () => {
+    const state = new ClaudeTaskState();
+    expect(
+      state.observe(
+        toolUse("create-1", "TaskCreate", { subject: "Alpha", activeForm: "Doing alpha" }),
+      ),
+    ).toEqual({
+      type: "todo",
+      items: [
+        {
+          id: "create-1",
+          text: "Alpha",
+          activeForm: "Doing alpha",
+          status: "pending",
+          completed: false,
+        },
+      ],
+    });
+    expect(state.observe(toolResult("create-1", { task: { id: "1", subject: "Alpha" } }))).toEqual({
+      type: "todo",
+      items: [
+        { id: "1", text: "Alpha", activeForm: "Doing alpha", status: "pending", completed: false },
+      ],
+    });
+  });
+
+  test("reads TaskCreate results from tool_result JSON when toolUseResult is missing", () => {
+    const state = new ClaudeTaskState();
+    state.observe(toolUse("create-1", "TaskCreate", { subject: "Alpha" }));
+    expect(
+      state.observe({
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "create-1",
+              content: JSON.stringify({ task: { id: "9", subject: "Alpha" } }),
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      type: "todo",
+      items: [{ id: "9", text: "Alpha", status: "pending", completed: false }],
+    });
+  });
+
   test("does not confuse Claude's subagent Task tool with task tracking", () => {
     const state = new ClaudeTaskState();
     expect(state.observe(toolUse("subagent", "Task", { description: "delegate" }))).toBeNull();

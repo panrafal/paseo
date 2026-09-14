@@ -66,7 +66,52 @@ function toolResultId(message: Record<string, unknown>): string | undefined {
 }
 
 function structuredResult(message: Record<string, unknown>): Record<string, unknown> | null {
-  return record(message.toolUseResult) ?? record(message.tool_use_result);
+  return (
+    record(message.toolUseResult) ??
+    record(message.tool_use_result) ??
+    parseToolResultPayload(message)
+  );
+}
+
+function parseToolResultPayload(message: Record<string, unknown>): Record<string, unknown> | null {
+  const content = record(message.message)?.content;
+  if (!Array.isArray(content)) return parseResultValue(content);
+  for (const block of content) {
+    const candidate = record(block);
+    if (candidate?.type !== "tool_result") continue;
+    const parsed = parseResultValue(candidate.content);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function parseResultValue(value: unknown): Record<string, unknown> | null {
+  const asRecord = record(value);
+  if (asRecord?.task || asRecord?.tasks || asRecord?.taskId || asRecord?.statusChange) {
+    return asRecord;
+  }
+  if (typeof value === "string") {
+    try {
+      return record(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(value)) return null;
+  const text = value
+    .flatMap((block) => {
+      const candidate = record(block);
+      return candidate?.type === "text" && typeof candidate.text === "string"
+        ? [candidate.text]
+        : [];
+    })
+    .join("");
+  if (!text) return null;
+  try {
+    return record(JSON.parse(text));
+  } catch {
+    return null;
+  }
 }
 
 /** Accumulates Claude's snapshot and ID-based task tools into canonical todo snapshots. */
@@ -87,6 +132,8 @@ export class ClaudeTaskState {
       const input = record(block.input) ?? {};
       this.calls.set(id, { name, input });
       if (name === "TodoWrite") snapshot = this.replaceLegacyTodos(input.todos);
+      if (name === "TaskCreate") snapshot = this.applyCreate(input, null, id);
+      if (name === "TaskUpdate") snapshot = this.applyUpdate(input, null);
     }
 
     const resultId = toolResultId(message);
@@ -95,7 +142,7 @@ export class ClaudeTaskState {
     if (!call) return snapshot;
     this.appliedResults.add(resultId);
     this.calls.delete(resultId);
-    return this.applyResult(call, structuredResult(message)) ?? snapshot;
+    return this.applyResult(call, structuredResult(message), resultId) ?? snapshot;
   }
 
   reset(): void {
@@ -120,9 +167,10 @@ export class ClaudeTaskState {
   private applyResult(
     call: PendingTaskTool,
     result: Record<string, unknown> | null,
+    pendingId: string,
   ): Extract<AgentTimelineItem, { type: "todo" }> | null {
     if (result?.success === false) return null;
-    if (call.name === "TaskCreate") return this.applyCreate(call.input, result);
+    if (call.name === "TaskCreate") return this.applyCreate(call.input, result, pendingId);
     if (call.name === "TaskUpdate") return this.applyUpdate(call.input, result);
     if (call.name === "TaskList") return this.applyList(result);
     return null;
@@ -131,11 +179,14 @@ export class ClaudeTaskState {
   private applyCreate(
     input: Record<string, unknown>,
     result: Record<string, unknown> | null,
+    pendingId?: string,
   ): Extract<AgentTimelineItem, { type: "todo" }> | null {
     const resultTask = record(result?.task);
-    const id = string(resultTask?.id) ?? string(result?.taskId);
+    const id =
+      string(resultTask?.id) ?? string(result?.taskId) ?? string(input.taskId) ?? pendingId;
     const text = string(resultTask?.subject) ?? string(input.subject);
     if (!id || !text) return null;
+    if (pendingId && pendingId !== id) this.tasks.delete(pendingId);
     const activeForm = string(input.activeForm);
     this.tasks.set(id, {
       id,
@@ -154,8 +205,12 @@ export class ClaudeTaskState {
     const id = string(input.taskId) ?? string(result?.taskId);
     if (!id) return null;
     const current = this.tasks.get(id);
-    if (!current) return null;
     const statusValue = input.status ?? record(result?.statusChange)?.to;
+    if (!current) {
+      return statusValue !== undefined && taskStatus(statusValue) === "deleted"
+        ? this.snapshot()
+        : null;
+    }
     const status =
       statusValue === undefined ? retainedTaskStatus(current) : taskStatus(statusValue);
     if (status === "deleted") {

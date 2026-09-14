@@ -24,10 +24,28 @@ import {
   listCodexSkills,
   mapCodexPatchNotificationToToolCall,
   mapCodexPlanUpdateToTodo,
+  mapCodexPlanThreadItemToTodo,
   mapCodexPlanToToolCall,
   normalizeCodexOutputSchema,
   toAgentUsage,
 } from "./codex-app-server-agent.js";
+
+describe("mapCodexPlanThreadItemToTodo", () => {
+  test("turns markdown plan checklists into the Tasks track", () => {
+    expect(
+      mapCodexPlanThreadItemToTodo({
+        type: "plan",
+        text: "### Login Screen\n- Build layout\n- [x] Add validation",
+      }),
+    ).toEqual({
+      type: "todo",
+      items: [
+        { id: "0", text: "Build layout", status: "pending", completed: false },
+        { id: "1", text: "Add validation", status: "completed", completed: true },
+      ],
+    });
+  });
+});
 
 describe("mapCodexPlanUpdateToTodo", () => {
   test("preserves checklist progress without creating a plan card", () => {
@@ -5071,6 +5089,43 @@ describe("Codex app-server provider", () => {
       turnId: "test-turn",
       usage: undefined,
     });
+  });
+
+  test("maps Codex plan thread items onto the Tasks track outside Plan mode", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("item/completed", {
+      item: {
+        id: "plan-item-tasks",
+        type: "plan",
+        text: "- Inspect README\n- Add a short note",
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "timeline",
+        provider: "codex",
+        item: {
+          type: "todo",
+          items: [
+            { id: "0", text: "Inspect README", status: "pending", completed: false },
+            { id: "1", text: "Add a short note", status: "pending", completed: false },
+          ],
+        },
+      }),
+    );
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "timeline",
+        item: expect.objectContaining({
+          type: "tool_call",
+          detail: expect.objectContaining({ type: "plan" }),
+        }),
+      }),
+    );
   });
 
   test("does not complete Codex plan timeline cards while plan approval is pending", () => {
