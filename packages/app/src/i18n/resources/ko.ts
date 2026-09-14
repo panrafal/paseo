@@ -1025,6 +1025,8 @@ export const ko: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection:
+      "선택한 라벨 중 일부가 더 이상 존재하지 않습니다. 계속하려면 해당 라벨을 제거하세요.",
     title: "레이블",
     unlabelled: "레이블 없음",
     create: "레이블 만들기",
