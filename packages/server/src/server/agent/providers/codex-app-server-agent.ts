@@ -1029,6 +1029,103 @@ export function mapCodexPlanUpdateToTodo(
   };
 }
 
+export function mapCodexPlanThreadItemToTodo(
+  item: Record<string, unknown>,
+): Extract<AgentTimelineItem, { type: "todo" }> | null {
+  const steps = readCodexPlanSteps(item);
+  if (!steps || steps.length === 0) {
+    return null;
+  }
+  return mapCodexPlanUpdateToTodo(steps);
+}
+
+function readCodexPlanSteps(
+  item: Record<string, unknown>,
+): Array<{ step: string; status: string | null }> | null {
+  const fromArray = readCodexPlanStepArray(item.plan) ?? readCodexPlanStepArray(item.steps);
+  if (fromArray) {
+    return fromArray;
+  }
+  if (typeof item.text === "string") {
+    return parseMarkdownPlanSteps(item.text);
+  }
+  return null;
+}
+
+function readCodexPlanStepArray(
+  value: unknown,
+): Array<{ step: string; status: string | null }> | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  const steps = value.flatMap((entry) => {
+    if (typeof entry === "string") {
+      const step = entry.trim();
+      return step ? [{ step, status: null }] : [];
+    }
+    if (typeof entry !== "object" || entry === null) {
+      return [];
+    }
+    const record = entry as Record<string, unknown>;
+    const step =
+      (typeof record.step === "string" && record.step.trim()) ||
+      (typeof record.content === "string" && record.content.trim()) ||
+      (typeof record.text === "string" && record.text.trim()) ||
+      "";
+    if (!step) {
+      return [];
+    }
+    const status = typeof record.status === "string" ? record.status : null;
+    return [{ step, status }];
+  });
+  return steps.length > 0 ? steps : null;
+}
+
+function parseMarkdownPlanSteps(
+  text: string,
+): Array<{ step: string; status: string | null }> | null {
+  const steps: Array<{ step: string; status: string | null }> = [];
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    const checkbox = line.match(/^[-*+]\s+\[([ xX])\]\s+(.+)$/);
+    if (checkbox?.[2]) {
+      steps.push({
+        step: checkbox[2].trim(),
+        status: checkbox[1] !== " " ? "completed" : "pending",
+      });
+      continue;
+    }
+    const bullet = line.match(/^[-*+]\s+(.+)$/) ?? line.match(/^\d+\.\s+(.+)$/);
+    const step = bullet?.[1]?.trim();
+    if (step && !/^(#{1,6}\s)/.test(step)) {
+      steps.push({ step, status: "pending" });
+    }
+  }
+  return steps.length > 0 ? steps : null;
+}
+
+function isPureMarkdownChecklist(text: string): boolean {
+  let hasItem = false;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^[-*+]\s+/.test(line) || /^\d+\.\s+/.test(line)) {
+      hasItem = true;
+      continue;
+    }
+    return false;
+  }
+  return hasItem;
+}
+
+interface VisiblePlanTodo {
+  type: "todo";
+  item: Extract<AgentTimelineItem, { type: "todo" }>;
+  keepCard: boolean;
+}
+
+type VisiblePlanTimeline = { type: "suppress" } | VisiblePlanTodo;
+
 function normalizeCodexTaskStatus(status: string | null | undefined) {
   if (status === "completed") return "completed" as const;
   if (status === "inProgress" || status === "in_progress") return "in_progress" as const;
@@ -6582,15 +6679,10 @@ export class CodexAppServerAgentSession implements AgentSession {
       return;
     }
     this.applyBufferedDeltaTextToTimelineItem(timelineItem, itemId);
+    if (this.emitCompletedPlanItem(parsed.item, timelineItem, itemId, registeredChildThreadIds)) {
+      return;
+    }
     if (timelineItem.type === "tool_call") {
-      if (timelineItem.detail.type === "plan") {
-        this.rememberPlanResult(timelineItem);
-        // Codex can surface plans both as turn/plan updates and as completed
-        // thread items. In plan mode, approval owns the visible plan card.
-        if (this.planModeEnabled) {
-          return;
-        }
-      }
       this.warnOnIncompleteEditToolCall(timelineItem, "item_completed", parsed.item);
     }
     this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
@@ -6609,6 +6701,58 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.pendingAgentMessageQuestions.delete(itemId);
     }
     this.replayPendingSubAgentNotifications(registeredChildThreadIds);
+  }
+
+  private emitCompletedPlanItem(
+    rawItem: Record<string, unknown>,
+    timelineItem: AgentTimelineItem,
+    itemId: string | null | undefined,
+    registeredChildThreadIds: readonly string[],
+  ): boolean {
+    const visiblePlanItem = this.visiblePlanTimelineItem(rawItem, timelineItem);
+    if (visiblePlanItem?.type === "suppress") {
+      return true;
+    }
+    if (visiblePlanItem?.type !== "todo") {
+      return false;
+    }
+    this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: visiblePlanItem.item });
+    if (visiblePlanItem.keepCard) {
+      return false;
+    }
+    if (itemId) {
+      this.emittedItemCompletedIds.add(itemId);
+      this.emittedItemStartedIds.delete(itemId);
+      this.pendingCommandOutputDeltas.delete(itemId);
+      this.pendingFileChangeOutputDeltas.delete(itemId);
+    }
+    this.replayPendingSubAgentNotifications(registeredChildThreadIds);
+    return true;
+  }
+
+  private visiblePlanTimelineItem(
+    rawItem: Record<string, unknown>,
+    timelineItem: AgentTimelineItem,
+  ): VisiblePlanTimeline | null {
+    if (timelineItem.type !== "tool_call" || timelineItem.detail.type !== "plan") {
+      return null;
+    }
+    this.rememberPlanResult(timelineItem);
+    // Codex can surface plans both as turn/plan updates and as completed
+    // thread items. In plan mode, approval owns the visible plan card.
+    if (this.planModeEnabled) {
+      return { type: "suppress" };
+    }
+    const item = mapCodexPlanThreadItemToTodo(rawItem);
+    if (!item) {
+      return null;
+    }
+    const text = typeof rawItem.text === "string" ? rawItem.text : "";
+    return {
+      type: "todo",
+      item,
+      keepCard: text.length > 0 && !isPureMarkdownChecklist(text),
+    };
   }
 
   private consumeStreamedTextCompletion(
