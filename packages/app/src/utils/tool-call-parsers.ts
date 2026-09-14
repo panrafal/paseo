@@ -295,7 +295,7 @@ const AcpTodosSchema = z.object({
       content: z.string().optional(),
       subject: z.string().optional(),
       text: z.string().optional(),
-      status: z.union([TaskStatusSchema, z.number()]).optional(),
+      status: z.union([z.string(), z.number()]).optional(),
       activeForm: z.string().optional(),
     }),
   ),
@@ -308,9 +308,10 @@ function normalizeToolName(toolName: string): string {
     .toLowerCase();
 }
 
-function taskStatusFromUnknown(value: unknown): TaskStatus {
+function taskStatusFromUnknown(value: unknown): TaskStatus | "deleted" {
   if (value === "completed" || value === 2) return "completed";
   if (value === "in_progress" || value === "inProgress" || value === 1) return "in_progress";
+  if (value === "cancelled" || value === "canceled" || value === 3) return "deleted";
   return "pending";
 }
 
@@ -379,6 +380,7 @@ export function extractTaskEntriesFromToolCall(
       const text = (todo.content ?? todo.subject ?? todo.text ?? "").trim();
       if (!text) return [];
       const status = taskStatusFromUnknown(todo.status);
+      if (status === "deleted") return [];
       return [
         {
           text: todo.activeForm?.trim() || text,

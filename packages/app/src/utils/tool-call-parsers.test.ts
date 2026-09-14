@@ -47,4 +47,16 @@ describe("tool-call-parsers", () => {
       { text: "Ship fix", status: "completed", completed: true },
     ]);
   });
+
+  it("accepts Cursor inProgress and drops cancelled todos", () => {
+    const tasks = extractTaskEntriesFromToolCall("updateTodos", {
+      todos: [
+        { content: "Inspect provider", status: "inProgress" },
+        { content: "Cancelled leftover", status: "cancelled" },
+        { content: "Numeric cancel", status: 3 },
+      ],
+    });
+
+    expect(tasks).toEqual([{ text: "Inspect provider", status: "in_progress", completed: false }]);
+  });
 });

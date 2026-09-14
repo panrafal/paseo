@@ -114,11 +114,22 @@ function parseResultValue(value: unknown): Record<string, unknown> | null {
   }
 }
 
+function toolResultIsError(message: Record<string, unknown>): boolean {
+  const content = record(message.message)?.content;
+  if (!Array.isArray(content)) return false;
+  for (const block of content) {
+    const candidate = record(block);
+    if (candidate?.type === "tool_result" && candidate.is_error === true) return true;
+  }
+  return false;
+}
+
 /** Accumulates Claude's snapshot and ID-based task tools into canonical todo snapshots. */
 export class ClaudeTaskState {
   private readonly tasks = new Map<string, AgentTaskItem>();
   private readonly calls = new Map<string, PendingTaskTool>();
   private readonly appliedResults = new Set<string>();
+  private readonly aliases = new Map<string, string>();
 
   observe(value: unknown): Extract<AgentTimelineItem, { type: "todo" }> | null {
     const message = record(value);
@@ -142,17 +153,39 @@ export class ClaudeTaskState {
     if (!call) return snapshot;
     this.appliedResults.add(resultId);
     this.calls.delete(resultId);
-    return this.applyResult(call, structuredResult(message), resultId) ?? snapshot;
+    const result = structuredResult(message);
+    if (toolResultIsError(message) || result?.success === false) {
+      return this.applyFailure(call, resultId) ?? snapshot;
+    }
+    return this.applyResult(call, result, resultId) ?? snapshot;
   }
 
   reset(): void {
     this.tasks.clear();
     this.calls.clear();
     this.appliedResults.clear();
+    this.aliases.clear();
+  }
+
+  private storedId(id: string): string {
+    return this.aliases.get(id) ?? id;
+  }
+
+  private rememberAlias(realId: string | undefined, storedId: string): void {
+    if (realId && realId !== storedId) {
+      this.aliases.set(realId, storedId);
+    }
+  }
+
+  private forgetStoredId(storedId: string): void {
+    for (const [realId, alias] of this.aliases) {
+      if (alias === storedId) this.aliases.delete(realId);
+    }
   }
 
   private replaceLegacyTodos(value: unknown): Extract<AgentTimelineItem, { type: "todo" }> {
     this.tasks.clear();
+    this.aliases.clear();
     if (Array.isArray(value)) {
       for (const [index, taskValue] of value.entries()) {
         const item = toTaskItem(taskValue);
@@ -164,12 +197,21 @@ export class ClaudeTaskState {
     return this.snapshot();
   }
 
+  private applyFailure(
+    call: PendingTaskTool,
+    pendingId: string,
+  ): Extract<AgentTimelineItem, { type: "todo" }> | null {
+    if (call.name !== "TaskCreate") return null;
+    this.tasks.delete(pendingId);
+    this.forgetStoredId(pendingId);
+    return this.snapshot();
+  }
+
   private applyResult(
     call: PendingTaskTool,
     result: Record<string, unknown> | null,
     pendingId: string,
   ): Extract<AgentTimelineItem, { type: "todo" }> | null {
-    if (result?.success === false) return null;
     if (call.name === "TaskCreate") return this.applyCreate(call.input, result, pendingId);
     if (call.name === "TaskUpdate") return this.applyUpdate(call.input, result);
     if (call.name === "TaskList") return this.applyList(result);
@@ -182,11 +224,11 @@ export class ClaudeTaskState {
     pendingId?: string,
   ): Extract<AgentTimelineItem, { type: "todo" }> | null {
     const resultTask = record(result?.task);
-    const id =
-      string(resultTask?.id) ?? string(result?.taskId) ?? string(input.taskId) ?? pendingId;
+    const realId = string(resultTask?.id) ?? string(result?.taskId) ?? string(input.taskId);
+    const id = pendingId ?? (realId ? this.storedId(realId) : undefined) ?? realId;
     const text = string(resultTask?.subject) ?? string(input.subject);
     if (!id || !text) return null;
-    if (pendingId && pendingId !== id) this.tasks.delete(pendingId);
+    this.rememberAlias(realId, id);
     const activeForm = string(input.activeForm);
     this.tasks.set(id, {
       id,
@@ -202,8 +244,9 @@ export class ClaudeTaskState {
     input: Record<string, unknown>,
     result: Record<string, unknown> | null,
   ): Extract<AgentTimelineItem, { type: "todo" }> | null {
-    const id = string(input.taskId) ?? string(result?.taskId);
-    if (!id) return null;
+    const requestedId = string(input.taskId) ?? string(result?.taskId);
+    if (!requestedId) return null;
+    const id = this.storedId(requestedId);
     const current = this.tasks.get(id);
     const statusValue = input.status ?? record(result?.statusChange)?.to;
     if (!current) {
@@ -215,6 +258,7 @@ export class ClaudeTaskState {
       statusValue === undefined ? retainedTaskStatus(current) : taskStatus(statusValue);
     if (status === "deleted") {
       this.tasks.delete(id);
+      this.forgetStoredId(id);
       return this.snapshot();
     }
     const text = string(input.subject);
@@ -234,11 +278,19 @@ export class ClaudeTaskState {
   ): Extract<AgentTimelineItem, { type: "todo" }> | null {
     const tasks = result?.tasks;
     if (!Array.isArray(tasks)) return null;
-    this.tasks.clear();
+    const next = new Map<string, AgentTaskItem>();
+    const nextAliases = new Map<string, string>();
     for (const taskValue of tasks) {
       const item = toTaskItem(taskValue);
-      if (item?.id) this.tasks.set(item.id, item);
+      if (!item?.id) continue;
+      const id = this.storedId(item.id);
+      if (id !== item.id) nextAliases.set(item.id, id);
+      next.set(id, { ...item, id });
     }
+    this.tasks.clear();
+    this.aliases.clear();
+    for (const [id, item] of next) this.tasks.set(id, item);
+    for (const [realId, storedId] of nextAliases) this.aliases.set(realId, storedId);
     return this.snapshot();
   }
 

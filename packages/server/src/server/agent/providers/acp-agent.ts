@@ -14,6 +14,7 @@ import type {
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
+  RequestError,
   type AgentCapabilities as ACPAgentCapabilities,
   type Error as ACPError,
   type AnyMessage,
@@ -2575,12 +2576,40 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (method !== CURSOR_UPDATE_TODOS_METHOD) {
       return;
     }
-    const items = parseAcpTodoItems(params);
-    if (!items) {
+    this.applyCursorTodos(params);
+  }
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    this.logger.trace(
+      {
+        agentId: this.agentId,
+        provider: this.provider,
+        sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
+        method,
+        rawEvent: params,
+      },
+      "provider.acp.extension_method",
+    );
+
+    if (method !== CURSOR_UPDATE_TODOS_METHOD) {
+      throw RequestError.methodNotFound(method);
+    }
+    this.applyCursorTodos(params);
+    return {};
+  }
+
+  private applyCursorTodos(params: Record<string, unknown>): void {
+    const parsed = parseAcpTodoItems(params);
+    if (!parsed) {
       return;
     }
     this.deliverTranslatedEvents([
-      this.wrapTimeline(this.taskState.apply(items, isAcpTodoMerge(params))),
+      this.wrapTimeline(
+        this.taskState.apply(parsed.items, isAcpTodoMerge(params), parsed.removedIds),
+      ),
     ]);
   }
 
@@ -3017,11 +3046,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (!isAcpTodoToolInput(rawInput, title)) {
       return null;
     }
-    const items = parseAcpTodoItems(rawInput);
-    if (!items) {
+    const parsed = parseAcpTodoItems(rawInput);
+    if (!parsed) {
       return null;
     }
-    return this.taskState.apply(items, isAcpTodoMerge(rawInput));
+    return this.taskState.apply(parsed.items, isAcpTodoMerge(rawInput), parsed.removedIds);
   }
 
   private createMessageTimelineItem(
