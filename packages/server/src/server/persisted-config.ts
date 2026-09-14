@@ -275,6 +275,8 @@ export const PersistedConfigSchema = z
         relay: z
           .object({
             enabled: z.boolean().optional(),
+            /** Require relay clients to pair with a one-time link and present a device credential. */
+            deviceAuth: z.boolean().optional(),
             endpoint: z.string().optional(),
             publicEndpoint: z.string().optional(),
             useTls: z.boolean().optional(),

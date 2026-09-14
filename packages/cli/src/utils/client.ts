@@ -13,10 +13,15 @@ import {
   type ConnectionOffer,
 } from "@getpaseo/protocol/connection-offer";
 import { parseSshTransportUri } from "@getpaseo/protocol/ssh-transport";
-import { DaemonClient, type WebSocketLike } from "@getpaseo/client/internal/daemon-client";
+import {
+  DaemonClient,
+  type RelayAuthProof,
+  type WebSocketLike,
+} from "@getpaseo/client/internal/daemon-client";
 import { WebSocket } from "ws";
 import { getOrCreateCliClientId } from "./client-id.js";
 import { resolveCliVersion } from "../version.js";
+import { describeRelayOfferFailure } from "./relay-offer-failure.js";
 import { createSshTunnel } from "../ssh/ssh-tunnel.js";
 
 export interface ConnectOptions {
@@ -239,7 +244,15 @@ async function connectViaRelayOffer(
       target: string,
       config?: { headers?: Record<string, string>; protocols?: string[] },
     ) => nodeWebSocketFactory(target, { headers: config?.headers, protocols: config?.protocols }),
-    e2ee: { enabled: true, daemonPublicKeyB64: offer.daemonPublicKeyB64 },
+    e2ee: {
+      enabled: true,
+      daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      auth: {
+        resolveProof: async () => resolveRelayOfferProof(offer),
+        label: "Paseo CLI",
+        issueCredential: false,
+      },
+    },
     reconnect: { enabled: false },
   });
 
@@ -249,9 +262,25 @@ async function connectViaRelayOffer(
   } catch (error) {
     await client.close().catch(() => {});
     const message = error instanceof Error ? error.message : String(error);
-    const lastError = client.lastError ? ` (${client.lastError})` : "";
+    const guidance = describeRelayOfferFailure([message, client.lastError]);
+    if (guidance) {
+      throw new Error(`Failed to connect via relay offer: ${guidance}`, { cause: error });
+    }
+    const lastError =
+      client.lastError && client.lastError !== message ? ` (${client.lastError})` : "";
     throw new Error(`Failed to connect via relay offer: ${message}${lastError}`, { cause: error });
   }
+}
+
+/**
+ * The CLI keeps no device credential, so each run proves itself again. A daemon
+ * password is preferred: it does not use up the link's one-time token and, with
+ * issueCredential false, adds no row to the host's device list.
+ */
+function resolveRelayOfferProof(offer: ConnectionOffer): RelayAuthProof | null {
+  const password = process.env.PASEO_PASSWORD;
+  if (password) return { method: "password", password };
+  return offer.pairing ? { method: "token", token: offer.pairing.token } : null;
 }
 
 function parseHostOfferOrNull(host: string | undefined): ConnectionOffer | null {
