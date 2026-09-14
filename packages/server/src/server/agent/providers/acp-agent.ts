@@ -678,11 +678,28 @@ export function mapACPUsage(usage: Usage | null | undefined): AgentUsage | undef
     return undefined;
   }
 
-  return {
-    inputTokens: usage.inputTokens ?? undefined,
-    outputTokens: usage.outputTokens ?? undefined,
-    cachedInputTokens: usage.cachedReadTokens ?? undefined,
+  const mapped: AgentUsage = {};
+  if (typeof usage.inputTokens === "number") {
+    mapped.inputTokens = usage.inputTokens;
+  }
+  if (typeof usage.outputTokens === "number") {
+    mapped.outputTokens = usage.outputTokens;
+  }
+  if (typeof usage.cachedReadTokens === "number") {
+    mapped.cachedInputTokens = usage.cachedReadTokens;
+  }
+  return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
+
+export function mapACPUsageUpdate(update: UsageUpdate): AgentUsage {
+  const mapped: AgentUsage = {
+    contextWindowMaxTokens: update.size,
+    contextWindowUsedTokens: update.used,
   };
+  if (update.cost?.currency === "USD") {
+    mapped.totalCostUsd = update.cost.amount;
+  }
+  return mapped;
 }
 
 export function resolveACPModeSelection({
@@ -2907,8 +2924,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.handleSessionInfoUpdate(update);
         return pendingUserEvents;
       case "usage_update":
-        this.handleUsageUpdate(update);
-        return pendingUserEvents;
+        return [...pendingUserEvents, this.handleUsageUpdate(update)];
       case "available_commands_update":
         this.cachedCommands = update.availableCommands.map((command) => ({
           name: command.name,
@@ -3068,12 +3084,22 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
   }
 
-  private handleUsageUpdate(update: UsageUpdate): void {
-    void update;
+  private handleUsageUpdate(update: UsageUpdate): AgentStreamEvent {
+    const usage = { ...this.currentTurnUsage, ...mapACPUsageUpdate(update) };
+    this.currentTurnUsage = usage;
+    return {
+      type: "usage_updated",
+      provider: this.provider,
+      usage,
+      ...(this.activeForegroundTurnId ? { turnId: this.activeForegroundTurnId } : {}),
+    };
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
-    this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
+    const promptUsage = mapACPUsage(response.usage);
+    this.currentTurnUsage = promptUsage
+      ? { ...this.currentTurnUsage, ...promptUsage }
+      : this.currentTurnUsage;
 
     switch (response.stopReason) {
       case "cancelled":
