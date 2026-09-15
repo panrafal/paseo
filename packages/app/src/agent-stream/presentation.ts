@@ -59,11 +59,15 @@ export function createStreamPresentation() {
       return [item];
     }
 
+    // Questions belong to the message, not to each block, so they ride the last block only.
+    const { questions, ...blockBase } = item;
     const blocks = [...prefix];
     for (const [offset, text] of textBlocks.entries()) {
       const index = prefix.length + offset;
+      const isLast = offset === textBlocks.length - 1;
+      const blockQuestions = isLast ? questions : undefined;
       let blockText = text;
-      if (offset === textBlocks.length - 1) {
+      if (isLast) {
         const trailingNewlines = /\n+$/.exec(item.text)?.[0] ?? "";
         blockText += trailingNewlines;
       }
@@ -71,12 +75,18 @@ export function createStreamPresentation() {
       const id = `${item.id}:block:${index}`;
       // Completed display blocks keep their first cursor and object identity while
       // the source message grows. The source itself always retains the latest cursor.
-      if (existing?.id === id && existing.text === blockText && existing.turnId === item.turnId) {
+      if (
+        existing?.id === id &&
+        existing.text === blockText &&
+        existing.turnId === item.turnId &&
+        existing.questions === blockQuestions
+      ) {
         blocks.push(existing);
         continue;
       }
       blocks.push({
-        ...item,
+        ...blockBase,
+        ...(blockQuestions ? { questions: blockQuestions } : {}),
         id,
         blockGroupId: item.id,
         blockIndex: index,

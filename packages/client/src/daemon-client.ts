@@ -148,6 +148,7 @@ import {
 } from "@getpaseo/protocol/binary-frames/index";
 import {
   createRelayE2eeTransportFactory,
+  type RelayAuthOptions,
   createWebSocketTransportFactory,
   decodeMessageData,
   defaultWebSocketFactory,
@@ -258,6 +259,13 @@ export type {
 } from "./daemon-client-transport.js";
 
 export type { TerminalStreamEvent };
+export { parseRelayAuthFailure, RelayAuthError } from "./daemon-client-transport.js";
+export type { RelayAuthOptions } from "./daemon-client-transport.js";
+export type {
+  RelayAuthFailureReason,
+  RelayAuthProof,
+  RelayDeviceCredential,
+} from "@getpaseo/relay/e2ee";
 
 export type ConnectionState =
   | { status: "idle" }
@@ -336,6 +344,7 @@ export interface DaemonClientConfig {
   e2ee?: {
     enabled?: boolean;
     daemonPublicKeyB64?: string;
+    auth?: RelayAuthOptions;
   };
   reconnect?: {
     enabled?: boolean;
@@ -720,6 +729,10 @@ export type WorkspaceLabelListPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.list.response" }
 >["payload"];
+export type WorkspaceLabelCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.label.create.response" }
+>["payload"];
 export type WorkspaceLabelAssignmentPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.assignment.set.response" }
@@ -770,6 +783,7 @@ export interface CreateScheduleOptions {
           model?: string;
           thinkingOptionId?: string;
           archiveOnFinish?: boolean;
+          workspaceLabels?: string[];
           isolation?: "local" | "worktree";
           title?: string | null;
           providerOptions?: AgentSessionConfig["providerOptions"];
@@ -792,6 +806,7 @@ export interface UpdateScheduleNewAgentConfig {
   modeId?: string | null;
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
+  workspaceLabels?: string[];
   isolation?: "local" | "worktree";
   cwd?: string;
 }
@@ -1286,6 +1301,7 @@ export class DaemonClient {
           baseFactory: baseTransportFactory,
           daemonPublicKeyB64,
           logger: this.logger,
+          auth: this.config.e2ee?.auth,
         });
       }
       const transportUrl = this.resolveTransportUrlForAttempt();
@@ -2404,6 +2420,20 @@ export class DaemonClient {
       { type: "workspace.label.list.request", subscribe: {} },
       options,
     );
+  }
+
+  async createWorkspaceLabel(options: {
+    label: Extract<SessionInboundMessage, { type: "workspace.label.create.request" }>["label"];
+    requestId?: string;
+  }): Promise<WorkspaceLabelCreatePayload> {
+    // COMPAT(workspaceLabelCreation): added in v0.7.3, remove after 2027-03-06.
+    if (this.lastServerInfoMessage?.features?.workspaceLabelCreation !== true) {
+      throw new Error("Update the host to create workspace labels.");
+    }
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.label.create.response">({
+      requestId: options.requestId,
+      message: { type: "workspace.label.create.request", label: options.label },
+    });
   }
 
   setWorkspaceLabel(options: {
@@ -5105,11 +5135,32 @@ export class DaemonClient {
     });
   }
 
-  async listProviderUsage(options?: { requestId?: string }): Promise<ProviderUsageListPayload> {
+  async consumeCodexBankedReset(options: {
+    creditId: string;
+    idempotencyKey: string;
+    requestId?: string;
+  }) {
+    return this.sendNamespacedCorrelatedSessionRequest<"provider.codex.consume_banked_reset.response">(
+      {
+        requestId: options.requestId,
+        message: {
+          type: "provider.codex.consume_banked_reset.request",
+          creditId: options.creditId,
+          idempotencyKey: options.idempotencyKey,
+        },
+      },
+    );
+  }
+
+  async listProviderUsage(options?: {
+    requestId?: string;
+    forceRefresh?: boolean;
+  }): Promise<ProviderUsageListPayload> {
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId: options?.requestId,
       message: {
         type: "provider.usage.list.request",
+        ...(options?.forceRefresh ? { forceRefresh: true } : {}),
       },
     });
   }
@@ -5748,6 +5799,14 @@ export class DaemonClient {
   }
 
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {
+    // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+    if (
+      options.target.type === "new-agent" &&
+      options.target.config.workspaceLabels !== undefined &&
+      this.lastServerInfoMessage?.features?.scheduleWorkspaceLabels !== true
+    ) {
+      throw new Error("Update the host to assign workspace labels to schedules.");
+    }
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
       message: {
@@ -5841,6 +5900,13 @@ export class DaemonClient {
   }
 
   async scheduleUpdate(options: UpdateScheduleOptions): Promise<ScheduleUpdatePayload> {
+    // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+    if (
+      options.newAgentConfig?.workspaceLabels !== undefined &&
+      this.lastServerInfoMessage?.features?.scheduleWorkspaceLabels !== true
+    ) {
+      throw new Error("Update the host to assign workspace labels to schedules.");
+    }
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
       message: {

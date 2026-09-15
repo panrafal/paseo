@@ -10,6 +10,7 @@ import { useHostMutations } from "@/runtime/host-runtime";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@getpaseo/protocol/connection-offer";
+import { formatHostConnectionError, importRelayOffer } from "@/runtime/relay-auth";
 import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
 import { isWeb } from "@/constants/platform";
 import { BackHeader } from "@/components/headers/back-header";
@@ -175,6 +176,7 @@ export default function PairScanScreen() {
         const offerPayload = decodeOfferFragmentPayload(encoded);
         const offer = ConnectionOfferSchema.parse(offerPayload);
 
+        await importRelayOffer(offer);
         const { client, hostname } = await connectToDaemon(
           {
             id: "probe",
@@ -192,7 +194,10 @@ export default function PairScanScreen() {
         navigateToPairedHost(profile.serverId);
       } catch (error) {
         lastScannedRef.current = null;
-        const message = error instanceof Error ? error.message : t("pairing.scan.unableToPair");
+        const message =
+          error instanceof Error
+            ? formatHostConnectionError(error.message, t)
+            : t("pairing.scan.unableToPair");
         Alert.alert(t("pairing.scan.errorTitle"), message);
       } finally {
         setIsPairing(false);

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendFileMentionPaths,
   applyFileMentionReplacement,
   findActiveFileMention,
+  formatFileMentionTarget,
   formatQuotedFileMentionPath,
 } from "./file-mention-autocomplete";
 
@@ -58,6 +60,23 @@ describe("formatQuotedFileMentionPath", () => {
   });
 });
 
+describe("formatFileMentionTarget", () => {
+  it("leaves a whole-file mention alone", () => {
+    expect(formatFileMentionTarget("src/a.ts")).toBe("src/a.ts");
+  });
+
+  it("appends a selection range the file-link parser reads back", () => {
+    expect(
+      formatFileMentionTarget("src/a.ts", {
+        startLine: 12,
+        startColumn: 5,
+        endLine: 20,
+        endColumn: 3,
+      }),
+    ).toBe("src/a.ts:12:5-20:3");
+  });
+});
+
 describe("applyFileMentionReplacement", () => {
   it("replaces only the active @query segment with a quoted relative path", () => {
     const text = "open @src/com next";
@@ -77,5 +96,34 @@ describe("applyFileMentionReplacement", () => {
       relativePath: 'src/"quoted".ts',
     });
     expect(next).toBe('"src/\\"quoted\\".ts"');
+  });
+});
+
+describe("appendFileMentionPaths", () => {
+  it("appends multiple quoted paths separated by spaces", () => {
+    expect(
+      appendFileMentionPaths({
+        text: "review",
+        relativePaths: ["packages/app/src/foo.tsx", "packages/app/src/bar.ts"],
+      }),
+    ).toBe('review "packages/app/src/foo.tsx" "packages/app/src/bar.ts"');
+  });
+
+  it("preserves existing trailing whitespace before appended paths", () => {
+    expect(
+      appendFileMentionPaths({
+        text: "review ",
+        relativePaths: ["packages/app/src/foo.tsx"],
+      }),
+    ).toBe('review "packages/app/src/foo.tsx"');
+  });
+
+  it("uses the same double-quote escaping as autocomplete replacement", () => {
+    expect(
+      appendFileMentionPaths({
+        text: "",
+        relativePaths: ['src/"quoted".ts'],
+      }),
+    ).toBe('"src/\\"quoted\\".ts"');
   });
 });

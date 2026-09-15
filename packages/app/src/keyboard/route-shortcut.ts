@@ -30,6 +30,7 @@ export type ShortcutAction =
   | { kind: "router-replace"; route: string }
   | { kind: "router-back" }
   | { kind: "router-push"; route: string }
+  | { kind: "route-history"; direction: "back" | "forward" }
   | { kind: "open-project-picker" }
   | { kind: "callback"; name: ShortcutCallbackName }
   | { kind: "command-center-toggle"; nextOpen: boolean; scope?: "files" }
@@ -52,6 +53,7 @@ const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "worktree.new": { id: "worktree.new", scope: "sidebar" },
   "workspace.terminal.new": { id: "workspace.terminal.new", scope: "workspace" },
   "workspace.tab.close.current": { id: "workspace.tab.close-current", scope: "workspace" },
+  "sidebar.grouping.cycle": { id: "sidebar.grouping.cycle", scope: "sidebar" },
   "sidebar.toggle.right": { id: "sidebar.toggle.right", scope: "sidebar" },
   "workspace.pane.split.right": { id: "workspace.pane.split.right", scope: "workspace" },
   "workspace.pane.split.down": { id: "workspace.pane.split.down", scope: "workspace" },
@@ -65,6 +67,9 @@ const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "workspace.pane.move-tab.down": { id: "workspace.pane.move-tab.down", scope: "workspace" },
   "workspace.pane.close": { id: "workspace.pane.close", scope: "workspace" },
   "view.toggle.focus": { id: "workspace.focus.toggle", scope: "workspace" },
+  "find.open": { id: "find.open", scope: "workspace" },
+  "find.next": { id: "find.next", scope: "workspace" },
+  "find.previous": { id: "find.previous", scope: "workspace" },
 };
 
 const SIMPLE_CALLBACKS: Record<string, ShortcutCallbackName> = {
@@ -207,6 +212,10 @@ export function routeKeyboardShortcut(
       return { kind: "open-project-picker" };
     case "settings.toggle":
       return routeSettingsToggle(ctx);
+    case "navigation.history.back":
+      return { kind: "route-history", direction: "back" };
+    case "navigation.history.forward":
+      return { kind: "route-history", direction: "forward" };
     case "command-center.toggle":
       return { kind: "command-center-toggle", nextOpen: !ctx.commandCenterOpen };
     case "command-center.files":
