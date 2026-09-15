@@ -124,10 +124,10 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
     kind: z.literal("assistant_message"),
     messageId: z.string().optional(),
     text: z.string(),
+    // Reject old caches containing display fragments; refetch the complete source text.
     questions: z
       .array(z.strictObject({ title: z.string(), options: z.array(z.string()).optional() }))
       .optional(),
-    // Reject old caches containing display fragments; refetch the complete source text.
   }),
   z.strictObject({
     ...TimelineItemBaseShape,

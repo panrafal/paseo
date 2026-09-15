@@ -50,7 +50,7 @@ import type {
   AgentPermissionResponse,
 } from "@getpaseo/protocol/agent-types";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
-import { useSessionStore } from "@/stores/session-store";
+import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
 import { StreamingWords, useWordStream } from "@/word-stream";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
@@ -764,7 +764,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       if (!client) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
-      const session = useSessionStore.getState().sessions[resolvedServerId];
       await dispatchComposerAgentMessage({
         client,
         agentId,
@@ -773,7 +772,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         encodeImages,
         submission: createMessageSubmissionWriter(resolvedServerId),
         activeTurnBehavior: "steer",
-        activeTurnId: session?.agents.get(agentId)?.activeTurn?.turnId ?? undefined,
+        activeTurnId:
+          selectAgentTurnPresentation(
+            useSessionStore.getState().sessions[resolvedServerId],
+            agentId,
+          ).turnId ?? undefined,
       });
     });
 
