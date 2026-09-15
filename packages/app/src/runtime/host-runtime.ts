@@ -746,8 +746,8 @@ export class HostRuntimeController {
     await this.runProbeCycleNow();
   }
 
-  ensureConnected(): void {
-    this.activeClient?.ensureConnected();
+  ensureConnected(options?: { verify?: boolean }): void {
+    this.activeClient?.ensureConnected(options);
   }
 
   markAgentDirectorySyncLoading(): void {
@@ -2412,9 +2412,9 @@ export class HostRuntimeStore {
     return earliestServerId;
   }
 
-  ensureConnectedAll(): void {
+  ensureConnectedAll(options?: { verify?: boolean }): void {
     for (const controller of this.controllers.values()) {
-      controller.ensureConnected();
+      controller.ensureConnected(options);
     }
   }
 
@@ -2426,7 +2426,7 @@ export class HostRuntimeStore {
       return;
     }
 
-    this.ensureConnectedAll();
+    this.ensureConnectedAll({ verify: true });
   }
 
   runProbeCycleNow(serverId?: string): Promise<void> {

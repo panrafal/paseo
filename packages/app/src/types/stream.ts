@@ -10,7 +10,6 @@ import type { AttachmentMetadata } from "@/attachments/types";
 import type { AssistantQuestion } from "@/timeline/assistant-questions";
 import { readAssistantQuestions } from "@/timeline/assistant-questions";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
-import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 
 /**
  * Simple hash function for deterministic ID generation
@@ -725,6 +724,7 @@ export interface AssistantMessageItem {
   timelineCursor?: TimelinePosition;
   text: string;
   timestamp: Date;
+  /** Display-only fields, assigned after source-item plugin transforms. */
   blockGroupId?: string;
   blockIndex?: number;
   questions?: AssistantQuestion[];
@@ -1795,14 +1795,6 @@ function finalizeHeadItems(head: StreamItem[]): StreamItem[] {
   });
 }
 
-function createAssistantBlockId(params: { groupId: string; blockIndex: number }): string {
-  return `${params.groupId}:block:${params.blockIndex}`;
-}
-
-function getTrailingNewlineSuffix(text: string): string {
-  return /\n+$/.exec(text)?.[0] ?? "";
-}
-
 function getActiveAssistantHeadIndex(head: StreamItem[]): number {
   for (let index = head.length - 1; index >= 0; index -= 1) {
     if (head[index]?.kind === "assistant_message") {
@@ -1829,76 +1821,6 @@ function getTailAssistantToResume(params: {
     return null;
   }
   return params.tailAssistant;
-}
-
-function promoteCompletedAssistantBlocks(params: { tail: StreamItem[]; head: StreamItem[] }): {
-  tail: StreamItem[];
-  head: StreamItem[];
-  changedTail: boolean;
-  changedHead: boolean;
-} {
-  const assistantIndex = getActiveAssistantHeadIndex(params.head);
-  const activeItem = params.head[assistantIndex];
-  if (assistantIndex < 0 || !activeItem || activeItem.kind !== "assistant_message") {
-    return {
-      tail: params.tail,
-      head: params.head,
-      changedTail: false,
-      changedHead: false,
-    };
-  }
-
-  const blocks = splitMarkdownBlocks(activeItem.text);
-  if (blocks.length < 2) {
-    return {
-      tail: params.tail,
-      head: params.head,
-      changedTail: false,
-      changedHead: false,
-    };
-  }
-
-  const blockGroupId = activeItem.blockGroupId ?? activeItem.id;
-  const firstBlockIndex = activeItem.blockIndex ?? 0;
-  const completedBlocks = blocks.slice(0, -1);
-  const liveBlock = `${blocks[blocks.length - 1] ?? ""}${getTrailingNewlineSuffix(activeItem.text)}`;
-  // Questions belong to the message, not to each block, so they ride the last block only.
-  const { questions: activeQuestions, ...activeBlockBase } = activeItem;
-  const promotedItems = completedBlocks.map<AssistantMessageItem>((block, offset) => ({
-    ...activeBlockBase,
-    id: createAssistantBlockId({
-      groupId: blockGroupId,
-      blockIndex: firstBlockIndex + offset,
-    }),
-    blockGroupId,
-    blockIndex: firstBlockIndex + offset,
-    text: block,
-  }));
-
-  const nextTail = flushHeadToTail(params.tail, promotedItems);
-  const liveItem: AssistantMessageItem = {
-    ...activeBlockBase,
-    ...(activeQuestions ? { questions: activeQuestions } : {}),
-    id: createAssistantBlockId({
-      groupId: blockGroupId,
-      blockIndex: firstBlockIndex + completedBlocks.length,
-    }),
-    blockGroupId,
-    blockIndex: firstBlockIndex + completedBlocks.length,
-    text: liveBlock,
-  };
-  const nextHead = [
-    ...params.head.slice(0, assistantIndex),
-    liveItem,
-    ...params.head.slice(assistantIndex + 1),
-  ];
-
-  return {
-    tail: nextTail,
-    head: nextHead,
-    changedTail: nextTail !== params.tail,
-    changedHead: true,
-  };
 }
 
 /**
@@ -2144,13 +2066,7 @@ export function applyStreamEvent(params: {
   if (incomingKind !== null && isStreamableKind(incomingKind)) {
     const reservedItemIds =
       incomingKind === "assistant_message" && getActiveAssistantHeadIndex(nextHead) < 0
-        ? new Set(
-            nextTail.flatMap((item) =>
-              item.kind === "assistant_message" && item.blockGroupId
-                ? [item.id, item.blockGroupId]
-                : [item.id],
-            ),
-          )
+        ? new Set(nextTail.map((item) => item.id))
         : undefined;
     const reduced = reduceStreamUpdate(nextHead, event, timestamp, {
       source,
@@ -2160,16 +2076,6 @@ export function applyStreamEvent(params: {
     if (reduced !== nextHead) {
       nextHead = reduced;
       changedHead = true;
-    }
-    if (incomingKind === "assistant_message") {
-      const promoted = promoteCompletedAssistantBlocks({
-        tail: nextTail,
-        head: nextHead,
-      });
-      nextTail = promoted.tail;
-      nextHead = promoted.head;
-      changedTail = changedTail || promoted.changedTail;
-      changedHead = changedHead || promoted.changedHead;
     }
     return { tail: nextTail, head: nextHead, changedTail, changedHead };
   }
