@@ -360,7 +360,9 @@ job, once built, and the Mac update, once downloaded, run
 `fork/wait-for-agents.sh` first: it polls `paseo ls -g` until no agent is
 `running` or `initializing`, and prints the ones it is waiting for — the daemon
 job's list in the deploy output, the Mac's in Terminal. The agent running the
-wait is left out. A daemon that cannot be listed is not waited for.
+wait is left out. A daemon that cannot be listed at the start is not waited
+for; once agents were seen, a failed listing is retried. The Mac handoff comes
+after every job, so busy devbox agents hold it back too.
 `FORK_SKIP_AGENT_WAIT=1 fork/deploy.sh` installs without waiting.
 
 It has to run off the devbox: installing the desktop app needs macOS, and
