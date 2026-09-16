@@ -592,13 +592,13 @@ type PluginTurnOutcome =
 }
 ```
 
-| Field         | Values                                                                                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `workspaceId` | String or `null`                                                                                                        |
-| `reason`      | `create`, `resume`, `refresh`, `import`                                                                                 |
-| `purpose`     | `interactive`, `history`                                                                                                |
-| `labels`      | Read-only map the agent is created or stored with; present on `create`. Empty object when there are none.               |
-| `env`         | Launch override map; excludes the daemon's inherited environment. Replace the map to add, replace, or remove overrides. |
+| Field         | Values                                                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaceId` | String or `null`                                                                                                                                                                         |
+| `reason`      | `create`, `resume`, `refresh`, `import`                                                                                                                                                  |
+| `purpose`     | `interactive`, `history`                                                                                                                                                                 |
+| `labels`      | Agent labels on every reason, including `create` before the agent is saved. Empty object when there are none. Older daemons omit the field; raise `requirements.paseo` when you read it. |
+| `env`         | Launch override map; excludes the daemon's inherited environment. Replace the map to add, replace, or remove overrides.                                                                  |
 
 ### Ordering and returned values
 
