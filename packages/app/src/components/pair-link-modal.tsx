@@ -9,6 +9,7 @@ import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@getpaseo/protocol/connection-offer";
+import { formatHostConnectionError, importRelayOffer } from "@/runtime/relay-auth";
 import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import type { EditingTextInputHandle } from "@/components/ui/text-input";
@@ -135,6 +136,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
       setIsSaving(true);
       setErrorMessage("");
 
+      await importRelayOffer(parsedOffer);
       const { client, hostname } = await connectToDaemon(
         {
           id: "probe",
@@ -153,7 +155,9 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
       handleClose();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : t("pairing.link.errors.unableToPair");
+        error instanceof Error
+          ? formatHostConnectionError(error.message, t)
+          : t("pairing.link.errors.unableToPair");
       setErrorMessage(message);
       if (!isMobile) {
         Alert.alert(t("pairing.link.alert.failedTitle"), message);

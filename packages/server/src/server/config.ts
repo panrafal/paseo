@@ -632,6 +632,10 @@ export function resolveConfigFromPersisted(
     relayPublicEndpoint: relay.publicEndpoint,
     relayUseTls: relay.useTls,
     relayPublicUseTls: relay.publicUseTls,
+    // COMPAT(relayDeviceAuth): opt-in while apps without relay auth are in use; make it the
+    // default and remove the unauthenticated relay path after 2027-03-14.
+    // Config-file only: turning it off is the dangerous direction.
+    relayDeviceAuth: persisted.daemon?.relay?.deviceAuth === true,
     serviceProxy,
     webUi,
     appBaseUrl,

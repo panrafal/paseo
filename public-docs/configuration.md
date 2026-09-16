@@ -256,6 +256,23 @@ Set the persisted value in `config.json`:
 }
 ```
 
+### Device authentication
+
+Set `daemon.relay.deviceAuth` to `true` to require every relay client to pair with a one-time link and then present a device credential:
+
+```json
+{
+  "daemon": {
+    "relay": {
+      "enabled": true,
+      "deviceAuth": true
+    }
+  }
+}
+```
+
+Pairing links then work once and expire after 5 minutes, and changing the daemon password signs out paired devices. The setting is off by default, is read only from `config.json`, and takes effect when the daemon restarts. Devices paired before you turn it on must pair again, and apps released before it can't connect. See [Security](/docs/security#trust-model).
+
 `PASEO_RELAY_ENABLED=true|false` overrides the file for a foreground deployment. Managed `start` uses the file. End and relaunch a deployment to remove its override before changing relay from the app or `paseo daemon pair --relay`.
 
 ## Common env vars
