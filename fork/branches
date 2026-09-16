@@ -21,7 +21,7 @@
 origin/add-daemon-loopback-password-bypass
 origin/add-paseo-deeplink-hash-prompts
 origin/paseo-ls/add-labels-filter
-origin/add-search-transcript-terminal
+# origin/add-search-transcript-terminal
 origin/feat/terminal-close-confirm
 origin/sidebar-grouping-toggle
 origin/allowedorigins-domain-patterns
@@ -48,11 +48,11 @@ origin/workspace-commit-push
 origin/fix/cursor-agent-mcp
 origin/reverse-subagents-list
 origin/keep-screen-on-voice-mode
-
-# Last on rebuild, so it wins conflicts with the rest of the stack.
-origin/vscode
 origin/workspace/reorder-labels-branch-width
 origin/feat/add-kilo-usage-skills
 origin/add-devin-usage-skills
 origin/plan-relay-shortlived-tokens
 origin/feature/agent-task-display
+
+# Last on rebuild, so it wins conflicts with the rest of the stack.
+origin/vscode
