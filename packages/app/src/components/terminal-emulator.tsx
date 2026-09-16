@@ -144,6 +144,7 @@ interface TerminalEmulatorProps {
     target: TerminalLocalFileLinkTarget,
     disposition: "main" | "side",
   ) => Promise<void> | void;
+  onOpenUrl?: (url: string) => Promise<void> | void;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
@@ -190,6 +191,7 @@ export default function TerminalEmulator({
   onInputModeChange,
   onResolveLocalFileLink,
   onOpenLocalFileLink,
+  onOpenUrl = openExternalUrl,
   onRendererReadyChange,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
@@ -220,6 +222,7 @@ export default function TerminalEmulator({
     onInputModeChange,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onOpenUrl,
   });
   mountCallbacksRef.current = {
     onFindRequest,
@@ -231,6 +234,7 @@ export default function TerminalEmulator({
     onInputModeChange,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onOpenUrl,
   };
   const initialSnapshotRef = useRef(initialSnapshot);
   initialSnapshotRef.current = initialSnapshot;
@@ -468,10 +472,7 @@ export default function TerminalEmulator({
     const runtime = new TerminalEmulatorRuntime();
     runtimeRef.current = runtime;
     runtime.setCallbacks({
-      callbacks: {
-        ...mountCallbacksRef.current,
-        onOpenExternalUrl: openExternalUrl,
-      },
+      callbacks: mountCallbacksRef.current,
     });
     runtime.setPendingModifiers({ pendingModifiers: pendingModifiersRef.current });
     runtime.mount({
@@ -506,7 +507,7 @@ export default function TerminalEmulator({
         onInputModeChange,
         onResolveLocalFileLink,
         onOpenLocalFileLink,
-        onOpenExternalUrl: openExternalUrl,
+        onOpenUrl,
       },
     });
   }, [
@@ -515,6 +516,7 @@ export default function TerminalEmulator({
     onInput,
     onInputModeChange,
     onOpenLocalFileLink,
+    onOpenUrl,
     onPendingModifiersConsumed,
     onResolveLocalFileLink,
     onResize,
