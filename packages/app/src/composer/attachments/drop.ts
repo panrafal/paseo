@@ -3,7 +3,7 @@ import {
   isRasterImageFile,
   isRasterImagePath,
 } from "@/attachments/file-types";
-import { readDesktopFileBytes, type PickedFile } from "@/attachments/picked-file";
+import { readDesktopFileBytes, type SelectedFile } from "@/attachments/selected-file";
 import type { DroppedItem } from "@/components/file-drop/types";
 
 interface DroppedAttachmentsRuntime {
@@ -26,7 +26,7 @@ function fileNameFromPath(path: string): string {
 }
 
 /**
- * Separates dropped paths that point at a raster image. `droppedItemsToPickedFiles` skips those —
+ * Separates dropped paths that point at a raster image. `droppedItemsToSelectedFiles` skips those —
  * an image belongs in the composer as an image attachment, not as an uploaded file — so a caller
  * that does not persist them first drops the image on the floor.
  */
@@ -46,21 +46,22 @@ export function splitDroppedImagePaths(items: readonly DroppedItem[]): {
   return { imagePaths, otherItems };
 }
 
-export async function droppedItemsToPickedFiles(
+export function droppedItemsToSelectedFiles(
   items: DroppedItem[],
   runtime: DroppedAttachmentsRuntime = defaultRuntime,
-): Promise<PickedFile[]> {
-  const files: PickedFile[] = [];
+): SelectedFile[] {
+  const files: SelectedFile[] = [];
 
   for (const item of items) {
     if (item.kind === "web-file") {
       if (isRasterImageFile(item.file)) {
         continue;
       }
+      const file = item.file;
       files.push({
-        fileName: item.file.name,
-        mimeType: item.file.type || getMimeTypeFromPath(item.file.name),
-        bytes: new Uint8Array(await item.file.arrayBuffer()),
+        fileName: file.name,
+        mimeType: file.type || getMimeTypeFromPath(file.name),
+        readBytes: async () => new Uint8Array(await file.arrayBuffer()),
       });
       continue;
     }
@@ -68,10 +69,11 @@ export async function droppedItemsToPickedFiles(
     if (isRasterImagePath(item.path)) {
       continue;
     }
+    const path = item.path;
     files.push({
-      fileName: fileNameFromPath(item.path),
-      mimeType: getMimeTypeFromPath(item.path),
-      bytes: await runtime.readDesktopFileBytes(item.path),
+      fileName: fileNameFromPath(path),
+      mimeType: getMimeTypeFromPath(path),
+      readBytes: () => runtime.readDesktopFileBytes(path),
     });
   }
 
