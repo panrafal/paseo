@@ -15,8 +15,11 @@
 #   FORK_SKIP_AGENT_WAIT=1         do not wait
 #   FORK_AGENT_WAIT_INTERVAL=15    seconds between checks
 #
-# A daemon that cannot be listed has no agents to lose, so that is a warning
-# and no wait.
+# A daemon that cannot be listed before any agent was seen has no agents to
+# lose, so that is a warning and no wait. Once agents were seen, a failed
+# listing is retried: it is more likely a timeout than a daemon gone. Output
+# that lists nothing it can parse is an error, so a changed format cannot
+# pass for an idle daemon.
 
 set -euo pipefail
 
@@ -31,7 +34,8 @@ fi
 
 # The JSON is pretty-printed with the agent's own fields at four spaces, which
 # keeps a label called "status" from matching. Prints "<shortId> <status>
-# <name>" for every agent still working.
+# <name>" for every agent still working, and fails when the output is neither
+# `[]` nor agent blocks it recognises.
 busy_agents() {
   awk -v self="${PASEO_AGENT_ID:-}" '
     function value(line) {
@@ -39,7 +43,8 @@ busy_agents() {
       sub(/",?$/, "", line)
       return line
     }
-    /^  \{/ { id = ""; short = ""; name = ""; status = "" }
+    /^  \{/ { blocks++; id = ""; short = ""; name = ""; status = "" }
+    !/^\[\]$/ && !/^[[:space:]]*$/ { content = 1 }
     /^    "id": "/ { id = value($0) }
     /^    "shortId": "/ { short = value($0) }
     /^    "name": "/ { name = value($0) }
@@ -48,17 +53,32 @@ busy_agents() {
       if ((status == "running" || status == "initializing") && id != self)
         printf "%s %s %s\n", short, status, name
     }
+    END { if (content && !blocks) exit 3 }
   '
 }
+
+# stderr is kept apart so a CLI warning cannot break the parse.
+errors="$(mktemp)"
+trap 'rm -f "$errors"' EXIT
 
 last=""
 waited=0
 while :; do
-  if ! out="$("$paseo" ls -g --json 2>&1)"; then
-    echo "warning: cannot list agents on $where, not waiting: $out" >&2
-    exit 0
+  if ! out="$("$paseo" ls -g --json 2>"$errors")"; then
+    out="$(cat "$errors")"
+    if [ "$waited" -eq 0 ]; then
+      echo "warning: cannot list agents on $where, not waiting: $out" >&2
+      exit 0
+    fi
+    echo "warning: cannot list agents on $where, retrying: $out" >&2
+    sleep "$interval"
+    continue
   fi
-  busy="$(busy_agents <<<"$out")"
+  if ! busy="$(busy_agents <<<"$out")"; then
+    echo "error: cannot read the agent list on $where; FORK_SKIP_AGENT_WAIT=1 skips the wait:" >&2
+    echo "$out" | head -5 >&2
+    exit 1
+  fi
   if [ -z "$busy" ]; then
     if [ "$waited" -eq 1 ]; then
       echo "All agents on $where are idle."
