@@ -56,3 +56,4 @@ origin/feature/agent-task-display
 
 # Last on rebuild, so it wins conflicts with the rest of the stack.
 origin/vscode
+origin/feat/plugin-session-open-labels
