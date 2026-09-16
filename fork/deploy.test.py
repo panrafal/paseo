@@ -25,6 +25,7 @@ class DeployTest(unittest.TestCase):
             shutil.copy2(source / name, self.fork / name)
         self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}",
                         FORK_WORK_ROOT=str(self.root / "work"), TEST_ROOT=str(self.root))
+        self.env.pop("FORK_SKIP_AGENT_WAIT", None)
         self.script(self.bin / "uname", 'echo Darwin')
         self.script(self.bin / "git", '''
 [ "$PWD" = "$TEST_ROOT" ] || exit 90
@@ -58,6 +59,7 @@ if [[ "$*" == *"bash -s"* ]]; then
   echo 'Waiting for 1 agent(s) on devbox to go idle or error out (12:00:00):'
   echo '  abc1234 running fixture'
   sleep "${WAIT_SECONDS:-0}"
+  echo 'warning: fixture stderr' >&2
   echo 'All agents on devbox are idle.'
   exit "${WAIT_EXIT:-0}"
 fi
@@ -181,7 +183,8 @@ echo 'Update finished'
         self.assertIn("daemon: built; waiting for agents on the devbox", out)
         self.assertLess(out.index("daemon: Waiting for 1 agent(s)"), out.index("daemon: done"))
         self.assertIn("daemon:   abc1234 running fixture", out)
-        self.assertIn("no agents running on the devbox", out)
+        self.assertIn("daemon: warning: fixture stderr", out)
+        self.assertIn("           All agents on devbox are idle.", out)
 
     def test_failed_agent_wait_does_not_install(self):
         result = self.deploy("daemon", WAIT_EXIT="5")

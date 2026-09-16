@@ -118,9 +118,10 @@ job_daemon() {
   # vscode installer.
   echo "built; waiting for agents on the devbox before installing" | progress
   git show "$TARGET:fork/wait-for-agents.sh" |
-    devbox_admin "sudo -u $FORK_DEVBOX_USER -H env FORK_SKIP_AGENT_WAIT=$(sq "${FORK_SKIP_AGENT_WAIT:-0}") bash -s -- $(sq "$FORK_DEVBOX_NPM_PREFIX/bin/paseo") devbox" |
+    devbox_admin "sudo -u $FORK_DEVBOX_USER -H env FORK_SKIP_AGENT_WAIT=$(sq "${FORK_SKIP_AGENT_WAIT:-0}") bash -s -- $(sq "$FORK_DEVBOX_NPM_PREFIX/bin/paseo") devbox" 2>&1 |
     progress
-  note "no agents running on the devbox"
+  # The waiter's last line says whether it waited, skipped or could not list.
+  note "$(tail -n 1 "$DEPLOY_DIR/$job.progress")"
   local p tarballs=()
   for p in "${FORK_DAEMON_PACKAGES[@]}"; do
     tarballs+=("$FORK_DEVBOX_WORK_ROOT/dist/getpaseo-$p-$VERSION.tgz")

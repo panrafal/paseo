@@ -29,11 +29,11 @@ die() {
 }
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 
-# The waiter sits next to this script in a checkout; piped from GitHub, it
-# comes from the same repo.
+# The waiter sits next to this script in a checkout; piped from GitHub, where
+# BASH_SOURCE is "main", it comes from the same repo.
 wait_for_agents() {
   local waiter="" paseo
-  [ -z "${BASH_SOURCE[0]:-}" ] || waiter="$(dirname "${BASH_SOURCE[0]}")/wait-for-agents.sh"
+  [ ! -f "${BASH_SOURCE[0]:-}" ] || waiter="$(dirname "${BASH_SOURCE[0]}")/wait-for-agents.sh"
   if [ ! -f "$waiter" ]; then
     waiter="$tmp/wait-for-agents.sh"
     gh api "repos/$REPO/contents/fork/wait-for-agents.sh?ref=main" \
