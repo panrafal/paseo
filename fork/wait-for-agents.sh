@@ -62,18 +62,24 @@ errors="$(mktemp)"
 trap 'rm -f "$errors"' EXIT
 
 last=""
+failed=""
 waited=0
 while :; do
   if ! out="$("$paseo" ls -g --json 2>"$errors")"; then
-    out="$(cat "$errors")"
+    # The CLI prints its error as indented JSON; one line keeps it readable
+    # in the deploy console and makes it the summary line.
+    out="$(tr -s '[:space:]' ' ' <"$errors")"
+    out="${out% }"
     if [ "$waited" -eq 0 ]; then
       echo "warning: cannot list agents on $where, not waiting: $out" >&2
       exit 0
     fi
-    echo "warning: cannot list agents on $where, retrying: $out" >&2
+    [ "$out" = "$failed" ] || echo "warning: cannot list agents on $where, retrying: $out" >&2
+    failed="$out"
     sleep "$interval"
     continue
   fi
+  failed=""
   if ! busy="$(busy_agents <<<"$out")"; then
     echo "error: cannot read the agent list on $where; FORK_SKIP_AGENT_WAIT=1 skips the wait:" >&2
     echo "$out" | head -5 >&2
