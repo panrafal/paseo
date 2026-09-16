@@ -25,6 +25,7 @@ import { createControlGeometry, type FieldControlSize } from "@/components/ui/co
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { getProviderIcon } from "@/components/provider-icons";
+import { ScheduleWorkspaceLabelsField } from "./schedule-workspace-labels-field";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
 import {
   SelectField,
@@ -119,6 +120,10 @@ function selectScheduleHosts(
     hosts.map((host) => ({
       serverId: host.serverId,
       label: host.label,
+      supportsWorkspaceLabelCreation:
+        state.sessions[host.serverId]?.serverInfo?.features?.workspaceLabelCreation === true,
+      supportsScheduleWorkspaceLabels:
+        state.sessions[host.serverId]?.serverInfo?.features?.scheduleWorkspaceLabels === true,
       supportsWorkspaceMultiplicity:
         state.sessions[host.serverId]?.serverInfo?.features?.workspaceMultiplicity === true,
     }));
@@ -334,6 +339,15 @@ function OpenScheduleFormSheet({
 
     await persistPreferences();
     const maxRuns = parseMaxRuns(state.maxRuns);
+    const workspaceConfig = {
+      ...(state.submitArchiveOnFinish !== undefined
+        ? { archiveOnFinish: state.submitArchiveOnFinish }
+        : {}),
+      ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+      ...(state.submitWorkspaceLabels !== undefined
+        ? { workspaceLabels: state.submitWorkspaceLabels }
+        : {}),
+    };
     if (mode === "edit" && schedule) {
       await updateSchedule({
         id: schedule.id,
@@ -346,10 +360,7 @@ function OpenScheduleFormSheet({
           modeId: state.selectedMode || null,
           thinkingOptionId: state.selectedThinkingOptionId || null,
           cwd,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+          ...workspaceConfig,
         },
         maxRuns,
       });
@@ -368,10 +379,7 @@ function OpenScheduleFormSheet({
           model: state.selectedModel || undefined,
           modeId: state.selectedMode || undefined,
           thinkingOptionId: state.selectedThinkingOptionId || undefined,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+          ...workspaceConfig,
           title: state.name.trim() || undefined,
         },
       },
@@ -796,6 +804,10 @@ function ScheduleTargetFields({
 
       {state.disclosure.showIsolationField ? (
         <ScheduleIsolationField model={model} state={state} size={controlSize} />
+      ) : null}
+
+      {state.disclosure.showModelField ? (
+        <ScheduleWorkspaceLabelsField model={model} state={state} size={controlSize} />
       ) : null}
 
       {state.disclosure.showArchiveOnFinishField ? (
