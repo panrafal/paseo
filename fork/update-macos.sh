@@ -11,6 +11,10 @@
 #   gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=main \
 #     -H 'Accept: application/vnd.github.raw' | bash
 #
+# Quitting the app and restarting its daemon kill the local agents, so it
+# first waits until none is running (fork/wait-for-agents.sh);
+# FORK_SKIP_AGENT_WAIT=1 skips that.
+#
 # After the first install the app updates itself: the fork build's auto-update
 # feed points at panrafal/paseo, not upstream.
 
@@ -24,6 +28,26 @@ die() {
   exit 1
 }
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+
+# The waiter sits next to this script in a checkout; piped from GitHub, where
+# BASH_SOURCE is "main", it comes from the same repo.
+wait_for_agents() {
+  local waiter="" paseo
+  [ ! -f "${BASH_SOURCE[0]:-}" ] || waiter="$(dirname "${BASH_SOURCE[0]}")/wait-for-agents.sh"
+  if [ ! -f "$waiter" ]; then
+    waiter="$tmp/wait-for-agents.sh"
+    gh api "repos/$REPO/contents/fork/wait-for-agents.sh?ref=main" \
+      -H 'Accept: application/vnd.github.raw' >"$waiter"
+  fi
+  paseo="$APP/Contents/Resources/bin/paseo"
+  [ -x "$paseo" ] || paseo="$(command -v paseo || true)"
+  if [ -z "$paseo" ]; then
+    say "No paseo CLI here; not waiting for agents"
+    return 0
+  fi
+  say "Waiting for local agents to go idle before restarting Paseo"
+  bash "$waiter" "$paseo" "this Mac"
+}
 
 restart_and_launch() {
   say "Restarting the local daemon"
@@ -56,17 +80,19 @@ else
   [ -n "$tag" ] && [ "$tag" != "null" ] || die "no fork-v* release found on $REPO"
 fi
 
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
 installed=""
 [ -d "$APP" ] && installed="$(defaults read "$APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || true)"
 say "wanted: $tag   installed: ${installed:-none}"
 if [ -n "$installed" ] && [ "$tag" = "fork-v$installed" ]; then
   say "Already up to date."
+  wait_for_agents
   restart_and_launch
   exit 0
 fi
 
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
 say "Downloading $tag ($want)"
 gh release download "$tag" --repo "$REPO" --dir "$tmp" --pattern "*-${want}.dmg" --clobber
 dmg="$(find "$tmp" -maxdepth 1 -name '*.dmg' | head -1)"
@@ -77,6 +103,7 @@ mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F'\t' '/\/Volume
 [ -n "$mount_point" ] || die "could not mount $dmg"
 trap 'hdiutil detach "$mount_point" -quiet >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
 
+wait_for_agents
 if pgrep -x Paseo >/dev/null 2>&1; then
   say "Quitting the running Paseo"
   osascript -e 'quit app "Paseo"' || true

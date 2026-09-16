@@ -13,17 +13,21 @@
 # First main is reset to origin/main, here and on the devbox, so every target
 # comes from the same commit. Then, all at once:
 #
-#   daemon    built on the devbox over ssh, installed there with npm, the
-#             service restarted, the healthcheck run
+#   daemon    built on the devbox over ssh; once no agent there is running,
+#             installed with npm, the service restarted, the healthcheck run
 #   desktop   built by GitHub Actions; installed in Terminal after every job
-#             finishes, since updating the Mac app stops the hosting daemon
+#             finishes and no local agent is running, since updating the Mac
+#             app stops the hosting daemon
 #   vscode    built here; the .vsix installed into VS Code and Cursor here and
 #             into their servers on the devbox
 #   ios       EAS build queued from here; it submits itself to TestFlight
 #
 # One target failing does not stop the others. Each target's output goes to
 # $FORK_WORK_ROOT/deploy/<target>.log, and the summary at the end says what
-# was built, where it was installed, and what failed.
+# was built, where it was installed, and what failed. While the daemon job
+# waits for agents, the ones it waits for are printed here too.
+#
+# FORK_SKIP_AGENT_WAIT=1 installs without waiting for agents.
 #
 # It has to run off the devbox: installing the desktop app needs macOS, and
 # restarting the daemon kills every agent on the devbox, including one that
@@ -55,7 +59,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h | --help)
-      sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,34p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) die "unknown argument: $1" ;;
@@ -94,6 +98,12 @@ note() {
   say "$*"
 }
 
+# Lines the parent prints as they arrive, for what the user has to know
+# before the job ends.
+progress() {
+  tee -a "$DEPLOY_DIR/$job.progress"
+}
+
 # ----------------------------------------------------------------- jobs ----
 # Each job runs as a separate process of this script (--job <target>), so a
 # failing step ends that job under set -e and nothing else.
@@ -103,6 +113,15 @@ job_daemon() {
   [ "$clean" -eq 0 ] || flags=" --clean"
   devbox_user "cd $(sq "$FORK_DEVBOX_REPO") && fork/build.sh daemon$flags"
   note "built on the devbox into $FORK_DEVBOX_WORK_ROOT/dist"
+  # Installing replaces the files under the running daemon and the restart
+  # kills its agents, so both wait. The script travels from main, like the
+  # vscode installer.
+  echo "built; waiting for agents on the devbox before installing" | progress
+  git show "$TARGET:fork/wait-for-agents.sh" |
+    devbox_admin "sudo -u $FORK_DEVBOX_USER -H env FORK_SKIP_AGENT_WAIT=$(sq "${FORK_SKIP_AGENT_WAIT:-0}") bash -s -- $(sq "$FORK_DEVBOX_NPM_PREFIX/bin/paseo") devbox" 2>&1 |
+    progress
+  # The waiter's last line says whether it waited, skipped or could not list.
+  note "$(tail -n 1 "$DEPLOY_DIR/$job.progress")"
   local p tarballs=()
   for p in "${FORK_DAEMON_PACKAGES[@]}"; do
     tarballs+=("$FORK_DEVBOX_WORK_ROOT/dist/getpaseo-$p-$VERSION.tgz")
@@ -300,7 +319,7 @@ VERSION="$(fork_version)"
 say "Deploying $VERSION from $(git log -1 --format='%h %s' "$TARGET")"
 
 mkdir -p "$DEPLOY_DIR"
-rm -f "$DEPLOY_DIR"/*.log "$DEPLOY_DIR"/*.result "$DEPLOY_DIR"/*.exit
+rm -f "$DEPLOY_DIR"/*.log "$DEPLOY_DIR"/*.result "$DEPLOY_DIR"/*.exit "$DEPLOY_DIR"/*.progress
 
 # The local build checkout is shared by vscode and ios; prepare it once, up
 # front, rather than have both jobs race to npm install into it.
@@ -350,8 +369,25 @@ print_new_build_links() {
   done
 }
 
+# Only whole lines: the job may be mid-write.
+declare -A PROGRESS_SEEN=()
+print_progress() {
+  local target file line n
+  for target in "${targets[@]}"; do
+    file="$DEPLOY_DIR/$target.progress"
+    [ -f "$file" ] || continue
+    n=0
+    while IFS= read -r line; do
+      n=$((n + 1))
+      [ "$n" -le "${PROGRESS_SEEN[$target]:-0}" ] || say "$target: $line"
+    done <"$file"
+    PROGRESS_SEEN[$target]=$n
+  done
+}
+
 while [ "${#EXIT_FILES[@]}" -gt 0 ]; do
   print_new_build_links
+  print_progress
   for t in "${!EXIT_FILES[@]}"; do
     [ -s "${EXIT_FILES[$t]}" ] || continue
     STATUS[$t]="$(cat "${EXIT_FILES[$t]}")"
@@ -363,6 +399,7 @@ while [ "${#EXIT_FILES[@]}" -gt 0 ]; do
     fi
   done
   print_new_build_links
+  print_progress
   [ "${#EXIT_FILES[@]}" -eq 0 ] || sleep 3
 done
 wait
@@ -413,12 +450,13 @@ if wants desktop && [ "${STATUS[desktop]}" = 0 ]; then
     printf '#!/usr/bin/env bash\nset -euo pipefail\n'
     printf 'export PATH=%s\n' "$(sq "$PATH")"
     printf 'export FORK_REPO=%s\n' "$(sq "$REPO")"
+    printf 'export FORK_SKIP_AGENT_WAIT=%s\n' "$(sq "${FORK_SKIP_AGENT_WAIT:-0}")"
     printf '%s %s %s 2>&1 | tee %s\n' \
       "$(sq "$BASH")" "$(sq "$HERE/update-macos.sh")" "$(sq "fork-v$VERSION")" \
       "$(sq "$DEPLOY_DIR/desktop-update.log")"
   } >"$updater"
   chmod +x "$updater"
-  say "All jobs finished. Opening Terminal for the Mac update; Paseo will restart."
+  say "All jobs finished. Opening Terminal for the Mac update; it waits for local agents to go idle, then Paseo restarts."
   say "Mac update log: $DEPLOY_DIR/desktop-update.log"
   open -a Terminal "$updater"
 fi

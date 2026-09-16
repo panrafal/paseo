@@ -334,12 +334,12 @@ logs and build links. The script resets `main` to `origin/main` here and on the
 devbox — a `main` checkout with uncommitted changes stops it — so every
 target comes from the same commit, then runs all four at once:
 
-| Target    | Built                                     | Installed                                                                                          |
-| --------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `daemon`  | on the devbox, over ssh                   | `npm install -g` on the devbox, `systemctl restart paseo`, then the healthcheck; the daemon tarballs are then uploaded to the `fork-v<version>` release for capitally-devhub's devflows |
-| `desktop` | by GitHub Actions, from a tag pushed here | After every job finishes, Terminal runs `fork/update-macos.sh` to install and relaunch the Mac app |
-| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                   |
-| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                  |
+| Target    | Built                                     | Installed                                                                                                                                                                                                               |
+| --------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `daemon`  | on the devbox, over ssh                   | once no agent on the devbox is running, `npm install -g` there, `systemctl restart paseo`, then the healthcheck; the daemon tarballs are then uploaded to the `fork-v<version>` release for capitally-devhub's devflows |
+| `desktop` | by GitHub Actions, from a tag pushed here | After every job finishes, Terminal runs `fork/update-macos.sh`; once no local agent is running, it installs and relaunches the Mac app                                                                                  |
+| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                                                                                                                                        |
+| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                                                                                                                                       |
 
 One target failing does not stop the others. Each target's output goes to
 `~/.paseo-fork/deploy/<target>.log`, and the summary at the end says what was
@@ -354,6 +354,16 @@ desktop build is handed to a separate Terminal window for installation.
 The summary reports the desktop as built, with installation pending. Follow
 the update in Terminal or `~/.paseo-fork/deploy/desktop-update.log`.
 iOS only needs to be queued before this handoff; its cloud build continues.
+
+Both installs stop a daemon, and that kills its agents mid-turn. So the daemon
+job, once built, and the Mac update, once downloaded, run
+`fork/wait-for-agents.sh` first: it polls `paseo ls -g` until no agent is
+`running` or `initializing`, and prints the ones it is waiting for — the daemon
+job's list in the deploy output, the Mac's in Terminal. The agent running the
+wait is left out. A daemon that cannot be listed at the start is not waited
+for; once agents were seen, a failed listing is retried. The Mac handoff comes
+after every job, so busy devbox agents hold it back too.
+`FORK_SKIP_AGENT_WAIT=1 fork/deploy.sh` installs without waiting.
 
 It has to run off the devbox: installing the desktop app needs macOS, and
 restarting the daemon kills every agent on the devbox, including one that
