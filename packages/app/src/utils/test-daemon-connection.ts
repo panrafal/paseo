@@ -13,6 +13,8 @@ import {
   createDesktopDaemonTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
 import type { DesktopDaemonTransportTarget } from "@/desktop/daemon/desktop-daemon";
+import { createRelayAuthOptions } from "@/runtime/relay-auth";
+import { relayDeviceLabel } from "@/runtime/relay-device-label";
 
 export interface DaemonProbeClient {
   readonly lastError: string | null;
@@ -113,6 +115,14 @@ export class DaemonConnectionTestError extends Error {
   }
 }
 
+function usesDesktopTransport(connection: HostConnection): boolean {
+  return (
+    connection.type === "directSocket" ||
+    connection.type === "directPipe" ||
+    connection.type === "directTcpBridge"
+  );
+}
+
 export async function buildClientConfig(
   connection: HostConnection,
   serverId?: string,
@@ -138,8 +148,7 @@ export async function buildClientConfig(
     reconnect: { enabled: false },
     ...(options?.capabilities ? { capabilities: options.capabilities } : {}),
     ...(options?.trace ? { trace: options.trace } : {}),
-    ...((connection.type === "directSocket" || connection.type === "directPipe") &&
-    desktopTransportFactory
+    ...(usesDesktopTransport(connection) && desktopTransportFactory
       ? { transportFactory: desktopTransportFactory }
       : {}),
   };
@@ -163,6 +172,16 @@ export async function buildClientConfig(
     });
   }
 
+  if (connection.type === "directTcpBridge") {
+    return {
+      ...base,
+      url: deps.buildDesktopTransportUrl({
+        transportType: "tcp",
+        endpoint: connection.endpoint,
+      }),
+    };
+  }
+
   if (connection.type === "directTcp") {
     return {
       ...base,
@@ -182,7 +201,14 @@ export async function buildClientConfig(
       useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
       serverId,
     }),
-    e2ee: { enabled: true, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+    e2ee: {
+      enabled: true,
+      daemonPublicKeyB64: connection.daemonPublicKeyB64,
+      auth: createRelayAuthOptions({
+        host: { serverId, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+        label: relayDeviceLabel(deps.resolveAppVersion()),
+      }),
+    },
   };
 }
 

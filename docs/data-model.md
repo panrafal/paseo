@@ -47,6 +47,7 @@ $PASEO_HOME/
 ├── config.json                          # Daemon configuration
 ├── server-id                            # Stable daemon identifier (plain text, "srv_<base64url>")
 ├── daemon-keypair.json                  # E2EE keypair for relay (mode 0600)
+├── relay-devices.json                   # Relay pairing tokens and device credentials, hashed (mode 0600)
 ├── paseo.pid                            # Daemon PID lock file
 ├── daemon.log                           # Default log file (path configurable)
 ├── agents/
@@ -205,7 +206,7 @@ snapshot so a mixed edit can apply its live subset and still name the paths that
     agentProfiles: AgentProfile[],        // named agent launch bundles; omitted means none
     cors: { allowedOrigins: string[] },
     relay: { enabled: boolean, endpoint: string, publicEndpoint: string, useTls: boolean, publicUseTls: boolean }, // new homes materialize enabled: false
-    auth: { password: string }    // bcrypt hash, optional
+    auth: { password: string, allowLoopbackWithoutPassword: boolean }  // bcrypt hash, optional; exemption is config-file only
   },
   app: {
     baseUrl: string
@@ -418,6 +419,11 @@ One file per schedule. ID is 8 hex characters.
 - `{ type: "every", everyMs: number }` — legacy rolling interval, still readable and executable during the compatibility window
 
 ### Nested: ScheduleTarget (discriminated union on `type`)
+
+Scheduled workspace labels reference canonical names in the host's catalog. Schedule execution never
+creates labels. Catalog renames and deletions rewrite schedule references with best-effort
+updates after the catalog commit, outside the transaction journal. A crash between these
+steps can leave dangling names; each run resolves against the current catalog and skips them.
 
 - `{ type: "agent", agentId: string }` — send to existing agent
 - `{ type: "new-agent", config: { provider, cwd, modeId?, model?, thinkingOptionId?, title?, providerOptions?, featureValues?, systemPrompt?, mcpServers? } }` — create a new agent

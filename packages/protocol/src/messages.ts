@@ -717,6 +717,10 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
     type: z.literal("assistant_message"),
     text: z.string(),
     messageId: z.string().optional(),
+    // Questions the agent asked without pausing its turn; the reply is an ordinary user message.
+    questions: z
+      .array(z.object({ title: z.string(), options: z.array(z.string()).optional() }))
+      .optional(),
   }),
   z.object({
     type: z.literal("reasoning"),
@@ -1039,6 +1043,11 @@ export const WorkspaceLabelListRequestSchema = z.object({
   requestId: z.string(),
   subscribe: z.object({ subscriptionId: z.string().optional() }).optional(),
   sync: WorkspaceLabelSyncCursorSchema.optional(),
+});
+export const WorkspaceLabelCreateRequestSchema = z.object({
+  type: z.literal("workspace.label.create.request"),
+  requestId: z.string(),
+  label: WorkspaceLabelDefinitionSchema,
 });
 export const WorkspaceLabelAssignmentSetRequestSchema = z.object({
   type: z.literal("workspace.label.assignment.set.request"),
@@ -1769,8 +1778,16 @@ export const ProviderDiagnosticRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const CodexBankedResetConsumeRequestMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_banked_reset.request"),
+  creditId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  requestId: z.string(),
+});
+
 export const ProviderUsageListRequestMessageSchema = z.object({
   type: z.literal("provider.usage.list.request"),
+  forceRefresh: z.boolean().optional(),
   requestId: z.string(),
 });
 
@@ -3177,6 +3194,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceTitleSetRequestSchema,
   WorkspacePinSetRequestSchema,
   WorkspaceLabelListRequestSchema,
+  WorkspaceLabelCreateRequestSchema,
   WorkspaceLabelAssignmentSetRequestSchema,
   WorkspaceLabelUpdateRequestSchema,
   WorkspaceLabelDeleteRequestSchema,
@@ -3230,6 +3248,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotRequestMessageSchema,
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
+  CodexBankedResetConsumeRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -3537,6 +3556,10 @@ export const ServerInfoStatusPayloadSchema = z
         directorySync: z.boolean().optional(),
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         workspaceLabels: z.boolean().optional(),
+        // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+        scheduleWorkspaceLabels: z.boolean().optional(),
+        // COMPAT(workspaceLabelCreation): added in v0.7.3, remove after 2027-03-06.
+        workspaceLabelCreation: z.boolean().optional(),
         // COMPAT(workspaceSetupRun): added in v0.8.0, remove gate after 2027-09-02.
         workspaceSetupRun: z.boolean().optional(),
         // COMPAT(workspaceTerminals): added in v0.8.0, remove gate after 2027-09-05.
@@ -3613,6 +3636,7 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceFileEditing: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: z.boolean().optional(),
+        codexBankedResets: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.
@@ -4259,6 +4283,10 @@ export const WorkspaceLabelUpdateSchema = z.object({
       seq: z.number().int().positive(),
     }),
   ]),
+});
+export const WorkspaceLabelCreateResponseSchema = z.object({
+  type: z.literal("workspace.label.create.response"),
+  payload: z.object({ requestId: z.string(), label: WorkspaceLabelDefinitionSchema }),
 });
 export const WorkspaceLabelAssignmentSetResponseSchema = z.object({
   type: z.literal("workspace.label.assignment.set.response"),
@@ -5001,6 +5029,10 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
       url: z.string(),
       qr: z.string().nullable().optional(),
       relayEnabled: z.boolean(),
+      // Absent from daemons whose pairing links never expire.
+      expiresAt: z.string().nullable().optional(),
+      // Time left when the daemon answered; clients time the link with their own clock.
+      expiresInMs: z.number().nullable().optional(),
     })
     .passthrough(),
 });
@@ -6197,6 +6229,30 @@ export const ProviderUsageDetailSchema = z.object({
   tone: ProviderUsageToneSchema.optional(),
 });
 
+export const CodexBankedResetSchema = z.object({
+  id: z.string(),
+  resetType: z.string(),
+  supportedByPlan: z.boolean().nullable(),
+  status: z.string(),
+  grantedAt: z.string(),
+  expiresAt: z.string().nullable(),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+});
+
+export const CodexBankedResetsSchema = z.object({
+  availableCount: z.number().int().nonnegative(),
+  credits: z.array(CodexBankedResetSchema).nullable(),
+  error: z.string().nullable(),
+});
+
+export const CodexBankedResetOutcomeSchema = z.enum([
+  "reset",
+  "nothing_to_reset",
+  "no_credit",
+  "already_redeemed",
+]);
+
 export const ProviderUsageSchema = z.object({
   providerId: z.string(),
   displayName: z.string(),
@@ -6208,7 +6264,16 @@ export const ProviderUsageSchema = z.object({
   windows: z.array(ProviderUsageWindowSchema),
   balances: z.array(ProviderUsageBalanceSchema).optional(),
   details: z.array(ProviderUsageDetailSchema).optional(),
+  bankedResets: CodexBankedResetsSchema.optional(),
   error: z.string().nullable().optional(),
+});
+
+export const CodexBankedResetConsumeResponseMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_banked_reset.response"),
+  payload: z.object({
+    requestId: z.string(),
+    outcome: CodexBankedResetOutcomeSchema,
+  }),
 });
 
 export const ProviderUsageListResponseMessageSchema = z.object({
@@ -6724,6 +6789,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceUpdateMessageSchema,
   WorkspaceLabelListResponseSchema,
   WorkspaceLabelUpdateSchema,
+  WorkspaceLabelCreateResponseSchema,
   WorkspaceLabelAssignmentSetResponseSchema,
   WorkspaceLabelUpdateResponseSchema,
   WorkspaceLabelDeleteResponseSchema,
@@ -6864,6 +6930,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotResponseMessageSchema,
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
+  CodexBankedResetConsumeResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -7041,6 +7108,9 @@ export type RefreshProvidersSnapshotResponseMessage = z.infer<
 export type ProviderDiagnosticResponseMessage = z.infer<
   typeof ProviderDiagnosticResponseMessageSchema
 >;
+export type CodexBankedReset = z.infer<typeof CodexBankedResetSchema>;
+export type CodexBankedResets = z.infer<typeof CodexBankedResetsSchema>;
+export type CodexBankedResetOutcome = z.infer<typeof CodexBankedResetOutcomeSchema>;
 export type ProviderUsageTone = z.infer<typeof ProviderUsageToneSchema>;
 export type ProviderUsageStatus = z.infer<typeof ProviderUsageStatusSchema>;
 export type ProviderUsage = z.infer<typeof ProviderUsageSchema>;
