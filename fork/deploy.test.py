@@ -34,6 +34,7 @@ case "$*" in
   'remote get-url '*) echo https://example.invalid/upstream ;;
   'show main:package.json') echo '{"version":"0.7.2"}' ;;
   'show main:fork/build-number') echo '0.7.2 9' ;;
+  'show main:fork/wait-for-agents.sh') echo '# waiter' ;;
   'log '*) echo 'abc123 fixture' ;;
   *) exit 91 ;;
 esac
@@ -51,6 +52,14 @@ esac
 printf '%s\n' "$*" >> "$TEST_ROOT/ssh.calls"
 if [ "${DAEMON_EXIT:-0}" != 0 ] && [[ "$*" == *fork/build.sh* ]]; then
   exit "$DAEMON_EXIT"
+fi
+if [[ "$*" == *"bash -s"* ]]; then
+  [ "$(cat)" = '# waiter' ]
+  echo 'Waiting for 1 agent(s) on devbox to go idle or error out (12:00:00):'
+  echo '  abc1234 running fixture'
+  sleep "${WAIT_SECONDS:-0}"
+  echo 'All agents on devbox are idle.'
+  exit "${WAIT_EXIT:-0}"
 fi
 if [[ "$*" == *"sudo cat"* ]]; then
   printf ''
@@ -156,6 +165,36 @@ echo 'Update finished'
             "https://github.com/panrafal/paseo/releases/tag/fork-v0.7.2-panrafal.9",
             result.stdout,
         )
+
+    def test_daemon_waits_for_agents_between_build_and_install(self):
+        result = self.deploy("daemon", WAIT_SECONDS="4")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = (self.root / "ssh.calls").read_text().splitlines()
+        steps = [next(i for i, c in enumerate(calls) if key in c)
+                 for key in ("fork/build.sh", "bash -s", "npm install", "systemctl restart")]
+        self.assertEqual(steps, sorted(steps))
+        wait = calls[steps[1]]
+        self.assertIn("sudo -u paseo -H env FORK_SKIP_AGENT_WAIT='0'", wait)
+        self.assertIn("'/usr/bin/paseo' devbox", wait)
+        # Printed live, before the job ends, not only in the log.
+        out = result.stdout
+        self.assertIn("daemon: built; waiting for agents on the devbox", out)
+        self.assertLess(out.index("daemon: Waiting for 1 agent(s)"), out.index("daemon: done"))
+        self.assertIn("daemon:   abc1234 running fixture", out)
+        self.assertIn("no agents running on the devbox", out)
+
+    def test_failed_agent_wait_does_not_install(self):
+        result = self.deploy("daemon", WAIT_EXIT="5")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        calls = (self.root / "ssh.calls").read_text()
+        self.assertNotIn("npm install", calls)
+        self.assertNotIn("systemctl restart", calls)
+
+    def test_updater_passes_skip_agent_wait(self):
+        result = self.deploy("desktop", FORK_SKIP_AGENT_WAIT="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        launcher = Path((self.root / "launcher").read_text()).read_text()
+        self.assertIn("export FORK_SKIP_AGENT_WAIT='1'", launcher)
 
     def test_failed_daemon_does_not_publish(self):
         result = self.deploy("daemon", DAEMON_EXIT="3")
