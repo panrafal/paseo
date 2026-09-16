@@ -115,6 +115,14 @@ export class DaemonConnectionTestError extends Error {
   }
 }
 
+function usesDesktopTransport(connection: HostConnection): boolean {
+  return (
+    connection.type === "directSocket" ||
+    connection.type === "directPipe" ||
+    connection.type === "directTcpBridge"
+  );
+}
+
 export async function buildClientConfig(
   connection: HostConnection,
   serverId?: string,
@@ -140,8 +148,7 @@ export async function buildClientConfig(
     reconnect: { enabled: false },
     ...(options?.capabilities ? { capabilities: options.capabilities } : {}),
     ...(options?.trace ? { trace: options.trace } : {}),
-    ...((connection.type === "directSocket" || connection.type === "directPipe") &&
-    desktopTransportFactory
+    ...(usesDesktopTransport(connection) && desktopTransportFactory
       ? { transportFactory: desktopTransportFactory }
       : {}),
   };
@@ -163,6 +170,16 @@ export async function buildClientConfig(
       desktopTransportFactory,
       buildDesktopTransportUrl: deps.buildDesktopTransportUrl,
     });
+  }
+
+  if (connection.type === "directTcpBridge") {
+    return {
+      ...base,
+      url: deps.buildDesktopTransportUrl({
+        transportType: "tcp",
+        endpoint: connection.endpoint,
+      }),
+    };
   }
 
   if (connection.type === "directTcp") {
