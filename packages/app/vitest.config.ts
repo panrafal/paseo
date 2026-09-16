@@ -76,7 +76,15 @@ export default defineConfig({
       "react-native-gesture-handler > hoist-non-react-statics",
       "react-native-gesture-handler > invariant",
     ],
-    exclude: ["react-native-reanimated", "react-native-gesture-handler"],
+    exclude: [
+      "react-native-reanimated",
+      "react-native-gesture-handler",
+      // Prebundling Query embeds a second React beside the renderer's aliased copy.
+      "@tanstack/react-query",
+      // The attachment store's lazy native branch must resolve through the web extensions below.
+      "expo-file-system",
+      "expo-modules-core",
+    ],
   },
   // The globals a React Native bundler defines, which esbuild is no longer there to supply for
   // the package excluded above.

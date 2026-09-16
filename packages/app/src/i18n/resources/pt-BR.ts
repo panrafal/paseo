@@ -244,6 +244,12 @@ export const ptBR: TranslationResources = {
       question: "Como você quer prosseguir?",
       proposedPlan: "Plano proposto",
     },
+    questions: {
+      answerPlaceholder: "Digite sua resposta...",
+      submit: "Enviar resposta",
+      answered: "Respondida",
+      sendFailed: "Não foi possível enviar sua resposta",
+    },
   },
   agentPanel: {
     states: {
@@ -683,6 +689,8 @@ export const ptBR: TranslationResources = {
         reloadedAgent: "Agente recarregado",
         failedToReloadAgent: "Falha ao recarregar agente",
         failedToCloseAgent: "Falha ao fechar agente",
+        failedToSaveClosePreference:
+          "Não foi possível salvar sua preferência de fechamento do terminal",
       },
       confirmations: {
         unsavedTitle: "Alterações não salvas",
@@ -697,6 +705,8 @@ export const ptBR: TranslationResources = {
         closeTerminalTitle: "Fechar terminal?",
         closeTerminalMessage:
           "Qualquer processo em execução neste terminal será interrompido imediatamente.",
+        rememberChoice: "Lembrar desta escolha",
+        closeAndDontAskAgain: "Fechar e não perguntar novamente",
         archiveRunningAgentTitle: "Arquivar agente em execução?",
         archiveRunningAgentMessage:
           "Este agente ainda está em execução. Arquivá-lo interromperá o agente e fechará a aba.",
@@ -782,6 +792,11 @@ export const ptBR: TranslationResources = {
           pending: "Fazendo commit...",
           success: "Commit concluído",
         },
+        commitAndPush: {
+          label: "Commit e push",
+          pending: "Fazendo commit e push...",
+          success: "Commit e push concluídos",
+        },
         pull: {
           label: "Pull",
           pending: "Fazendo pull...",
@@ -853,6 +868,8 @@ export const ptBR: TranslationResources = {
           pullUpToDate: "Pull não está disponível porque esta branch já está atualizada",
           pushNoRemote:
             "Push não está disponível aqui porque esta branch ainda não está conectada a um remoto",
+          commitAndPushNoRemote:
+            "Commit e push não está disponível aqui porque esta branch ainda não está conectada a um remoto",
           pushBehind:
             "Push ainda não está disponível porque há alterações mais recentes para trazer primeiro",
           pushNothing: "Push não está disponível porque não há nada novo para enviar",
@@ -901,6 +918,7 @@ export const ptBR: TranslationResources = {
         },
         toasts: {
           failedCommit: "Falha ao fazer commit",
+          failedCommitAndPush: "Falha ao fazer commit e push",
           failedPull: "Falha ao fazer pull",
           failedPush: "Falha ao fazer push",
           failedPullAndPush: "Falha ao fazer pull e push",
@@ -984,6 +1002,10 @@ export const ptBR: TranslationResources = {
         openIn: "Abrir workspace em {{target}}",
         openFileIn: "Abrir {{fileName}} em {{target}}",
         failedOpen: "Falha ao abrir workspace",
+        failedOpenFile: "Falha ao abrir arquivo",
+        setUp: "Configurar…",
+        setUpRemoteHost: "Configurar a abertura deste host em um editor",
+        setUpToast: "Para abrir {{host}} em um editor, defina o host SSH dele em Abrir no editor.",
       },
       pr: {
         actions: {
@@ -1055,6 +1077,7 @@ export const ptBR: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "Alguns rótulos selecionados não existem mais. Remova-os para continuar.",
     title: "Etiquetas",
     unlabelled: "Sem etiqueta",
     create: "Criar etiqueta",
@@ -1115,6 +1138,8 @@ export const ptBR: TranslationResources = {
       heading: "Exibição",
       grouping: {
         label: "Agrupamento",
+        currentLabel: "Agrupamento atual: {{current}}",
+        toggleLabel: "Agrupamento atual: {{current}}. Alternar agrupamento",
         project: "Projeto",
         status: "Status",
         labels: "Etiquetas",
@@ -1489,6 +1514,11 @@ export const ptBR: TranslationResources = {
     errorTitle: "Algo deu errado",
     errorDescription:
       "O servidor local falhou ao iniciar. Se isso continuar acontecendo, reporte o problema no GitHub e inclua os logs abaixo.",
+    status: {
+      connecting: "Conectando ao daemon do Paseo…",
+      loadingWorkspaces: "Carregando workspaces…",
+      opening: "Abrindo esta pasta no Paseo…",
+    },
     logs: {
       loading: "Carregando logs do daemon...",
       unavailable: "Nenhum log do daemon disponível.",
@@ -1756,6 +1786,13 @@ export const ptBR: TranslationResources = {
       unableToPair: "Não foi possível parear host",
       errorTitle: "Erro",
     },
+    relayAuth: {
+      pairAgain:
+        "Este dispositivo não está mais pareado com o host. Escaneie um novo código de pareamento no host.",
+      passwordChanged: "A senha do host mudou. Escaneie um novo código de pareamento no host.",
+      linkUsed: "Este link de pareamento já foi usado ou expirou. Crie um novo no host.",
+      rateLimited: "Muitas tentativas de login falharam. Aguarde um minuto e tente novamente.",
+    },
     device: {
       loadingOffer: "Carregando oferta de pareamento...",
       failedToLoadOffer: "Falha ao carregar oferta de pareamento.",
@@ -1775,6 +1812,10 @@ export const ptBR: TranslationResources = {
       hint: "Escaneie este QR code com o Paseo no seu celular ou copie o link abaixo.",
       securityWarning:
         "Trate este link de pareamento como uma senha. Qualquer pessoa com o link pode acessar este daemon.",
+      oneTimeWarning:
+        "Este link pareia um único dispositivo e para de funcionar após 5 minutos. Não o compartilhe.",
+      expiresIn: "Expira em {{time}}",
+      newLink: "Obter novo link",
       qrUnavailable: "QR code indisponível.",
       qrAccessibility: "Código QR de pareamento",
       retry: "Tentar novamente",
@@ -1848,6 +1889,8 @@ export const ptBR: TranslationResources = {
       loading: "Carregando arquivo...",
       noPreview: "Nenhuma prévia disponível",
       binaryPreviewUnavailable: "Prévia binária indisponível",
+      videoPlaybackFailed:
+        "Não foi possível reproduzir este vídeo. O arquivo pode estar danificado ou o formato não ser compatível com este dispositivo.",
       tooLargeToDisplay: "Este arquivo é grande demais para exibir",
       failedToLoad: "Falha ao carregar arquivo",
       failedToLoadPreview: "Falha ao carregar prévia do arquivo",
@@ -2070,7 +2113,7 @@ export const ptBR: TranslationResources = {
       },
       serviceUrls: {
         label: "URLs de serviço",
-        description: "Onde abrir URLs de scripts em execução",
+        description: "Onde abrir URLs de scripts e terminais",
         options: {
           ask: "Perguntar",
           inApp: "No Paseo",
@@ -2081,6 +2124,10 @@ export const ptBR: TranslationResources = {
         label: "Scrollback do terminal",
         description: "Linhas mantidas no buffer do terminal integrado",
         accessibilityLabel: "Linhas do scrollback do terminal",
+      },
+      confirmTerminalClose: {
+        label: "Confirmar o fechamento de terminais",
+        description: "Perguntar antes de fechar uma aba de terminal",
       },
       autoExpandReasoning: {
         label: "Sempre expandir raciocínio",
@@ -2262,6 +2309,7 @@ export const ptBR: TranslationResources = {
         jumpToTab: "Ir para aba",
         previousWorkspace: "Workspace anterior",
         nextWorkspace: "Próximo workspace",
+        cycleSidebarGrouping: "Alternar agrupamento",
         previousTab: "Aba anterior",
         nextTab: "Próxima aba",
         splitPaneRight: "Dividir painel à direita",
@@ -2277,6 +2325,8 @@ export const ptBR: TranslationResources = {
         closePane: "Fechar painel",
         newTerminal: "Novo terminal",
         searchFiles: "Pesquisar arquivos",
+        historyBack: "Voltar no histórico",
+        historyForward: "Avançar no histórico",
         toggleCommandCenter: "Alternar central de comandos",
         showKeyboardShortcuts: "Mostrar atalhos de teclado",
         toggleLeftSidebar: "Alternar barra lateral esquerda",
@@ -2362,6 +2412,22 @@ export const ptBR: TranslationResources = {
         },
         preview: {
           workspaceName: "my-workspace",
+        },
+      },
+      openInEditor: {
+        title: "Abrir no editor",
+        info: "Abrir no editor inicia o editor instalado neste computador. Quando o daemon roda em outra máquina, o editor chega até ele por SSH: VS Code e Cursor via Remote-SSH, Zed via uma URL ssh://.",
+        sshHost: {
+          label: "Host SSH",
+          hint: "Permite que editores deste computador abram os arquivos deste host por SSH",
+          notSet: "Não definido",
+          editLabel: "Editar o host SSH",
+          modalTitle: "Host SSH",
+          modalHint:
+            "Normalmente um alias do seu ~/.ssh/config, como my-dev-host. Deixe vazio para desativar.",
+          placeholder: "my-dev-host",
+          save: "Salvar",
+          invalid: "Use um único host SSH, sem espaços ou barras.",
         },
       },
       notFound: "Host não encontrado",
