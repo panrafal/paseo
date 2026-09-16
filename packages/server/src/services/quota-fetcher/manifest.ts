@@ -7,6 +7,7 @@ import { ClaudeQuotaProvider } from "./providers/claude.js";
 import { CodexQuotaProvider } from "./providers/codex.js";
 import { CopilotQuotaProvider } from "./providers/copilot.js";
 import { CursorQuotaProvider } from "./providers/cursor.js";
+import { DevinQuotaProvider } from "./providers/devin.js";
 import { GrokQuotaProvider } from "./providers/grok.js";
 import { KiloQuotaProvider } from "./providers/kilo.js";
 import { KimiQuotaProvider } from "./providers/kimi.js";
@@ -57,6 +58,10 @@ export const PROVIDER_USAGE_FETCHERS: readonly ProviderUsageFetcherManifestEntry
   {
     providerId: "minimax",
     create: (options) => new MiniMaxQuotaProvider({ logger: options.logger, fetch: options.fetch }),
+  },
+  {
+    providerId: "devin",
+    create: (options) => new DevinQuotaProvider({ logger: options.logger, fetch: options.fetch }),
   },
 ];
 
