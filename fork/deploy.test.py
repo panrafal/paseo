@@ -60,7 +60,11 @@ if [[ "$*" == *"bash -s"* ]]; then
   echo '  abc1234 running fixture'
   sleep "${WAIT_SECONDS:-0}"
   echo 'warning: fixture stderr' >&2
-  echo 'All agents on devbox are idle.'
+  if [ -n "${WAIT_LAST_STDERR:-}" ]; then
+    echo "$WAIT_LAST_STDERR" >&2
+  else
+    echo 'All agents on devbox are idle.'
+  fi
   exit "${WAIT_EXIT:-0}"
 fi
 if [[ "$*" == *"sudo cat"* ]]; then
@@ -185,6 +189,12 @@ echo 'Update finished'
         self.assertIn("daemon:   abc1234 running fixture", out)
         self.assertIn("daemon: warning: fixture stderr", out)
         self.assertIn("           All agents on devbox are idle.", out)
+
+    def test_summary_shows_a_skipped_wait(self):
+        line = "warning: cannot list agents on devbox, not waiting: { \"error\": \"x\" }"
+        result = self.deploy("daemon", WAIT_LAST_STDERR=line)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("           " + line + "\n", result.stdout)
 
     def test_failed_agent_wait_does_not_install(self):
         result = self.deploy("daemon", WAIT_EXIT="5")
