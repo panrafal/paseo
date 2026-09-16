@@ -34,7 +34,7 @@ echo $((n + 1)) > "$ROOT/polls"
 f="$ROOT/poll.$n"
 [ -e "$f" ] || f="$(ls "$ROOT"/poll.* | sort -t. -k2 -n | tail -1)"
 echo 'cli warning' >&2
-[ ! -e "$f.fail" ] || { echo 'timed out' >&2; exit 1; }
+[ ! -e "$f.fail" ] || { printf '{\n  "error": "timed out"\n}\n' >&2; exit 1; }
 cat "$f"
 ''')
         self.paseo.chmod(0o755)
@@ -91,15 +91,16 @@ cat "$f"
         self.polls(None)
         result = self.wait()
         self.assertEqual(result.returncode, 0)
-        self.assertIn("not waiting: cli warning\ntimed out", result.stderr)
+        self.assertIn("not waiting: cli warning { \"error\": \"timed out\" }\n", result.stderr)
 
     def test_failed_listing_after_agents_were_seen_is_retried(self):
-        self.polls([agent("a1", "running")], None, [agent("a1", "idle")])
+        self.polls([agent("a1", "running")], None, None, [agent("a1", "idle")])
         result = self.wait()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("retrying: cli warning\ntimed out", result.stderr)
+        self.assertIn("retrying: cli warning { \"error\": \"timed out\" }\n", result.stderr)
         self.assertIn("All agents on box are idle.", result.stdout)
-        self.assertEqual(self.poll_count(), 3)
+        self.assertEqual(result.stderr.count("retrying"), 1)
+        self.assertEqual(self.poll_count(), 4)
 
     def test_unrecognised_output_fails(self):
         self.polls('[{"id":"a1","status":"running"}]\n')
