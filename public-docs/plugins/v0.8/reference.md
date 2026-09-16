@@ -475,11 +475,11 @@ type PluginTurnOutcome =
 
 ### Before hooks
 
-| Name                 | Request fields                                                          | Editable                                |
-| -------------------- | ----------------------------------------------------------------------- | --------------------------------------- |
-| `agent.create`       | `config`, optional `env`                                                | Public agent config except `cwd`; `env` |
-| `agent.session_open` | `agentId`, `workspaceId`, `provider`, `cwd`, `reason`, `purpose`, `env` | Only `env`                              |
-| `workspace.create`   | `source`, optional `title`, `firstAgentContext`                         | Entire explicit creation request        |
+| Name                 | Request fields                                                                    | Editable                                |
+| -------------------- | --------------------------------------------------------------------------------- | --------------------------------------- |
+| `agent.create`       | `config`, optional `env`                                                          | Public agent config except `cwd`; `env` |
+| `agent.session_open` | `agentId`, `workspaceId`, `provider`, `cwd`, `reason`, `purpose`, `labels`, `env` | Only `env`                              |
+| `workspace.create`   | `source`, optional `title`, `firstAgentContext`                                   | Entire explicit creation request        |
 
 **`agent.create.config`** uses `AgentSessionConfig`:
 
@@ -503,6 +503,7 @@ type PluginTurnOutcome =
   "cwd": "/projects/shop",
   "reason": "resume",
   "purpose": "interactive",
+  "labels": { "paseo.schedule-id": "sched-1" },
   "env": { "COMPANY_ENV": "development" }
 }
 ```
@@ -512,6 +513,7 @@ type PluginTurnOutcome =
 | `workspaceId` | String or `null`                                                                                                        |
 | `reason`      | `create`, `resume`, `refresh`, `import`                                                                                 |
 | `purpose`     | `interactive`, `history`                                                                                                |
+| `labels`      | Read-only map the agent is created or stored with; present on `create`. Empty object when there are none.               |
 | `env`         | Launch override map; excludes the daemon's inherited environment. Replace the map to add, replace, or remove overrides. |
 
 ### Ordering and returned values
