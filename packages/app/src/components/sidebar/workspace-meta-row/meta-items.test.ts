@@ -35,12 +35,12 @@ function select(overrides: Partial<Parameters<typeof selectMetaRowItems>[0]> = {
 const kinds = (items: ReturnType<typeof selectMetaRowItems>) => items.map((item) => item.kind);
 
 describe("selectMetaRowItems", () => {
-  it("puts the enabled branch and project badges first", () => {
+  it("puts the host first, then the enabled branch and project badges", () => {
     const visible = { ...DEFAULT_SIDEBAR_ROW_ITEMS, branch: true, project: true };
     expect(kinds(select({ visible }))).toEqual([
+      "host",
       "branch",
       "project",
-      "host",
       "changeRequest",
       "checks",
       "services",
