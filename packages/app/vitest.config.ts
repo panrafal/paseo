@@ -61,6 +61,7 @@ export default defineConfig({
           "@tanstack/react-query",
           "react-native-web",
           "react-native-gesture-handler",
+          "react-native-keyboard-controller",
         ],
       },
     },
@@ -79,6 +80,7 @@ export default defineConfig({
     exclude: [
       "react-native-reanimated",
       "react-native-gesture-handler",
+      "react-native-keyboard-controller",
       // Prebundling Query embeds a second React beside the renderer's aliased copy.
       "@tanstack/react-query",
       // The attachment store's lazy native branch must resolve through the web extensions below.
@@ -119,6 +121,14 @@ export default defineConfig({
         replacement: path.resolve(__dirname, "../relay/src/index.ts"),
       },
       { find: "@", replacement: path.resolve(__dirname, "src") },
+      // Keep keyboard-controller's imports in Vite so native aliases and platform extensions apply.
+      {
+        find: /^react-native-keyboard-controller$/,
+        replacement: path.resolve(
+          resolvePackageEntry("react-native-keyboard-controller"),
+          "lib/module/index.js",
+        ),
+      },
       // The CJS entry bypasses Vite's React Native alias and web-extension resolution.
       {
         find: /^react-native-gesture-handler$/,
