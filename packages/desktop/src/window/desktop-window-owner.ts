@@ -1,6 +1,6 @@
 import { PendingOpenProjectStore } from "../pending-open-project-store.js";
 
-export interface OwnedDesktopWindow<TAgentTarget> {
+export interface OwnedDesktopWindow<TTarget> {
   webContentsId: number;
   isDestroyed(): boolean;
   isVisible(): boolean;
@@ -8,41 +8,38 @@ export interface OwnedDesktopWindow<TAgentTarget> {
   restore(): void;
   show(): void;
   focus(): void;
-  sendAgent(target: TAgentTarget): void;
+  send(target: TTarget): void;
 }
 
-interface DesktopWindowOwnerPort<TAgentTarget> {
+interface DesktopWindowOwnerPort<TTarget> {
   create(input: {
     initialRoute: string | null;
     restoreWindowState: boolean;
     onCreated(webContentsId: number): void;
     onClosed(webContentsId: number): void;
-  }): Promise<OwnedDesktopWindow<TAgentTarget>>;
-  windows(): OwnedDesktopWindow<TAgentTarget>[];
-  focusedWindow(): OwnedDesktopWindow<TAgentTarget> | null;
-  agentRoute(target: TAgentTarget): string;
-  deliverAgent(webContentsId: number, target: TAgentTarget): TAgentTarget | null;
+  }): Promise<OwnedDesktopWindow<TTarget>>;
+  windows(): OwnedDesktopWindow<TTarget>[];
+  focusedWindow(): OwnedDesktopWindow<TTarget> | null;
+  route(target: TTarget): string;
+  deliver(webContentsId: number, target: TTarget): TTarget | null;
 }
 
-export interface DesktopWindowOwner<TAgentTarget> {
+export interface DesktopWindowOwner<TTarget> {
   openPrimary(input?: {
     initialRoute?: string | null;
     pendingProjectPath?: string | null;
   }): Promise<void>;
-  openAdditional(input?: {
-    initialRoute?: string | null;
-    pendingProjectPath?: string | null;
-  }): Promise<void>;
-  openOrFocusAgent(target: TAgentTarget): Promise<void>;
+  openAdditional(input?: { pendingProjectPath?: string | null }): Promise<void>;
+  openOrFocus(target: TTarget): Promise<void>;
   restoreWhenActivated(): Promise<void>;
   takePendingProject(webContentsId: number): string | null;
 }
 
-export function createDesktopWindowOwner<TAgentTarget>(
-  port: DesktopWindowOwnerPort<TAgentTarget>,
-): DesktopWindowOwner<TAgentTarget> {
+export function createDesktopWindowOwner<TTarget>(
+  port: DesktopWindowOwnerPort<TTarget>,
+): DesktopWindowOwner<TTarget> {
   const pendingProjects = new PendingOpenProjectStore();
-  let agentWindowCreation: Promise<void> | null = null;
+  let targetWindowCreation: Promise<void> | null = null;
 
   const open = async (input: {
     initialRoute: string | null;
@@ -57,7 +54,7 @@ export function createDesktopWindowOwner<TAgentTarget>(
     });
   };
 
-  const owner: DesktopWindowOwner<TAgentTarget> = {
+  const owner: DesktopWindowOwner<TTarget> = {
     openPrimary: (input = {}) =>
       open({
         initialRoute: input.initialRoute ?? null,
@@ -66,33 +63,33 @@ export function createDesktopWindowOwner<TAgentTarget>(
       }),
     openAdditional: (input = {}) =>
       open({
-        initialRoute: input.initialRoute ?? null,
+        initialRoute: null,
         pendingProjectPath: input.pendingProjectPath ?? null,
         restoreWindowState: false,
       }),
-    async openOrFocusAgent(target) {
+    async openOrFocus(target) {
       const windows = port.windows();
       const window =
         port.focusedWindow() ?? windows.find((candidate) => candidate.isVisible()) ?? windows[0];
       if (!window || window.isDestroyed()) {
-        if (!agentWindowCreation) {
-          agentWindowCreation = owner
-            .openPrimary({ initialRoute: port.agentRoute(target) })
+        if (!targetWindowCreation) {
+          targetWindowCreation = owner
+            .openPrimary({ initialRoute: port.route(target) })
             .finally(() => {
-              agentWindowCreation = null;
+              targetWindowCreation = null;
             });
-          await agentWindowCreation;
+          await targetWindowCreation;
           return;
         }
-        await agentWindowCreation;
-        await owner.openOrFocusAgent(target);
+        await targetWindowCreation;
+        await owner.openOrFocus(target);
         return;
       }
       if (window.isMinimized()) window.restore();
       window.show();
       window.focus();
-      const deliverable = port.deliverAgent(window.webContentsId, target);
-      if (deliverable) window.sendAgent(deliverable);
+      const deliverable = port.deliver(window.webContentsId, target);
+      if (deliverable) window.send(deliverable);
     },
     async restoreWhenActivated() {
       if (port.windows().length === 0) await owner.openPrimary();
