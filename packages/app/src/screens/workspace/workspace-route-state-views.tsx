@@ -1,3 +1,4 @@
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import { Text, View } from "react-native";
 import { ArrowLeftToLine, RotateCw, Settings } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -228,11 +229,13 @@ function WorkspaceUnreachable({
           <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
             <TooltipTrigger asChild>
               <Text style={styles.error} numberOfLines={3}>
-                {state.lastError}
+                {formatHostConnectionError(state.lastError, t)}
               </Text>
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.errorTooltip}>{state.lastError}</Text>
+              <Text style={styles.errorTooltip}>
+                {formatHostConnectionError(state.lastError, t)}
+              </Text>
             </TooltipContent>
           </Tooltip>
         ) : null}

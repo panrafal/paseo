@@ -39,8 +39,13 @@ import {
   ScheduleTargetGoneError,
   type ScheduleServiceOptions,
 } from "./service.js";
+import { createWorkspaceLabelService } from "../workspace-labels/index.js";
 import { ScheduleStore } from "./store.js";
-import type { ScheduleExecutionResult, StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import type {
+  CreateScheduleInput,
+  ScheduleExecutionResult,
+  StoredSchedule,
+} from "@getpaseo/protocol/schedule/types";
 
 interface ScheduleServiceInternals {
   executeSchedule(schedule: StoredSchedule, runId: string): Promise<ScheduleExecutionResult>;
@@ -78,11 +83,19 @@ let workspaceArchiveInProgress = false;
 
 type TestScheduleServiceOptions = Omit<
   ScheduleServiceOptions,
-  "createAgent" | "createDirectoryWorkspace" | "createPaseoWorktreeWorkspace" | "archiveWorkspace"
+  | "createAgent"
+  | "createDirectoryWorkspace"
+  | "createPaseoWorktreeWorkspace"
+  | "archiveWorkspace"
+  | "store"
+  | "workspaceLabels"
 > & {
   agentManager: AgentManager;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
   createAgent?: ScheduleServiceOptions["createAgent"];
+  paseoHome: string;
+  store?: ScheduleStore;
+  workspaceLabels?: ScheduleServiceOptions["workspaceLabels"];
   createDirectoryWorkspace?: ScheduleServiceOptions["createDirectoryWorkspace"];
   createPaseoWorktreeWorkspace?: ScheduleServiceOptions["createPaseoWorktreeWorkspace"];
   archiveWorkspace?: ScheduleServiceOptions["archiveWorkspace"];
@@ -159,6 +172,7 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
   };
   return new ScheduleService({
     ...options,
+    store: options.store ?? new ScheduleStore(join(options.paseoHome, "schedules")),
     createAgent:
       options.createAgent ??
       ((input) =>
@@ -185,6 +199,14 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
         };
       }),
     archiveWorkspace: options.archiveWorkspace ?? archiveDefaultWorkspace,
+    workspaceLabels: options.workspaceLabels ?? {
+      resolveNames: async () => {
+        throw new Error("Label adapter required");
+      },
+      assignLabels: async ({ names }) => {
+        if (names?.length) throw new Error("Label adapter required");
+      },
+    },
   });
 }
 
@@ -570,6 +592,155 @@ describe("ScheduleService", () => {
       cwd: tempDir,
     });
     expect(await workspaceRegistry.list()).toEqual([]);
+  });
+
+  async function labelFixture(failAssignment = false) {
+    const deps = await createRegistryBackedScheduleWorkspaceDeps(tempDir);
+    const store = new ScheduleStore(join(tempDir, "schedules"));
+    const labels = createWorkspaceLabelService({
+      paseoHome: tempDir,
+      workspaceRegistry: deps.workspaceRegistry,
+      scheduleStore: store,
+    });
+    await labels.initialize();
+    const seed = await deps.createDirectoryWorkspace({
+      cwd: tempDir,
+      firstAgentContext: { prompt: "Catalog seed" },
+    });
+    await labels.setAssignment({
+      workspaceId: seed.workspaceId,
+      label: { name: "Review", color: "sky" },
+      assigned: true,
+    });
+    const manager = new AgentManager({
+      logger: createTestLogger(),
+      clients: createTestAgentClients(),
+      registry: agentStorage,
+    });
+    const labelsAtStart: string[][] = [];
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      store,
+      logger: createTestLogger(),
+      agentManager: manager,
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      workspaceLabels: failAssignment
+        ? {
+            resolveNames: (names) => labels.resolveNames(names),
+            assignLabels: async () => {
+              throw new Error("Label storage unavailable");
+            },
+          }
+        : labels,
+      createDirectoryWorkspace: deps.createDirectoryWorkspace,
+      archiveWorkspace: deps.createArchiveWorkspace({ agentManager: manager, agentStorage }),
+      createAgent: async (input) => {
+        labelsAtStart.push((await deps.workspaceRegistry.get(input.workspaceId!))?.labels ?? []);
+        return createAgentCommand(
+          {
+            agentManager: manager,
+            agentStorage,
+            logger: createTestLogger(),
+            providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY as ProviderSnapshotManager,
+          },
+          input,
+        );
+      },
+      now: () => now,
+    });
+    const input: CreateScheduleInput = {
+      prompt: "Review",
+      cadence: { type: "every", everyMs: 60_000 },
+      runOnCreate: false,
+      target: {
+        type: "new-agent",
+        config: {
+          provider: "claude",
+          cwd: tempDir,
+          archiveOnFinish: false,
+          workspaceLabels: [" review ", "REVIEW"],
+        },
+      },
+    };
+    return { ...deps, store, labels, service, labelsAtStart, input };
+  }
+
+  test("validates and persists canonical label names, preserves omissions, and clears selections", async () => {
+    const { service, store, labelsAtStart, input } = await labelFixture();
+    const created = await service.create(input);
+    expect((await store.get(created.id))?.target).toMatchObject({
+      config: { workspaceLabels: ["Review"] },
+    });
+    const unknown = {
+      ...input,
+      target: { ...input.target, config: { ...input.target.config, workspaceLabels: ["Missing"] } },
+    };
+    await expect(service.create(unknown)).rejects.toThrow("Label not found");
+    await expect(service.createOrReplace({ ...unknown, name: "Review" })).rejects.toThrow(
+      "Label not found",
+    );
+    await expect(
+      service.update({ id: created.id, newAgentConfig: { workspaceLabels: ["Missing"] } }),
+    ).rejects.toThrow("Label not found");
+    expect((await service.update({ id: created.id, name: "Renamed" })).target).toEqual(
+      created.target,
+    );
+    await service.runOnce(created.id);
+    const updated = await service.update({
+      id: created.id,
+      newAgentConfig: { workspaceLabels: ["REVIEW", " review"] },
+    });
+    expect(updated.target).toEqual(created.target);
+    await service.runOnce(created.id);
+    expect(labelsAtStart).toEqual([["Review"], ["Review"]]);
+    const cleared = await service.update({
+      id: created.id,
+      newAgentConfig: { workspaceLabels: [] },
+    });
+    expect(cleared.target.config).not.toHaveProperty("workspaceLabels");
+    await service.runOnce(created.id);
+    expect(labelsAtStart[2]).toEqual([]);
+  });
+
+  test("deleting a label removes schedule references and dangling names never recreate it", async () => {
+    const { service, store, labels, labelsAtStart, input } = await labelFixture();
+    const created = await service.create(input);
+    await labels.delete("Review");
+    expect((await store.get(created.id))?.target.config).not.toHaveProperty("workspaceLabels");
+    // Simulate a crash after catalog deletion but before the best-effort schedule rewrite.
+    await store.update(created.id, (current) => ({ ...current, target: created.target }));
+    await service.runOnce(created.id);
+    expect(labelsAtStart).toEqual([[]]);
+    await expect(labels.resolveNames(["Review"])).rejects.toThrow("Label not found");
+  });
+
+  test("renaming a label rewrites schedules and the next run uses its canonical name", async () => {
+    const { service, store, labels, labelsAtStart, input } = await labelFixture();
+    const created = await service.create(input);
+    await labels.update({ name: "review", newName: "Ready" });
+    expect((await store.get(created.id))?.target.config.workspaceLabels).toEqual(["Ready"]);
+    await service.runOnce(created.id);
+    expect(labelsAtStart).toEqual([["Ready"]]);
+    await expect(labels.resolveNames(["Review"])).rejects.toThrow("Label not found");
+  });
+
+  test("label assignment failure archives the workspace before any agent starts", async () => {
+    const { service, workspaceRegistry, labelsAtStart, input } = await labelFixture(true);
+    const created = await service.create(input);
+    const result = await service.runOnce(created.id);
+    expect(result.runs).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        error: "Label storage unavailable",
+        agentId: null,
+      }),
+    ]);
+    expect((await workspaceRegistry.get(result.runs[0]!.workspaceId!))?.archivedAt).toEqual(
+      expect.any(String),
+    );
+    expect(labelsAtStart).toEqual([]);
+    expect(await agentStorage.list()).toEqual([]);
   });
 
   test("archiveOnFinish=false local runs create one active workspace per run", async () => {

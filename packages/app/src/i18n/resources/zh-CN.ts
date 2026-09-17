@@ -243,6 +243,12 @@ export const zhCN: TranslationResources = {
       question: "你想如何继续？",
       proposedPlan: "建议计划",
     },
+    questions: {
+      answerPlaceholder: "输入你的回答...",
+      submit: "发送回答",
+      answered: "已回答",
+      sendFailed: "无法发送你的回答",
+    },
   },
   agentPanel: {
     states: {
@@ -678,6 +684,7 @@ export const zhCN: TranslationResources = {
         reloadedAgent: "已重新加载 Agent",
         failedToReloadAgent: "重新加载 Agent 失败",
         failedToCloseAgent: "关闭 Agent 失败",
+        failedToSaveClosePreference: "无法保存终端关闭偏好设置",
       },
       confirmations: {
         unsavedTitle: "未保存的更改",
@@ -690,6 +697,8 @@ export const zhCN: TranslationResources = {
         archive: "归档",
         closeTerminalTitle: "关闭 Terminal？",
         closeTerminalMessage: "此 Terminal 中任何正在运行的进程都会立即停止。",
+        rememberChoice: "记住此选择",
+        closeAndDontAskAgain: "关闭并不再询问",
         archiveRunningAgentTitle: "归档正在运行的 Agent？",
         archiveRunningAgentMessage: "此 Agent 仍在运行。归档会停止该 Agent 并关闭标签。",
         closeTabsLeftTitle: "关闭左侧标签？",
@@ -774,6 +783,11 @@ export const zhCN: TranslationResources = {
           pending: "正在 commit...",
           success: "已 commit",
         },
+        commitAndPush: {
+          label: "Commit 并 push",
+          pending: "正在 commit 并 push...",
+          success: "已 commit 并 push",
+        },
         pull: {
           label: "Pull",
           pending: "正在 pull...",
@@ -841,6 +855,7 @@ export const zhCN: TranslationResources = {
           pullDirty: "有本地变更时无法 pull，请先 commit 或 stash",
           pullUpToDate: "无法 pull，因为此分支已是最新",
           pushNoRemote: "此处无法 push，因为此分支尚未连接到 remote",
+          commitAndPushNoRemote: "此处无法 commit 并 push，因为此分支尚未连接到 remote",
           pushBehind: "暂时无法 push，因为需要先拉取更新的变更",
           pushNothing: "无法 push，因为没有新的内容可发送",
           pullAndPushNoRemote: "此处无法 pull 并 push，因为此分支尚未连接到 remote",
@@ -870,6 +885,7 @@ export const zhCN: TranslationResources = {
         },
         toasts: {
           failedCommit: "Commit 失败",
+          failedCommitAndPush: "Commit 并 push 失败",
           failedPull: "Pull 失败",
           failedPush: "Push 失败",
           failedPullAndPush: "Pull 并 push 失败",
@@ -953,6 +969,10 @@ export const zhCN: TranslationResources = {
         openIn: "在 {{target}} 中打开 workspace",
         openFileIn: "在 {{target}} 中打开 {{fileName}}",
         failedOpen: "打开 workspace 失败",
+        failedOpenFile: "无法打开文件",
+        setUp: "设置…",
+        setUpRemoteHost: "设置在编辑器中打开此主机",
+        setUpToast: "要在编辑器中打开 {{host}}，请在“在编辑器中打开”下设置它的 SSH 主机。",
       },
       pr: {
         actions: {
@@ -1024,6 +1044,7 @@ export const zhCN: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "部分所选标签已不存在。请移除这些标签以继续。",
     title: "标签",
     unlabelled: "无标签",
     create: "新建标签",
@@ -1081,6 +1102,8 @@ export const zhCN: TranslationResources = {
       heading: "显示",
       grouping: {
         label: "分组",
+        currentLabel: "当前分组：{{current}}",
+        toggleLabel: "当前分组：{{current}}。切换分组方式",
         project: "项目",
         status: "状态",
         labels: "标签",
@@ -1442,6 +1465,11 @@ export const zhCN: TranslationResources = {
   startup: {
     errorTitle: "出现问题",
     errorDescription: "本地服务器启动失败。如果持续发生，请在 GitHub 报告问题并附上下方日志。",
+    status: {
+      connecting: "正在连接 Paseo daemon…",
+      loadingWorkspaces: "正在加载你的工作区…",
+      opening: "正在用 Paseo 打开此文件夹…",
+    },
     logs: {
       loading: "正在加载 daemon 日志...",
       unavailable: "没有可用的 daemon 日志。",
@@ -1704,6 +1732,12 @@ export const zhCN: TranslationResources = {
       unableToPair: "无法配对 host",
       errorTitle: "错误",
     },
+    relayAuth: {
+      pairAgain: "此设备已不再与主机配对。请在主机上扫描新的配对码。",
+      passwordChanged: "主机密码已更改。请在主机上扫描新的配对码。",
+      linkUsed: "此配对链接已被使用或已过期。请在主机上创建新的链接。",
+      rateLimited: "登录失败次数过多。请等待一分钟后重试。",
+    },
     device: {
       loadingOffer: "正在加载配对 offer...",
       failedToLoadOffer: "加载配对 offer 失败。",
@@ -1721,6 +1755,9 @@ export const zhCN: TranslationResources = {
       unavailable: "配对 offer 不可用。",
       hint: "用手机上的 Paseo 扫描此二维码，或复制下方链接。",
       securityWarning: "请像保管密码一样保管此配对链接。任何获得此链接的人都可以访问此守护进程。",
+      oneTimeWarning: "此链接只能配对一台设备，5 分钟后失效。请勿分享。",
+      expiresIn: "{{time}} 后过期",
+      newLink: "获取新链接",
       qrUnavailable: "二维码不可用。",
       qrAccessibility: "配对二维码",
       retry: "重试",
@@ -1794,6 +1831,7 @@ export const zhCN: TranslationResources = {
       loading: "正在加载文件...",
       noPreview: "没有可用预览",
       binaryPreviewUnavailable: "二进制预览不可用",
+      videoPlaybackFailed: "无法播放此视频。文件可能已损坏，或此设备不支持其格式。",
       tooLargeToDisplay: "此文件过大，无法显示",
       failedToLoad: "加载文件失败",
       failedToLoadPreview: "加载文件预览失败",
@@ -2012,7 +2050,7 @@ export const zhCN: TranslationResources = {
       },
       serviceUrls: {
         label: "服务 URL",
-        description: "运行脚本中的 URL 打开位置",
+        description: "脚本和终端中的 URL 打开位置",
         options: {
           ask: "询问",
           inApp: "在 Paseo 中",
@@ -2023,6 +2061,10 @@ export const zhCN: TranslationResources = {
         label: "终端回滚",
         description: "内置终端缓冲区保留的行数",
         accessibilityLabel: "终端回滚行数",
+      },
+      confirmTerminalClose: {
+        label: "关闭终端前确认",
+        description: "关闭终端标签前先询问",
       },
       autoExpandReasoning: {
         label: "始终展开推理过程",
@@ -2201,6 +2243,7 @@ export const zhCN: TranslationResources = {
         jumpToTab: "跳转到标签",
         previousWorkspace: "上一个 workspace",
         nextWorkspace: "下一个 workspace",
+        cycleSidebarGrouping: "切换分组方式",
         previousTab: "上一个标签",
         nextTab: "下一个标签",
         splitPaneRight: "向右拆分窗格",
@@ -2216,6 +2259,8 @@ export const zhCN: TranslationResources = {
         closePane: "关闭窗格",
         newTerminal: "新建终端",
         searchFiles: "搜索文件",
+        historyBack: "后退历史记录",
+        historyForward: "前进历史记录",
         toggleCommandCenter: "切换命令中心",
         showKeyboardShortcuts: "显示键盘快捷键",
         toggleLeftSidebar: "切换左侧边栏",
@@ -2300,6 +2345,21 @@ export const zhCN: TranslationResources = {
         },
         preview: {
           workspaceName: "my-workspace",
+        },
+      },
+      openInEditor: {
+        title: "在编辑器中打开",
+        info: "“在编辑器中打开”会启动本机安装的编辑器。当守护进程运行在另一台机器上时，编辑器通过 SSH 访问它：VS Code 和 Cursor 使用 Remote-SSH，Zed 使用 ssh:// 地址。",
+        sshHost: {
+          label: "SSH 主机",
+          hint: "让本机的编辑器通过 SSH 打开此主机上的文件",
+          notSet: "未设置",
+          editLabel: "编辑 SSH 主机",
+          modalTitle: "SSH 主机",
+          modalHint: "通常是你 ~/.ssh/config 中的别名，例如 my-dev-host。留空则关闭此功能。",
+          placeholder: "my-dev-host",
+          save: "保存",
+          invalid: "请使用单个 SSH 主机，不能包含空格或斜杠。",
         },
       },
       notFound: "Host 未找到",
