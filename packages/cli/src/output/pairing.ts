@@ -3,6 +3,7 @@ const ANSI_PATTERN = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, "g");
 interface PairingInstructions {
   url: string;
   qr: string | null;
+  expiresAt: string | null;
   columns?: number;
 }
 
@@ -32,6 +33,19 @@ function formatQr(qr: string | null, columns: number | undefined): string {
   return qr;
 }
 
-export function formatPairingInstructions({ url, qr, columns }: PairingInstructions): string {
-  return `\nScan to pair:\n${formatQr(qr, columns)}\n\nPairing link:\n${url}\n\nTreat this pairing link like a password. Anyone with it can access this daemon.\n`;
+function formatLinkWarning(expiresAt: string | null): string {
+  if (expiresAt === null) {
+    return "Treat this pairing link like a password. Anyone with it can access this daemon.";
+  }
+  const time = new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `This link pairs one device and stops working at ${time}. Don't share it.`;
+}
+
+export function formatPairingInstructions({
+  url,
+  qr,
+  expiresAt,
+  columns,
+}: PairingInstructions): string {
+  return `\nScan to pair:\n${formatQr(qr, columns)}\n\nPairing link:\n${url}\n\n${formatLinkWarning(expiresAt)}\n`;
 }

@@ -1,15 +1,21 @@
 /// <reference lib="dom" />
 import { EventEmitter } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import type pino from "pino";
 import {
   createDaemonChannel,
-  type Transport as RelayTransport,
+  parseRelayAuthFrame,
+  RELAY_AUTH_CLOSE_CODE,
+  type EncryptedChannel,
   type KeyPair,
+  type RelayAuthResultFrame,
+  type Transport as RelayTransport,
 } from "@getpaseo/relay/e2ee";
 import { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 import type { ExternalSocketMetadata } from "./websocket-server.js";
 import { createEncryptedRelaySocket } from "./websocket/encrypted-relay-socket.js";
+import type { RelayAuthenticator } from "./relay-auth/authenticator.js";
 
 export interface RelayTransportOptions {
   logger: pino.Logger;
@@ -18,6 +24,9 @@ export interface RelayTransportOptions {
   relayUseTls: boolean;
   serverId: string;
   daemonKeyPair?: KeyPair;
+  /** Requires each encrypted client to authenticate before its session attaches. */
+  authenticator?: RelayAuthenticator;
+  authTiming?: RelayAuthTiming;
   createWebSocket?: RelayWebSocketFactory;
 }
 
@@ -56,6 +65,15 @@ type ControlMessage =
 const CONTROL_PING_INTERVAL_MS = 10_000;
 const CONTROL_STALE_TIMEOUT_MS = 30_000;
 const CONTROL_READY_TIMEOUT_MS = 8_000;
+export interface RelayAuthTiming {
+  /** How long a client has to send its relay_auth frame. */
+  timeoutMs: number;
+  /** How often open sessions are checked against revoked devices and password changes. */
+  revocationCheckMs: number;
+}
+
+const DEFAULT_RELAY_AUTH_TIMING: RelayAuthTiming = { timeoutMs: 10_000, revocationCheckMs: 15_000 };
+const LEGACY_CLIENT_CLOSE_REASON = "Pairing required. Update the app and pair this device again.";
 const RELAY_WEBSOCKET_OPTIONS = { handshakeTimeout: 10_000, perMessageDeflate: false } as const;
 
 function createDefaultRelayWebSocket(url: string): RelayWebSocketLike {
@@ -113,6 +131,8 @@ export function startRelayTransport({
   relayUseTls,
   serverId,
   daemonKeyPair,
+  authenticator,
+  authTiming = DEFAULT_RELAY_AUTH_TIMING,
   createWebSocket = createDefaultRelayWebSocket,
 }: RelayTransportOptions): RelayTransportController {
   const relayLogger = logger.child({ module: "relay-transport" });
@@ -126,9 +146,37 @@ export function startRelayTransport({
   let controlReadyTimeout: ReturnType<typeof setTimeout> | null = null;
   let controlLastSeenAt = 0;
   let controlConnectionSeq = 0;
+  // The CLI revokes devices by editing the file, so open sessions are rechecked on a timer.
+  const authenticatedDevices = new Map<RelayWebSocketLike, AuthenticatedDevice>();
+  const revocationInterval = authenticator
+    ? setInterval(() => closeRevokedSessions(authenticator), authTiming.revocationCheckMs)
+    : null;
+
+  // Runs on a timer outside any request, so a thrown read would crash the daemon.
+  // An unreadable device file revokes every tracked session instead.
+  const closeRevokedSessions = (activeAuthenticator: RelayAuthenticator): void => {
+    if (authenticatedDevices.size === 0) return;
+    let active: Set<string>;
+    try {
+      active = activeAuthenticator.listActiveDeviceIds();
+    } catch (error) {
+      relayLogger.error({ err: error }, "relay_auth_device_check_failed_closing_sessions");
+      active = new Set();
+    }
+    for (const [socket, session] of authenticatedDevices) {
+      if (active.has(session.deviceId)) continue;
+      relayLogger.warn({ deviceId: session.deviceId }, "relay_auth_device_revoked_closing");
+      authenticatedDevices.delete(socket);
+      session.close();
+    }
+  };
 
   const stop = async (): Promise<void> => {
     stopped = true;
+    if (revocationInterval) {
+      clearInterval(revocationInterval);
+    }
+    authenticatedDevices.clear();
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
@@ -380,13 +428,18 @@ export function startRelayTransport({
         relayConnectionId: connectionId,
       };
       if (daemonKeyPair) {
-        void attachEncryptedSocket(
+        void attachEncryptedSocket({
           socket,
           daemonKeyPair,
-          relayLogger.child({ connectionId }),
+          authenticator,
+          authTimeoutMs: authTiming.timeoutMs,
+          onDeviceAuthenticated: (deviceId, close) => {
+            authenticatedDevices.set(socket, { deviceId, close });
+          },
+          logger: relayLogger.child({ connectionId }),
           attachSocket,
-          externalMetadata,
-        );
+          metadata: externalMetadata,
+        });
       } else {
         void attachSocket(socket, externalMetadata);
       }
@@ -398,6 +451,7 @@ export function startRelayTransport({
         { code, reason: reason?.toString?.(), url, connectionId },
         "relay_data_disconnected",
       );
+      authenticatedDevices.delete(socket);
       if (dataSockets.get(connectionId) === socket) {
         dataSockets.delete(connectionId);
       }
@@ -413,33 +467,89 @@ export function startRelayTransport({
   return { stop };
 }
 
-async function attachEncryptedSocket(
-  socket: RelayWebSocketLike,
-  daemonKeyPair: KeyPair,
-  logger: pino.Logger,
-  attachSocket: (ws: RelaySocketLike, metadata?: ExternalSocketMetadata) => Promise<void>,
-  metadata?: ExternalSocketMetadata,
-): Promise<void> {
+interface AuthenticatedDevice {
+  deviceId: string;
+  close: () => void;
+}
+
+type RelayAdmission = { admitted: false } | { admitted: true; deviceId: string | null };
+
+interface AttachEncryptedSocketInput {
+  socket: RelayWebSocketLike;
+  daemonKeyPair: KeyPair;
+  authenticator: RelayAuthenticator | undefined;
+  authTimeoutMs: number;
+  onDeviceAuthenticated: (deviceId: string, close: () => void) => void;
+  logger: pino.Logger;
+  attachSocket: (ws: RelaySocketLike, metadata?: ExternalSocketMetadata) => Promise<void>;
+  metadata: ExternalSocketMetadata;
+}
+
+async function attachEncryptedSocket({
+  socket,
+  daemonKeyPair,
+  authenticator,
+  authTimeoutMs,
+  onDeviceAuthenticated,
+  logger,
+  attachSocket,
+  metadata,
+}: AttachEncryptedSocketInput): Promise<void> {
   try {
     const relayTransport = createRelayTransportAdapter(socket, logger);
     const emitter = new EventEmitter();
     const pendingMessages: Array<string | ArrayBuffer> = [];
     let attached = false;
+    let awaitFirstMessage: ((data: string | ArrayBuffer) => void) | null = null;
     const emitMessage = (data: string | ArrayBuffer) => {
       if (attached) {
         emitter.emit("message", data);
         return;
       }
+      if (awaitFirstMessage) {
+        const deliver = awaitFirstMessage;
+        awaitFirstMessage = null;
+        deliver(data);
+        return;
+      }
       pendingMessages.push(data);
     };
-    const channel = await createDaemonChannel(relayTransport, daemonKeyPair, {
-      onmessage: emitMessage,
-      onclose: (code, reason) => emitter.emit("close", code, reason),
-      onerror: (error) => {
-        logger.warn({ err: error }, "relay_e2ee_error");
-        emitter.emit("error", error);
+    const channel = await createDaemonChannel(
+      relayTransport,
+      daemonKeyPair,
+      {
+        onmessage: emitMessage,
+        onclose: (code, reason) => emitter.emit("close", code, reason),
+        onerror: (error) => {
+          logger.warn({ err: error }, "relay_e2ee_error");
+          emitter.emit("error", error);
+        },
       },
-    });
+      { relayAuth: authenticator !== undefined },
+    );
+    if (authenticator) {
+      const firstMessage =
+        pendingMessages.shift() ??
+        (await Promise.race([
+          new Promise<string | ArrayBuffer>((resolve) => {
+            awaitFirstMessage = resolve;
+          }),
+          delay(authTimeoutMs, null, { ref: false }),
+        ]));
+      awaitFirstMessage = null;
+      const admission = await authenticateRelayClient({
+        channel,
+        authenticator,
+        firstMessage,
+        logger,
+      });
+      if (!admission.admitted) return;
+      if (admission.deviceId) {
+        onDeviceAuthenticated(admission.deviceId, () =>
+          channel.close(RELAY_AUTH_CLOSE_CODE, "invalid_credential"),
+        );
+      }
+    }
     const encryptedSocket = createEncryptedRelaySocket({
       channel,
       emitter,
@@ -460,6 +570,44 @@ async function attachEncryptedSocket(
       // ignore
     }
   }
+}
+
+async function authenticateRelayClient(input: {
+  channel: EncryptedChannel;
+  authenticator: RelayAuthenticator;
+  firstMessage: string | ArrayBuffer | null;
+  logger: pino.Logger;
+}): Promise<RelayAdmission> {
+  const { channel, logger } = input;
+  const frame =
+    typeof input.firstMessage === "string" ? parseRelayAuthFrame(input.firstMessage) : null;
+  if (!frame) {
+    logger.warn(
+      { timedOut: input.firstMessage === null },
+      "relay_auth_rejected_unauthenticated_client",
+    );
+    channel.close(RELAY_AUTH_CLOSE_CODE, LEGACY_CLIENT_CLOSE_REASON);
+    return { admitted: false };
+  }
+  const outcome = await input.authenticator.authenticate(frame);
+  const result: RelayAuthResultFrame = outcome.ok
+    ? {
+        type: "relay_auth_result",
+        ok: true,
+        ...(outcome.credential ? { credential: outcome.credential } : {}),
+      }
+    : { type: "relay_auth_result", ok: false, reason: outcome.reason };
+  await channel.send(JSON.stringify(result));
+  if (!outcome.ok) {
+    logger.warn({ method: frame.method, reason: outcome.reason }, "relay_auth_rejected");
+    channel.close(RELAY_AUTH_CLOSE_CODE, outcome.reason);
+    return { admitted: false };
+  }
+  logger.info(
+    { method: frame.method, deviceId: outcome.deviceId, issued: outcome.credential !== undefined },
+    "relay_auth_accepted",
+  );
+  return { admitted: true, deviceId: outcome.deviceId };
 }
 
 function createRelayTransportAdapter(

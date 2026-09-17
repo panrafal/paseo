@@ -150,6 +150,30 @@ describe("keyboard-shortcuts", () => {
       action: "workspace.new",
     },
     {
+      name: "matches Cmd+; to cycle sidebar grouping on mac",
+      event: { key: ";", code: "Semicolon", metaKey: true },
+      context: { isMac: true, commandCenterOpen: false },
+      action: "sidebar.grouping.cycle",
+    },
+    {
+      name: "matches Ctrl+; to cycle sidebar grouping on non-mac",
+      event: { key: ";", code: "Semicolon", ctrlKey: true },
+      context: { isMac: false, commandCenterOpen: false, focusScope: "other" },
+      action: "sidebar.grouping.cycle",
+    },
+    {
+      name: "matches Cmd+; when the keyboard layout requires Shift for semicolon",
+      event: { key: ";", code: "Comma", metaKey: true, shiftKey: true },
+      context: { isMac: true, commandCenterOpen: false },
+      action: "sidebar.grouping.cycle",
+    },
+    {
+      name: "matches Ctrl+; when the keyboard layout requires Shift for semicolon",
+      event: { key: ";", code: "Comma", ctrlKey: true, shiftKey: true },
+      context: { isMac: false, commandCenterOpen: false, focusScope: "other" },
+      action: "sidebar.grouping.cycle",
+    },
+    {
       name: "matches Cmd+P to search workspace files on mac",
       event: { key: "p", code: "KeyP", metaKey: true },
       context: { isMac: true, commandCenterOpen: false },
@@ -447,6 +471,21 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true, commandCenterOpen: true },
     },
     {
+      name: "leaves Cmd+; available while editing text on mac",
+      event: { key: ";", code: "Semicolon", metaKey: true },
+      context: { isMac: true, focusScope: "editable" },
+    },
+    {
+      name: "leaves Cmd+; available while a terminal is focused on mac",
+      event: { key: ";", code: "Semicolon", metaKey: true },
+      context: { isMac: true, focusScope: "terminal" },
+    },
+    {
+      name: "leaves Ctrl+; available while editing text on non-mac",
+      event: { key: ";", code: "Semicolon", ctrlKey: true },
+      context: { isMac: false, focusScope: "editable" },
+    },
+    {
       name: "does not close tab with Ctrl+W on mac desktop (Cmd+W only)",
       event: { key: "w", code: "KeyW", ctrlKey: true },
       context: { isMac: true, isDesktop: true },
@@ -651,6 +690,7 @@ describe("keyboard-shortcut help sections", () => {
       expectedKeys: {
         "new-agent": ["mod", "O"],
         "new-workspace": ["mod", "N"],
+        "cycle-sidebar-grouping": ["mod", ";"],
         "workspace-tab-new": ["mod", "T"],
         "workspace-jump-index": ["mod", "1-9"],
         "workspace-tab-jump-index": ["mod", "alt", "1-9"],
@@ -667,6 +707,7 @@ describe("keyboard-shortcut help sections", () => {
       name: "uses non-mac desktop defaults for tab jump and close tab",
       context: { isMac: false, isDesktop: true },
       expectedKeys: {
+        "cycle-sidebar-grouping": ["ctrl", ";"],
         "workspace-tab-jump-index": ["alt", "1-9"],
         "workspace-tab-close-current": ["ctrl", "W"],
       },
@@ -792,6 +833,7 @@ describe("keyboard-shortcut help sections", () => {
     const workspaces = sections.find((section) => section.id === "workspaces");
     const layout = sections.find((section) => section.id === "layout");
     const openProject = findRow(sections, "new-agent");
+    const cycleSidebarGrouping = findRow(sections, "cycle-sidebar-grouping");
     const cycleAgentMode = findRow(sections, "cycle-agent-mode");
     const showShortcuts = findRow(sections, "show-shortcuts");
 
@@ -799,6 +841,8 @@ describe("keyboard-shortcut help sections", () => {
     expect(layout?.titleKey).toBe("settings.shortcuts.sections.layout");
     expect(openProject?.labelKey).toBe("settings.shortcuts.help.openProject");
     expect(openProject?.label).toBe("Open project");
+    expect(workspaces?.rows.map((row) => row.id)).toContain("cycle-sidebar-grouping");
+    expect(cycleSidebarGrouping?.labelKey).toBe("settings.shortcuts.help.cycleSidebarGrouping");
     expect(cycleAgentMode?.labelKey).toBe("settings.shortcuts.help.cycleAgentMode");
     expect(showShortcuts?.noteKey).toBe("settings.shortcuts.helpNotes.showKeyboardShortcuts");
   });
@@ -844,6 +888,62 @@ describe("keyboard-shortcut help sections", () => {
       findRow(buildKeyboardShortcutHelpSections({ isMac: true, isDesktop: true }), "search-files")
         ?.chord,
     ).not.toBeNull();
+  });
+
+  it("lists configurable route history actions without conflicting defaults", () => {
+    const platform = { isMac: true, isDesktop: true };
+    const sections = buildKeyboardShortcutHelpSections(platform);
+
+    expect(findRow(sections, "history-back")).toMatchObject({
+      label: "History back",
+      labelKey: "settings.shortcuts.help.historyBack",
+      chord: null,
+    });
+    expect(findRow(sections, "history-forward")).toMatchObject({
+      label: "History forward",
+      labelKey: "settings.shortcuts.help.historyForward",
+      chord: null,
+    });
+    expect(getBindingIdForAction("history-back", platform)).toBe("navigation-history-back");
+    expect(getBindingIdForAction("history-forward", platform)).toBe("navigation-history-forward");
+  });
+
+  it("resolves user bindings for route history actions", () => {
+    const bindings = buildEffectiveBindings({
+      "navigation-history-back": "Ctrl+Alt+ArrowLeft",
+      "navigation-history-forward": "Ctrl+Alt+ArrowRight",
+    });
+
+    expect(
+      resolveShortcut({
+        event: { key: "ArrowLeft", code: "ArrowLeft", ctrlKey: true, altKey: true },
+        bindings,
+      }).match?.action,
+    ).toBe("navigation.history.back");
+    expect(
+      resolveShortcut({
+        event: { key: "ArrowRight", code: "ArrowRight", ctrlKey: true, altKey: true },
+        bindings,
+      }).match?.action,
+    ).toBe("navigation.history.forward");
+  });
+
+  it.each([
+    ["ArrowLeft", "navigation.history.back"],
+    ["ArrowRight", "navigation.history.forward"],
+  ] as const)("resolves %s route history bindings while the terminal is focused", (key, action) => {
+    const bindings = buildEffectiveBindings({
+      "navigation-history-back": "Ctrl+Alt+ArrowLeft",
+      "navigation-history-forward": "Ctrl+Alt+ArrowRight",
+    });
+
+    expect(
+      resolveShortcut({
+        event: { key, code: key, ctrlKey: true, altKey: true },
+        context: { focusScope: "terminal" },
+        bindings,
+      }).match?.action,
+    ).toBe(action);
   });
 
   it("does not expose Enter send behavior as rebindable shortcut rows", () => {

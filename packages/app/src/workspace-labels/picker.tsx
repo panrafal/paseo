@@ -38,7 +38,7 @@ import { WorkspaceLabelDot, WorkspaceLabelSwatchRow } from "./swatch";
 
 /** The `MenuSubTrigger` on a workspace's menu that opens the assign page. */
 export const WORKSPACE_LABEL_PAGE_ID = "workspaceLabels";
-const WORKSPACE_LABEL_CREATE_PAGE_ID = "workspaceLabelsCreate";
+export const WORKSPACE_LABEL_CREATE_PAGE_ID = "workspaceLabelsCreate";
 
 /** The menu's own icon size, matching the trailing check on every other row. */
 const MENU_ICON_SIZE = 14;
@@ -73,6 +73,18 @@ export function useWorkspaceLabelMenuPages(
   target: WorkspaceLabelTarget | null,
 ): readonly MenuPageDefinition[] {
   const { t } = useTranslation();
+  const create = useCallback(
+    async (label: WorkspaceLabelDefinition) => {
+      if (!target) return;
+      await workspaceLabels.setAssignment({
+        serverId: target.serverId,
+        workspaceId: target.workspaceId,
+        label,
+        assigned: true,
+      });
+    },
+    [target],
+  );
   return useMemo(() => {
     if (!target) return NO_PAGES;
     return [
@@ -92,12 +104,10 @@ export function useWorkspaceLabelMenuPages(
         title: t("workspaceLabels.create"),
         // A page you type into is not one the pointer opens or dismisses on its own.
         hoverIntent: false,
-        content: (
-          <WorkspaceLabelCreatePage serverId={target.serverId} workspaceId={target.workspaceId} />
-        ),
+        content: <WorkspaceLabelCreatePage serverId={target.serverId} onCreate={create} />,
       },
     ];
-  }, [t, target]);
+  }, [t, target, create]);
 }
 
 /**
@@ -151,14 +161,7 @@ function WorkspaceLabelPickerPage({
         />
       ))}
       {snapshot.rows.length > 0 ? <MenuSeparator /> : null}
-      <MenuSubTrigger
-        id={WORKSPACE_LABEL_CREATE_PAGE_ID}
-        leading={CREATE_LEADING}
-        disabled={offline}
-        testID="workspace-label-picker-create"
-      >
-        {t("workspaceLabels.create")}
-      </MenuSubTrigger>
+      <WorkspaceLabelCreateTrigger disabled={offline} />
       {snapshot.error ? (
         <MenuHint testID="workspace-label-picker-error">{snapshot.error}</MenuHint>
       ) : null}
@@ -166,6 +169,20 @@ function WorkspaceLabelPickerPage({
         <MenuHint>{t("workspaceLabels.updateHostUse")}</MenuHint>
       ) : null}
     </>
+  );
+}
+
+export function WorkspaceLabelCreateTrigger({ disabled }: { disabled?: boolean }): ReactElement {
+  const { t } = useTranslation();
+  return (
+    <MenuSubTrigger
+      id={WORKSPACE_LABEL_CREATE_PAGE_ID}
+      leading={CREATE_LEADING}
+      disabled={disabled}
+      testID="workspace-label-picker-create"
+    >
+      {t("workspaceLabels.create")}
+    </MenuSubTrigger>
   );
 }
 
@@ -207,12 +224,12 @@ function WorkspaceLabelAssignRow({
  * once the name is not empty. A failure keeps the draft and says what happened, because the
  * alternative is retyping the name to find out whether the host is still there.
  */
-function WorkspaceLabelCreatePage({
+export function WorkspaceLabelCreatePage({
   serverId,
-  workspaceId,
+  onCreate,
 }: {
   serverId: string;
-  workspaceId: string;
+  onCreate: (label: WorkspaceLabelDefinition) => Promise<unknown>;
 }): ReactElement {
   const { t } = useTranslation();
   const menu = useMenuContext("WorkspaceLabelCreatePage");
@@ -228,17 +245,11 @@ function WorkspaceLabelCreatePage({
     if (!trimmed || pending) return;
     setPending(true);
     setError(null);
-    workspaceLabels
-      .setAssignment({
-        serverId,
-        workspaceId,
-        label: { name: trimmed, color },
-        assigned: true,
-      })
+    onCreate({ name: trimmed, color })
       .then(() => menu.goBack())
       .catch((cause: unknown) => setError(workspaceLabelErrorMessage(cause)))
       .finally(() => setPending(false));
-  }, [color, menu, name, pending, serverId, workspaceId]);
+  }, [color, menu, name, pending, onCreate]);
 
   return (
     <>

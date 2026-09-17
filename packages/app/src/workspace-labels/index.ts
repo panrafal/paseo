@@ -1,3 +1,4 @@
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   workspaceLabelKey,
@@ -138,7 +139,22 @@ interface HostConnection {
   unsubscribe: () => void;
 }
 
+export type WorkspaceLabelChange = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.label.update" }
+>["payload"];
+
 class WorkspaceLabelsController {
+  private readonly changeListeners = new Set<
+    (serverId: string, change: WorkspaceLabelChange) => void
+  >();
+
+  subscribeChanges(listener: (serverId: string, change: WorkspaceLabelChange) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
   private readonly replicas = new Map<string, HostWorkspaceLabelReplica>();
   private readonly connections = new Map<string, HostConnection>();
 
@@ -175,6 +191,7 @@ class WorkspaceLabelsController {
           void this.refresh(input.serverId).catch(() => undefined);
           return;
         }
+        for (const listener of this.changeListeners) listener(input.serverId, message.payload);
         this.publish(input.serverId, replica, "online", null);
       },
       error: (error) => {
@@ -194,6 +211,10 @@ class WorkspaceLabelsController {
     this.connections.delete(serverId);
     const replica = this.replicas.get(serverId);
     if (replica) this.publish(serverId, replica, "offline", null);
+  }
+
+  async create(input: { serverId: string; label: WorkspaceLabelDefinition }) {
+    return this.mutate(input.serverId, (client) => client.createWorkspaceLabel(input));
   }
 
   async setAssignment(input: {
