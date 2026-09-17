@@ -20,16 +20,6 @@ export function parseNewWorkspaceDeepLink(input: unknown): string | null {
   return `/new${url.search}`;
 }
 
-export function parseNewWorkspaceDeepLinkFromArgv(argv: string[]): string | null {
-  for (const arg of argv) {
-    const route = parseNewWorkspaceDeepLink(arg);
-    if (route) {
-      return route;
-    }
-  }
-  return null;
-}
-
 export function redactNewWorkspacePromptFromArgv(argv: string[]): string[] {
   return argv.map((arg) => {
     if (!parseNewWorkspaceDeepLink(arg)) {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   parseNewWorkspaceDeepLink,
-  parseNewWorkspaceDeepLinkFromArgv,
   redactNewWorkspacePromptFromArgv,
 } from "./new-workspace-navigation";
 
@@ -20,16 +19,6 @@ describe("desktop new workspace navigation", () => {
     ).toBe(
       "/new?serverId=host-1&dir=%2Frepo&name=Repo&projectId=project-1&draftId=draft-1&q=Start",
     );
-  });
-
-  it("finds the deep link in desktop launch arguments", () => {
-    expect(
-      parseNewWorkspaceDeepLinkFromArgv([
-        "/Applications/Paseo.app/Contents/MacOS/Paseo",
-        "--no-sandbox",
-        "paseo://new?q=Start",
-      ]),
-    ).toBe("/new?q=Start");
   });
 
   it("rejects unrelated and nested custom-scheme URLs", () => {
