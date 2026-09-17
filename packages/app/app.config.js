@@ -5,6 +5,7 @@ const withAndroidAsyncStorageSize = require("./plugins/with-android-async-storag
 const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
 const withPasteInput = require("./plugins/with-paste-input");
+const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
 const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 // A fork builds under its own identity: its own bundle/package id, its own EAS
@@ -147,6 +148,7 @@ export default {
     plugins: [
       "expo-router",
       withPasteInput,
+      withAndroidScroll,
       [withAndroidAsyncStorageSize, 64],
       ...buildProfile.cameraPlugins,
       [
