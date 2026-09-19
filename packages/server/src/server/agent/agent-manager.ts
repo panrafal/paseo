@@ -124,6 +124,19 @@ export class AgentManagerShuttingDownError extends Error {
   }
 }
 
+// An agent whose worktree was removed keeps its recorded cwd, so resuming it to
+// read history fails here. Typed so callers that only wanted to read can report
+// it as an expected unavailability instead of an unexpected failure.
+export class WorkingDirectoryMissingError extends Error {
+  readonly cwd: string;
+
+  constructor(cwd: string, options?: { cause?: unknown }) {
+    super(`Working directory does not exist: ${cwd}`, options);
+    this.name = "WorkingDirectoryMissingError";
+    this.cwd = cwd;
+  }
+}
+
 export class AgentRunCancellationError extends Error {
   constructor(agentId: string, action: "reload" | "replace" | "rewind" | "stop") {
     super(
@@ -4995,7 +5008,7 @@ export class AgentManager {
           "code" in error &&
           (error as NodeJS.ErrnoException).code === "ENOENT"
         ) {
-          throw new Error(`Working directory does not exist: ${normalized.cwd}`, { cause: error });
+          throw new WorkingDirectoryMissingError(normalized.cwd, { cause: error });
         }
         if (error instanceof Error) {
           throw error;
