@@ -125,6 +125,9 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
     messageId: z.string().optional(),
     text: z.string(),
     // Reject old caches containing display fragments; refetch the complete source text.
+    questions: z
+      .array(z.strictObject({ title: z.string(), options: z.array(z.string()).optional() }))
+      .optional(),
   }),
   z.strictObject({
     ...TimelineItemBaseShape,
@@ -315,7 +318,9 @@ const StoredWorkspaceSchema = z.strictObject({
   labels: z.array(z.string()).optional(),
   status: z.enum(["needs_input", "failed", "running", "attention", "done"]),
   statusEnteredAt: IsoDateSchema.nullable(),
-  activityAt: z.null(),
+  // Rows written before the VS Code matcher needed activity stored `null` here; the
+  // nullable string keeps those parseable instead of evicting the whole cache.
+  activityAt: z.string().nullable(),
   archivingAt: z.string().nullable(),
   diffStat: z.strictObject({ additions: z.number(), deletions: z.number() }).nullable(),
   scripts: z.array(WorkspaceScriptSchema),
@@ -434,6 +439,7 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
         kind: item.kind,
         ...(item.messageId ? { messageId: item.messageId } : {}),
         text: item.text,
+        ...(item.questions ? { questions: item.questions } : {}),
       };
     case "thought":
       return { ...base, kind: item.kind, text: item.text, status: item.status };
@@ -524,6 +530,7 @@ function deserializeBuiltinTimelineItem(
         kind: item.kind,
         ...(item.messageId ? { messageId: item.messageId } : {}),
         text: item.text,
+        ...(item.questions ? { questions: item.questions } : {}),
       };
     case "thought":
       return { ...base, kind: item.kind, text: item.text, status: item.status };
@@ -687,7 +694,7 @@ function serializeWorkspace(workspace: WorkspaceDescriptor): StoredWorkspace {
     labels: workspace.labels,
     status: workspace.status,
     statusEnteredAt: workspace.statusEnteredAt?.toISOString() ?? null,
-    activityAt: null,
+    activityAt: workspace.activityAt,
     archivingAt: workspace.archivingAt,
     diffStat: workspace.diffStat,
     scripts: workspace.scripts.map((script) => ({

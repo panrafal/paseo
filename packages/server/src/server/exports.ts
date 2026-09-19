@@ -11,6 +11,7 @@ export {
 } from "./persisted-config.js";
 export { hashDaemonPassword, isBearerTokenValid } from "./auth.js";
 export { generateLocalPairingOffer, type LocalPairingOffer } from "./pairing-offer.js";
+export { RelayDeviceStore, type RelayDevice } from "./relay-auth/store.js";
 export {
   ConnectionOfferSchema,
   decodeOfferFragmentPayload,

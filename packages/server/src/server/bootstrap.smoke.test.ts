@@ -237,7 +237,7 @@ describe("paseo daemon bootstrap", () => {
         daemon: {
           ...initialPersisted.daemon,
           hostnames: ["127.0.0.1", "after.example.test"],
-          cors: { allowedOrigins: ["https://after.example.test"] },
+          cors: { allowedOrigins: ["after.example.test"] },
           trustedProxies: true as const,
           mcp: { enabled: false, injectIntoAgents: false },
           git: { maxProcessesPerSecond: 5, maxProcessConcurrency: 1 },
@@ -939,6 +939,7 @@ export default function contribute(plugin: unknown) {
           relayEnabled: true,
           relayEndpoint: "127.0.0.1:9",
           relayPublicEndpoint: "127.0.0.1:9",
+          deviceAuth: false,
           appBaseUrl: "https://app.paseo.sh",
           includeQr: false,
         });

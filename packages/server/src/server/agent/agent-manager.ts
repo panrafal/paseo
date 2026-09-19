@@ -124,6 +124,19 @@ export class AgentManagerShuttingDownError extends Error {
   }
 }
 
+// An agent whose worktree was removed keeps its recorded cwd, so resuming it to
+// read history fails here. Typed so callers that only wanted to read can report
+// it as an expected unavailability instead of an unexpected failure.
+export class WorkingDirectoryMissingError extends Error {
+  readonly cwd: string;
+
+  constructor(cwd: string, options?: { cause?: unknown }) {
+    super(`Working directory does not exist: ${cwd}`, options);
+    this.name = "WorkingDirectoryMissingError";
+    this.cwd = cwd;
+  }
+}
+
 export class AgentRunCancellationError extends Error {
   constructor(agentId: string, action: "reload" | "replace" | "rewind" | "stop") {
     super(
@@ -1241,7 +1254,12 @@ export class AgentManager {
       storedConfig.cwd,
       paseoToolPolicy,
       options?.env,
-      { reason: "create", purpose: "interactive", workspaceId: options.workspaceId ?? null },
+      {
+        reason: "create",
+        purpose: "interactive",
+        workspaceId: options.workspaceId ?? null,
+        labels: options.labels,
+      },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
@@ -1357,6 +1375,7 @@ export class AgentManager {
         reason: "resume",
         purpose: currentResumeOptions?.purpose ?? "interactive",
         workspaceId: options?.workspaceId ?? null,
+        labels: record?.labels ?? options?.labels,
       },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
@@ -1413,7 +1432,12 @@ export class AgentManager {
       storedConfig.cwd,
       paseoToolPolicy,
       undefined,
-      { reason: "import", purpose: "interactive", workspaceId: input.workspaceId },
+      {
+        reason: "import",
+        purpose: "interactive",
+        workspaceId: input.workspaceId,
+        labels: input.labels,
+      },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const imported = await client.importSession(
@@ -1508,7 +1532,12 @@ export class AgentManager {
       storedConfig.cwd,
       paseoToolPolicy,
       undefined,
-      { reason: "refresh", purpose: "interactive", workspaceId: existing.workspaceId },
+      {
+        reason: "refresh",
+        purpose: "interactive",
+        workspaceId: existing.workspaceId,
+        labels: existing.labels,
+      },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     if (
@@ -4995,7 +5024,7 @@ export class AgentManager {
           "code" in error &&
           (error as NodeJS.ErrnoException).code === "ENOENT"
         ) {
-          throw new Error(`Working directory does not exist: ${normalized.cwd}`, { cause: error });
+          throw new WorkingDirectoryMissingError(normalized.cwd, { cause: error });
         }
         if (error instanceof Error) {
           throw error;
@@ -5116,6 +5145,7 @@ export class AgentManager {
       reason: PluginSessionOpenRequest["reason"];
       purpose: PluginSessionOpenRequest["purpose"];
       workspaceId?: string | null;
+      labels?: Record<string, string>;
     },
   ): Promise<AgentLaunchContext> {
     if (this.pluginLifecycle) {
@@ -5126,6 +5156,7 @@ export class AgentManager {
         workspaceId: opening?.workspaceId ?? null,
         reason: opening?.reason ?? "resume",
         purpose: opening?.purpose ?? "interactive",
+        labels: { ...opening?.labels },
         env: { ...env },
       };
       const transformed = await this.pluginLifecycle.before("agent.session_open", request);

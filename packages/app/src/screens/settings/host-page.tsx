@@ -1,3 +1,4 @@
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import {
   ArrowDown,
   ArrowUp,
@@ -53,6 +54,7 @@ import { ProvidersSection } from "@/screens/settings/providers-section";
 import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { HostAppearanceSection } from "@/screens/settings/host-appearance-section";
+import { HostOpenInEditorSection } from "@/screens/settings/host-open-in-editor-section";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
@@ -226,12 +228,13 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
 }
 
 function HostConnectionError({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
   const snapshot = useHostRuntimeSnapshot(serverId);
   const lastError = snapshot?.lastError ?? null;
   const connectionError =
     typeof lastError === "string" && lastError.trim().length > 0 ? lastError.trim() : null;
   if (!connectionError) return null;
-  return <Text style={styles.errorText}>{connectionError}</Text>;
+  return <Text style={styles.errorText}>{formatHostConnectionError(connectionError, t)}</Text>;
 }
 
 export function HostConnectionsPage({ serverId }: { serverId: string }) {
@@ -343,7 +346,11 @@ export function HostUsagePage({ serverId }: { serverId: string }) {
 
   return (
     <View>
-      <ProviderUsageSettingsSection view={providerUsageView} onRefresh={handleRefresh} />
+      <ProviderUsageSettingsSection
+        serverId={serverId}
+        view={providerUsageView}
+        onRefresh={handleRefresh}
+      />
     </View>
   );
 }
@@ -373,6 +380,8 @@ export function HostSettingsPage({
       <HostStatusBadges serverId={serverId} />
 
       <HostAppearanceSection host={host} />
+
+      <HostOpenInEditorSection serverId={serverId} isLocalDaemon={isLocalDaemon} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 

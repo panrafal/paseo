@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, test } from "vitest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import { AgentManager } from "./agent-manager.js";
+import { AgentManager, WorkingDirectoryMissingError } from "./agent-manager.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
 import { AgentStorage } from "./agent-storage.js";
 import type {
@@ -78,5 +78,48 @@ test("loads archived records for history and active records with the interactive
     await manager.flush().catch(() => undefined);
     await storage.flush().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+// An archived agent keeps its recorded cwd after its worktree is removed, so a
+// read-only loader hits the missing directory. Callers need to tell that apart
+// from a genuine failure.
+test("reports a removed working directory as a typed error carrying the path", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "agent-loading-missing-cwd-"));
+  const workdir = await mkdtemp(path.join(tmpdir(), "agent-loading-worktree-"));
+  const logger = createTestLogger();
+  const storage = new AgentStorage(path.join(root, "agents"), logger);
+  const client = createTestAgentClients().codex;
+  if (!client) {
+    throw new Error("expected Codex test client");
+  }
+  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const agentId = "00000000-0000-4000-8000-000000000303";
+
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {
+      workspaceId: "workspace-removed",
+    });
+    await manager.archiveAgent(agent.id);
+    await manager.closeAgent(agent.id);
+    await rm(workdir, { recursive: true, force: true });
+
+    const error = await ensureAgentLoaded(agentId, {
+      agentManager: manager,
+      agentStorage: storage,
+      logger,
+    }).then(
+      () => null,
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toBeInstanceOf(WorkingDirectoryMissingError);
+    expect((error as WorkingDirectoryMissingError).cwd).toBe(workdir);
+  } finally {
+    await manager.closeAgent(agentId).catch(() => undefined);
+    await manager.flush().catch(() => undefined);
+    await storage.flush().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+    await rm(workdir, { recursive: true, force: true });
   }
 });
