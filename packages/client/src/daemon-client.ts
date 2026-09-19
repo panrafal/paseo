@@ -964,6 +964,23 @@ class PingTimeoutError extends Error {
   }
 }
 
+/**
+ * A timeline fetch the daemon answered with an error. `code` is set only when
+ * the daemon classified the failure; older daemons leave it undefined, which
+ * callers must treat as retryable.
+ */
+export class AgentTimelineFetchError extends Error {
+  readonly agentId: string;
+  readonly code?: string;
+
+  constructor(params: { agentId: string; error: string; code?: string }) {
+    super(params.error);
+    this.name = "AgentTimelineFetchError";
+    this.agentId = params.agentId;
+    this.code = params.code;
+  }
+}
+
 function toTimeoutError(error: unknown, label: string, timeoutMs: number): Error {
   if (error instanceof PingTimeoutError) {
     return new Error(`${label} timed out (${timeoutMs}ms)`);
@@ -3158,7 +3175,11 @@ export class DaemonClient {
     });
 
     if (payload.error) {
-      throw new Error(payload.error);
+      throw new AgentTimelineFetchError({
+        agentId,
+        error: payload.error,
+        code: payload.errorCode,
+      });
     }
 
     return payload;
