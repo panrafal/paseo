@@ -1591,9 +1591,10 @@ function ComposerContentImpl({
 
   const addFileMentions = useCallback(
     (relativePaths: string[]) => {
-      // The live snapshot, not the `userInput` prop: a mounted input owns its text and the prop
+      // The live snapshot, not the text source: a mounted input owns its text and the source
       // lags behind whatever the user has typed since the last draft commit.
-      const currentText = messageInputRef.current?.getInputSnapshot().text ?? userInput;
+      const currentText =
+        messageInputRef.current?.getInputSnapshot().text ?? textSource.getSnapshot();
       const nextInput = appendFileMentionPaths({ text: currentText, relativePaths });
       if (nextInput === currentText) {
         return;
@@ -1601,10 +1602,10 @@ function ComposerContentImpl({
       // replaceUserInput, never setUserInput. The input is uncontrolled, so a state-only update
       // reaches the draft and never the field — which is what silently swallowed dropped files.
       replaceUserInput(nextInput, { start: nextInput.length, end: nextInput.length });
-      setCursorIndex(nextInput.length);
+      cursor.setState(nextInput.length);
       messageInputRef.current?.focus();
     },
-    [replaceUserInput, userInput],
+    [cursor, replaceUserInput, textSource],
   );
 
   // "Send to Paseo" and anything else outside the React tree that wants a file in the prompt.
