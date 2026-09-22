@@ -860,7 +860,9 @@ describe("ClaudeAgentSession features", () => {
       ).ensureQuery(),
     ).resolves.toBeDefined();
 
-    expect(queryFactory.mock.calls[0]?.[0].options.settings).toMatchObject({ fastMode: true });
+    expect(queryFactory.mock.calls[0]?.[0].options.settings).toMatchObject({
+      fastMode: true,
+    });
     expect(queryMock.applyFlagSettings).toHaveBeenCalledWith({ fastMode: true });
 
     await session.close();
@@ -1775,7 +1777,7 @@ describe("ClaudeAgentSession context window usage", () => {
           type: "todo",
           items: [
             {
-              id: "1",
+              id: "task-create-1",
               text: "Inspect provider",
               activeForm: "Inspecting provider",
               status: "pending",
