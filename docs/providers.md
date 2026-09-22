@@ -52,9 +52,10 @@ ACP permission options are rendered as ordered actions and Paseo returns the sel
 ACP shims can own model discovery through `catalogModelResolver`; the shared client owns the probe
 process and refresh deadline. Keep vendor RPCs in the shim. Cursor uses
 `cursor/list_available_models` because switching models during discovery writes its saved CLI
-preferences and selection history. Cursor versions without that extension must be updated. Kimi
-still probes model selections in its own shim. The initial session supplies modes and the current
-model; it does not override the model list returned by a resolver.
+preferences and selection history. Cursor versions without that extension must be updated. Cursor
+todos use `cursor/update_todos` and `updateTodos` tool calls; ACP `sessionUpdate: "plan"` is the
+Create Plan tool. Kimi still probes model selections in its own shim. The initial session supplies
+modes and the current model; it does not override the model list returned by a resolver.
 
 ### Direct
 
@@ -63,6 +64,10 @@ Implement the `AgentClient` and `AgentSession` interfaces from `agent-sdk-types.
 Existing direct providers: `claude` (in `providers/claude/agent.ts`), `codex` (`codex-app-server-agent.ts`), `opencode` (`opencode-agent.ts`), `pi` (`providers/pi/agent.ts`), and `omp` (`providers/omp/agent.ts`). The dev-only `mock` provider (`mock-load-test-agent.ts`) is also direct.
 
 Claude first-party model metadata lives in `packages/server/src/server/agent/providers/claude/model-manifest.ts`. When adding or updating a Claude model, update that manifest only; the model picker thinking options and Claude-specific feature gates are derived from the manifest. Do not add model-specific Claude capability lists in feature code.
+
+Codex fast-mode availability comes from the app-server `model/list` speed tiers, fetched once per session at connect with hidden models included. The model-prefix list in `codex-feature-definitions.ts` is only the fallback for models the catalog does not describe; do not extend it for new first-party models.
+
+Codex models that expose `request_user_input_async` can ask the user a question without ending the turn. The adapter keeps it an ordinary `assistant_message` and attaches `questions`; the answer is a normal user prompt, which the app sends through the composer path so a live turn is steered. Do not model it as a permission request: nothing is blocked while it is open. The Codex `context_notes` feature maps to `features.context_management.experimental_mode`, which Codex reads only at thread start, so the adapter rejects changes once a thread exists.
 
 Paseo tools are not implemented as MCP tools internally. They live in a shared tool catalog under `packages/server/src/server/agent/tools/`; MCP is only the fallback adapter. The daemon resolves `agents.providers.<provider>.paseoTools` by the exact provider ID. The catalog policy belongs to the caller: it filters the tools exposed to the current agent. When that agent calls `create_agent`, the child receives the policy for the child provider ID; the caller's policy is not inherited.
 
@@ -191,11 +196,15 @@ To add plan usage for a provider, add `packages/server/src/services/quota-fetche
 - optional `balances` for credits, USD, requests, or tokens
 - optional `details` for provider-specific rows
 
-Keep the protocol shape provider-agnostic. Do not add provider-specific renderers for new limit windows; labels and generic bars should carry the UI. API responses should be parsed and normalized with Zod inside the fetcher, while the protocol boundary stays strict so old/new client compatibility is explicit.
+Keep limit windows and balances provider-agnostic; labels and generic bars carry their UI. Account actions such as Codex banked resets need their own capability-gated controls. Parse and normalize API responses with Zod inside the fetcher, while keeping the protocol boundary compatible across versions.
+
+Codex reset redemption spends an account resource. Confirm the selected reset, reuse its idempotency key on retry, and never automatically retry the POST. A timeout can arrive after the credit was spent, so invalidate pre-redemption usage reads even on failure. Keep reset-detail failures separate from quota-window availability, and honor the backend’s per-credit plan eligibility.
 
 Kimi Code usage follows the CLI-managed credential file at `KIMI_CODE_HOME` or `~/.kimi-code/credentials/kimi-code.json`; do not probe the legacy `~/.kimi` path as the primary source for current Kimi Code installs.
 
-Cursor usage reads the desktop `state.vscdb` token first, then `cursor-agent`'s `~/.config/cursor/auth.json`. Headless hosts only have the CLI file.
+Cursor usage uses `CURSOR_ACCESS_TOKEN` / `CURSOR_TOKEN` if set, otherwise the desktop `state.vscdb` token, then `cursor-agent`'s `~/.config/cursor/auth.json`. Headless hosts only have the CLI file.
+
+Kilo usage reads the CLI's OAuth token from `~/.local/share/kilo/auth.json` (`kilo.access`) and calls `GET https://api.kilo.ai/api/profile/balance`. Kilo's gateway has no limit/window endpoint yet, so this reports a single USD balance rather than a percentage window.
 
 ### Usage fetchers are read-only on credentials
 

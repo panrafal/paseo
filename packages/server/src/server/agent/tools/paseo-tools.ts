@@ -32,6 +32,7 @@ import {
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
 import { createAgentCommand, type CreateAgentFromMcpInput } from "../create-agent/create.js";
+import { mergeOmittedCreateAgentSettingsFromUniqueProfile } from "../create-agent/profile-settings.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import type { FirstAgentContext } from "../../messages.js";
 import { everyMsToFiveFieldCron } from "@getpaseo/protocol/schedule/cadence";
@@ -382,6 +383,7 @@ function resolveScheduleUpdateProviderAndModel(params: {
 }
 
 interface ScheduleUpdateToolInput {
+  workspaceLabels?: string[];
   id: string;
   every?: string;
   cron?: string;
@@ -470,6 +472,7 @@ function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateSchedul
     ...(providerModelPatch.model !== undefined ? { model: providerModelPatch.model } : {}),
     ...(input.mode !== undefined ? { modeId: input.mode } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+    ...(input.workspaceLabels !== undefined ? { workspaceLabels: input.workspaceLabels } : {}),
   };
 
   return {
@@ -760,6 +763,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
   };
 
   const resolveNewAgentScheduleTarget = (params?: {
+    workspaceLabels?: string[];
     provider?: string;
     cwd?: string;
     isolation?: "local" | "worktree";
@@ -771,6 +775,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         config: {
           ...buildCallerAgentScheduleConfig(callerAgent, params),
           ...(params?.isolation ? { isolation: params.isolation } : {}),
+          ...(params?.workspaceLabels !== undefined
+            ? { workspaceLabels: params.workspaceLabels }
+            : {}),
         },
       };
     }
@@ -790,6 +797,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         cwd: params?.cwd?.trim() ? expandUserPath(params.cwd) : process.cwd(),
         ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
         ...(params?.isolation ? { isolation: params.isolation } : {}),
+        ...(params?.workspaceLabels !== undefined
+          ? { workspaceLabels: params.workspaceLabels }
+          : {}),
       },
     };
   };
@@ -1435,7 +1445,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         requestedBackground = resolvedArgs.parsedArgs.background;
         notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
       }
-      const selectedProvider = resolveRequiredProviderModel(parsedArgs.provider).provider;
+      const resolvedProviderModel = resolveRequiredProviderModel(parsedArgs.provider);
+      const selectedProvider = resolvedProviderModel.provider;
+      const settings = mergeOmittedCreateAgentSettingsFromUniqueProfile({
+        profiles: daemonConfigStore?.get().agentProfiles ?? [],
+        provider: selectedProvider,
+        model: resolvedProviderModel.model,
+        settings: parsedArgs.settings,
+      });
       const inheritedConfig = resolveInheritedProviderConfig(selectedProvider);
       const {
         snapshot,
@@ -1463,10 +1480,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           config: inheritedConfig,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,
-          thinking: parsedArgs.settings?.thinkingOptionId,
-          features: parsedArgs.settings?.features,
+          thinking: settings?.thinkingOptionId,
+          features: settings?.features,
           labels: parsedArgs.labels,
-          mode: parsedArgs.settings?.modeId,
+          mode: settings?.modeId,
           background: requestedBackground,
           notifyOnFinish,
           detached: resolvedArgs.detached,
@@ -2535,12 +2552,27 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         ),
         cwd: z.string().optional(),
         isolation: z.enum(["local", "worktree"]).optional(),
+        workspaceLabels: z
+          .array(z.string().trim().min(1))
+          .optional()
+          .describe("Existing workspace label names; omitted or [] assigns none."),
         maxRuns: z.number().int().positive().optional(),
         expiresIn: z.string().optional(),
       },
       outputSchema: ScheduleSummarySchema.shape,
     },
-    async ({ prompt, cron, timezone, name, provider, cwd, isolation, maxRuns, expiresIn }) => {
+    async ({
+      prompt,
+      cron,
+      timezone,
+      name,
+      provider,
+      cwd,
+      isolation,
+      workspaceLabels,
+      maxRuns,
+      expiresIn,
+    }) => {
       if (!scheduleService) {
         throw new Error("Schedule service is not configured");
       }
@@ -2552,7 +2584,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           cron,
           ...(timezone !== undefined ? { timezone } : {}),
         }),
-        target: resolveNewAgentScheduleTarget({ provider, cwd, isolation }),
+        target: resolveNewAgentScheduleTarget({ provider, cwd, isolation, workspaceLabels }),
         ...(name?.trim() ? { name: name.trim() } : {}),
         ...(maxRuns === undefined ? {} : { maxRuns }),
         ...(expiresAt === undefined ? {} : { expiresAt }),
@@ -2808,6 +2840,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
             .nullable()
             .optional()
             .describe("New mode for new-agent target (null to clear)."),
+          workspaceLabels: z
+            .array(z.string().trim().min(1))
+            .optional()
+            .describe("Replace with existing label names; [] clears; omitted preserves."),
           cwd: z.string().trim().min(1).optional().describe("New cwd for new-agent target."),
           expiresIn: z
             .string()
