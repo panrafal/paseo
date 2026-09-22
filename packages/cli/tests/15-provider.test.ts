@@ -55,7 +55,7 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-opus-5",
     model: "Opus 5",
-    descriptionFragment: "Latest release",
+    descriptionFragment: "Previous release",
   },
   {
     id: "claude-fable-5-1",
@@ -195,6 +195,18 @@ function assertClaudeModels(data: ProviderModel[]): void {
     !byId.has("claude-fable-5[1m]"),
     "compatibility-only Fable aliases should not appear in CLI output",
   );
+
+  // Opus 5.5 is gated on Claude Code 2.1.280, so its presence depends on the installed CLI.
+  // When it is served it has to lead the Opus 5 pair the same way Fable 5.1 leads Fable 5.
+  const opus55Index = data.findIndex((model) => model.id === "claude-opus-5-5");
+  if (opus55Index !== -1) {
+    assert.strictEqual(opus55Index, 0, "Opus 5.5 should be listed first when the CLI has it");
+    assert.strictEqual(
+      data.findIndex((model) => model.id === "claude-opus-5"),
+      opus55Index + 1,
+      "Opus models should stay adjacent and newest-first",
+    );
+  }
 }
 
 try {
