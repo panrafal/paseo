@@ -59,3 +59,4 @@ origin/vscode
 origin/feat/plugin-session-open-labels
 tskimmett:fix/terminal-osc8-links-external
 origin/fix/timeline-fetch-missing-cwd
+leonardourci:feat/claude-opus-5-5
