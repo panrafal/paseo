@@ -91,6 +91,7 @@ const BcryptHashSchema = z.string().regex(/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/
 const DaemonAuthSchema = z
   .object({
     password: BcryptHashSchema.optional(),
+    allowLoopbackWithoutPassword: z.boolean().optional(),
   })
   .strict();
 
@@ -271,6 +272,8 @@ export const PersistedConfigSchema = z
         relay: z
           .object({
             enabled: z.boolean().optional(),
+            /** Require relay clients to pair with a one-time link and present a device credential. */
+            deviceAuth: z.boolean().optional(),
             endpoint: z.string().optional(),
             publicEndpoint: z.string().optional(),
             useTls: z.boolean().optional(),

@@ -24,6 +24,15 @@ describe("resolveToolCallIconName", () => {
     expect(resolveToolCallIconName("Task")).toBe("bot");
   });
 
+  it("uses the clock icon for sleep calls with plain text detail", () => {
+    const icon = resolveToolCallIconName("sleep", {
+      type: "plain_text",
+      text: "Sleeping for 2m 30s",
+    });
+
+    expect(icon).toBe("clock");
+  });
+
   it("keeps the brain icon override for thinking calls with unknown detail", () => {
     const icon = resolveToolCallIconName("thinking", {
       type: "unknown",
@@ -52,5 +61,14 @@ describe("resolveToolCallIconName", () => {
     });
 
     expect(icon).toBe("wrench");
+  });
+
+  it("uses the bot icon for every subagent tool name", () => {
+    for (const name of ["Task", "Agent", "Workflow"]) {
+      expect(
+        resolveToolCallIconName(name, { type: "unknown", input: null, output: null }),
+        name,
+      ).toBe("bot");
+    }
   });
 });
