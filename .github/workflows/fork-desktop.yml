@@ -72,6 +72,7 @@ jobs:
         include:
           - runner: macos-14
             electron_arch: arm64
+            node_heap_mb: 4096
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -104,6 +105,10 @@ jobs:
         env:
           CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # Metro's jest workers OOM on the generated ws-outbound.aot.js
+          # validator with Node's default heap. Same fix as upstream's
+          # desktop-release.yml.
+          NODE_OPTIONS: --max-old-space-size=${{ matrix.node_heap_mb }}
         run: |
           set -euo pipefail
           : "${CSC_LINK:?APPLE_CERTIFICATE repo secret is required}"
