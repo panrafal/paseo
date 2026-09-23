@@ -215,7 +215,7 @@ export default function contribute(server) {
       .toMatchObject([
         {
           hook: "agent.session_open",
-          request: { agentId: agent.id, env: { HOOK_CREATE: "created" } },
+          request: { agentId: agent.id, labels: {}, env: { HOOK_CREATE: "created" } },
         },
         { hook: "agent.created", event: { agent: { id: agent.id, provider: "codex" } } },
       ]);

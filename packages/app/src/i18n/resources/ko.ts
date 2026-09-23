@@ -244,6 +244,12 @@ export const ko: TranslationResources = {
       question: "어떻게 진행할까요?",
       proposedPlan: "제안된 계획",
     },
+    questions: {
+      answerPlaceholder: "답변을 입력하세요...",
+      submit: "답변 보내기",
+      answered: "답변함",
+      sendFailed: "답변을 보내지 못했습니다",
+    },
   },
   agentPanel: {
     states: {
@@ -681,6 +687,7 @@ export const ko: TranslationResources = {
         reloadedAgent: "에이전트를 다시 로드했습니다",
         failedToReloadAgent: "에이전트를 다시 로드하지 못했습니다",
         failedToCloseAgent: "에이전트를 닫지 못했습니다",
+        failedToSaveClosePreference: "터미널 닫기 설정을 저장하지 못했습니다",
       },
       confirmations: {
         close: "닫기",
@@ -694,6 +701,8 @@ export const ko: TranslationResources = {
           "{{count}} 탭에 저장되지 않은 변경 사항이 있습니다. 종료하면 해당 초안이 삭제됩니다.",
         closeTerminalTitle: "터미널을 닫을까요?",
         closeTerminalMessage: "이 터미널에서 실행 중인 프로세스가 즉시 중지됩니다.",
+        rememberChoice: "이 선택 기억하기",
+        closeAndDontAskAgain: "닫고 다시 묻지 않기",
         archiveRunningAgentTitle: "실행 중인 에이전트를 보관할까요?",
         archiveRunningAgentMessage:
           "이 에이전트는 아직 실행 중입니다. 보관하면 에이전트가 중지되고 탭이 닫힙니다.",
@@ -779,6 +788,11 @@ export const ko: TranslationResources = {
           pending: "커밋하는 중...",
           success: "커밋됨",
         },
+        commitAndPush: {
+          label: "커밋 후 푸시",
+          pending: "커밋하고 푸시하는 중...",
+          success: "커밋 후 푸시됨",
+        },
         pull: {
           label: "풀",
           pending: "가져오는 중...",
@@ -847,6 +861,8 @@ export const ko: TranslationResources = {
           pullUpToDate: "이 브랜치가 이미 최신 상태이므로 풀을 사용할 수 없습니다",
           pushNoRemote:
             "이 브랜치가 아직 원격에 연결되어 있지 않아 여기서 푸시를 사용할 수 없습니다",
+          commitAndPushNoRemote:
+            "이 브랜치가 아직 원격에 연결되지 않아 커밋 후 푸시를 사용할 수 없습니다",
           pushBehind: "먼저 가져와야 할 최신 변경 사항이 있어 아직 푸시를 사용할 수 없습니다",
           pushNothing: "새로 보낼 항목이 없어 푸시를 사용할 수 없습니다",
           pullAndPushNoRemote:
@@ -886,6 +902,7 @@ export const ko: TranslationResources = {
         },
         toasts: {
           failedCommit: "커밋하지 못했습니다",
+          failedCommitAndPush: "커밋 후 푸시하지 못했습니다",
           failedPull: "가져오지 못했습니다",
           failedPush: "푸시하지 못했습니다",
           failedPullAndPush: "풀 후 푸시하지 못했습니다",
@@ -969,6 +986,10 @@ export const ko: TranslationResources = {
         openIn: "{{target}}에서 워크스페이스 열기",
         openFileIn: "{{target}}에서 {{fileName}} 열기",
         failedOpen: "워크스페이스를 열지 못했습니다",
+        failedOpenFile: "파일을 열지 못했습니다",
+        setUp: "설정…",
+        setUpRemoteHost: "이 호스트를 에디터에서 여는 설정",
+        setUpToast: "{{host}}을(를) 에디터에서 열려면 에디터에서 열기에서 SSH 호스트를 설정하세요.",
       },
       pr: {
         actions: {
@@ -1040,6 +1061,8 @@ export const ko: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection:
+      "선택한 라벨 중 일부가 더 이상 존재하지 않습니다. 계속하려면 해당 라벨을 제거하세요.",
     title: "레이블",
     unlabelled: "레이블 없음",
     create: "레이블 만들기",
@@ -1097,6 +1120,8 @@ export const ko: TranslationResources = {
       heading: "표시",
       grouping: {
         label: "그룹화",
+        currentLabel: "현재 그룹화: {{current}}",
+        toggleLabel: "현재 그룹화: {{current}}. 그룹화 전환",
         project: "프로젝트",
         status: "상태",
         labels: "레이블",
@@ -1469,6 +1494,11 @@ export const ko: TranslationResources = {
     errorTitle: "문제가 발생했습니다",
     errorDescription:
       "로컬 서버를 시작하지 못했습니다. 이 문제가 계속되면 아래 로그를 포함하여 GitHub에 문제를 보고해 주세요.",
+    status: {
+      connecting: "Paseo 데몬에 연결 중…",
+      loadingWorkspaces: "워크스페이스를 불러오는 중…",
+      opening: "Paseo에서 이 폴더를 여는 중…",
+    },
     logs: {
       loading: "데몬 로그 불러오는 중...",
       unavailable: "사용 가능한 데몬 로그가 없습니다.",
@@ -1733,6 +1763,13 @@ export const ko: TranslationResources = {
       unableToPair: "호스트를 페어링할 수 없습니다",
       errorTitle: "오류",
     },
+    relayAuth: {
+      pairAgain:
+        "이 기기는 더 이상 호스트와 페어링되어 있지 않습니다. 호스트에서 새 페어링 코드를 스캔하세요.",
+      passwordChanged: "호스트 비밀번호가 변경되었습니다. 호스트에서 새 페어링 코드를 스캔하세요.",
+      linkUsed: "이 페어링 링크는 이미 사용되었거나 만료되었습니다. 호스트에서 새 링크를 만드세요.",
+      rateLimited: "로그인 실패가 너무 많습니다. 1분 후에 다시 시도하세요.",
+    },
     device: {
       loadingOffer: "페어링 정보 불러오는 중...",
       failedToLoadOffer: "페어링 정보를 불러오지 못했습니다.",
@@ -1753,6 +1790,9 @@ export const ko: TranslationResources = {
       hint: "휴대폰의 Paseo로 이 QR 코드를 스캔하거나 아래 링크를 복사하세요.",
       securityWarning:
         "이 페어링 링크는 비밀번호처럼 취급하세요. 링크를 가진 사람은 누구나 이 데몬에 접근할 수 있습니다.",
+      oneTimeWarning: "이 링크는 기기 한 대만 페어링하며 5분 후에 만료됩니다. 공유하지 마세요.",
+      expiresIn: "{{time}} 후 만료",
+      newLink: "새 링크 받기",
       qrUnavailable: "QR 코드를 사용할 수 없습니다.",
       qrAccessibility: "페어링 QR 코드",
       retry: "다시 시도",
@@ -1826,6 +1866,8 @@ export const ko: TranslationResources = {
       loading: "파일 불러오는 중...",
       noPreview: "사용 가능한 미리보기가 없습니다",
       binaryPreviewUnavailable: "바이너리 미리보기를 사용할 수 없습니다",
+      videoPlaybackFailed:
+        "이 동영상을 재생할 수 없습니다. 파일이 손상되었거나 이 기기에서 지원하지 않는 형식일 수 있습니다.",
       tooLargeToDisplay: "이 파일은 너무 커서 표시할 수 없습니다",
       failedToLoad: "파일을 불러오지 못했습니다",
       failedToLoadPreview: "파일 미리보기를 불러오지 못했습니다",
@@ -2048,7 +2090,7 @@ export const ko: TranslationResources = {
       },
       serviceUrls: {
         label: "서비스 URL",
-        description: "실행 중인 스크립트의 URL을 열 위치",
+        description: "스크립트 및 터미널의 URL을 열 위치",
         options: {
           ask: "물어보기",
           inApp: "Paseo에서",
@@ -2059,6 +2101,10 @@ export const ko: TranslationResources = {
         label: "터미널 스크롤백",
         description: "내장 터미널 버퍼에 보관되는 줄 수",
         accessibilityLabel: "터미널 스크롤백 줄 수",
+      },
+      confirmTerminalClose: {
+        label: "터미널 닫기 전 확인",
+        description: "터미널 탭을 닫기 전에 물어봅니다",
       },
       autoExpandReasoning: {
         label: "추론 항상 펼치기",
@@ -2238,6 +2284,7 @@ export const ko: TranslationResources = {
         jumpToTab: "탭으로 이동",
         previousWorkspace: "이전 워크스페이스",
         nextWorkspace: "다음 워크스페이스",
+        cycleSidebarGrouping: "그룹화 전환",
         previousTab: "이전 탭",
         nextTab: "다음 탭",
         splitPaneRight: "창을 오른쪽으로 분할",
@@ -2253,6 +2300,8 @@ export const ko: TranslationResources = {
         closePane: "창 닫기",
         newTerminal: "새 터미널",
         searchFiles: "파일 검색",
+        historyBack: "기록 뒤로",
+        historyForward: "기록 앞으로",
         toggleCommandCenter: "명령 센터 토글",
         showKeyboardShortcuts: "키보드 단축키 표시",
         toggleLeftSidebar: "왼쪽 사이드바 토글",
@@ -2337,6 +2386,21 @@ export const ko: TranslationResources = {
         },
         preview: {
           workspaceName: "내-워크스페이스",
+        },
+      },
+      openInEditor: {
+        title: "에디터에서 열기",
+        info: "에디터에서 열기는 이 컴퓨터에 설치된 에디터를 실행합니다. 데몬이 다른 머신에서 실행 중이면 에디터가 SSH로 접근합니다. VS Code와 Cursor는 Remote-SSH를, Zed는 ssh:// URL을 사용합니다.",
+        sshHost: {
+          label: "SSH 호스트",
+          hint: "이 컴퓨터의 에디터가 SSH로 이 호스트의 파일을 열 수 있게 합니다",
+          notSet: "설정되지 않음",
+          editLabel: "SSH 호스트 편집",
+          modalTitle: "SSH 호스트",
+          modalHint: "보통 ~/.ssh/config의 별칭입니다(예: my-dev-host). 비워 두면 비활성화됩니다.",
+          placeholder: "my-dev-host",
+          save: "저장",
+          invalid: "공백이나 슬래시 없이 하나의 SSH 호스트를 사용하세요.",
         },
       },
       notFound: "호스트를 찾을 수 없습니다",

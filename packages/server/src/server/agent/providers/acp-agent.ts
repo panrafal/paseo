@@ -14,9 +14,11 @@ import type {
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
+  RequestError,
   type AgentCapabilities as ACPAgentCapabilities,
   type Error as ACPError,
   type AnyMessage,
+  type AvailableCommand,
   type Client as ACPClient,
   type ClientCapabilities as ACPClientCapabilities,
   type ConfigOptionUpdate,
@@ -31,7 +33,6 @@ import {
   type McpServer,
   type NewSessionResponse,
   type PermissionOption,
-  type Plan,
   type PromptResponse,
   type ReadTextFileRequest,
   type RequestPermissionRequest,
@@ -81,6 +82,7 @@ import {
   type AgentSession,
   type AgentSessionConfig,
   type AgentSlashCommand,
+  type AgentSlashCommandKind,
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
@@ -125,6 +127,14 @@ import {
   truncateForDiagnostic,
 } from "./diagnostic-utils.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
+import {
+  AcpTaskState,
+  CURSOR_UPDATE_TODOS_METHOD,
+  isAcpTodoMerge,
+  isAcpTodoToolInput,
+  mapPlanEntriesToTodo,
+  parseAcpTodoItems,
+} from "./acp-task-state.js";
 
 const ACP_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
 
@@ -386,6 +396,11 @@ export type ACPExtensionCommandsParser = (
   params: Record<string, unknown>,
 ) => AgentSlashCommand[] | null;
 
+// Lets a provider classify entries from the standard `available_commands_update`
+// session update (e.g. telling skills apart from built-in commands) without the
+// generic session carrying vendor knowledge.
+export type ACPSlashCommandKindResolver = (command: AvailableCommand) => AgentSlashCommandKind;
+
 /**
  * Context handed to an {@link ACPCatalogModelResolver} during `fetchCatalog`. It exposes
  * the already-derived models plus the live probe session so a resolver can refine them
@@ -438,6 +453,7 @@ interface ACPAgentClientOptions {
   ) => Promise<void>;
   capabilities?: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  slashCommandKindResolver?: ACPSlashCommandKindResolver;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
@@ -469,6 +485,7 @@ interface ACPAgentSessionOptions {
   ) => Promise<void>;
   capabilities: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  slashCommandKindResolver?: ACPSlashCommandKindResolver;
   handle?: AgentPersistenceHandle;
   agentId?: string;
   launchEnv?: Record<string, string>;
@@ -678,11 +695,28 @@ export function mapACPUsage(usage: Usage | null | undefined): AgentUsage | undef
     return undefined;
   }
 
-  return {
-    inputTokens: usage.inputTokens ?? undefined,
-    outputTokens: usage.outputTokens ?? undefined,
-    cachedInputTokens: usage.cachedReadTokens ?? undefined,
+  const mapped: AgentUsage = {};
+  if (typeof usage.inputTokens === "number") {
+    mapped.inputTokens = usage.inputTokens;
+  }
+  if (typeof usage.outputTokens === "number") {
+    mapped.outputTokens = usage.outputTokens;
+  }
+  if (typeof usage.cachedReadTokens === "number") {
+    mapped.cachedInputTokens = usage.cachedReadTokens;
+  }
+  return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
+
+export function mapACPUsageUpdate(update: UsageUpdate): AgentUsage {
+  const mapped: AgentUsage = {
+    contextWindowMaxTokens: update.size,
+    contextWindowUsedTokens: update.used,
   };
+  if (update.cost?.currency === "USD") {
+    mapped.totalCostUsd = update.cost.amount;
+  }
+  return mapped;
 }
 
 export function resolveACPModeSelection({
@@ -901,6 +935,7 @@ export class ACPAgentClient implements AgentClient {
   private readonly waitForInitialCommands: boolean;
   private readonly initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly slashCommandKindResolver?: ACPSlashCommandKindResolver;
   private readonly importPromptCache = new Map<string, ACPImportPromptCacheEntry>();
   private readonly now: () => number;
   protected readonly terminateProcess: ProcessTerminator;
@@ -931,6 +966,7 @@ export class ACPAgentClient implements AgentClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.slashCommandKindResolver = options.slashCommandKindResolver;
     this.now = options.now ?? Date.now;
   }
 
@@ -962,6 +998,7 @@ export class ACPAgentClient implements AgentClient {
         agentId: launchContext?.agentId,
         launchEnv: launchContext?.env,
         extensionCommandsParser: this.extensionCommandsParser,
+        slashCommandKindResolver: this.slashCommandKindResolver,
         waitForInitialCommands: this.waitForInitialCommands,
         initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
       },
@@ -1013,6 +1050,7 @@ export class ACPAgentClient implements AgentClient {
       agentId: launchContext?.agentId,
       launchEnv: launchContext?.env,
       extensionCommandsParser: this.extensionCommandsParser,
+      slashCommandKindResolver: this.slashCommandKindResolver,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
     });
@@ -1657,6 +1695,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private pendingUserMessage: PendingUserMessage | null = null;
   private submittedUserMessageTurnId: string | null = null;
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
+  private readonly taskState = new AcpTaskState();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
   private readonly initialHandle?: AgentPersistenceHandle;
@@ -1680,6 +1719,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly slashCommandKindResolver?: ACPSlashCommandKindResolver;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
   private fallbackAssistantMessageId: string | null = null;
@@ -1720,6 +1760,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.slashCommandKindResolver = options.slashCommandKindResolver;
   }
 
   get id(): string | null {
@@ -2563,6 +2604,45 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
       });
     }
+
+    if (method !== CURSOR_UPDATE_TODOS_METHOD) {
+      return;
+    }
+    this.applyCursorTodos(params);
+  }
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    this.logger.trace(
+      {
+        agentId: this.agentId,
+        provider: this.provider,
+        sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
+        method,
+        rawEvent: params,
+      },
+      "provider.acp.extension_method",
+    );
+
+    if (method !== CURSOR_UPDATE_TODOS_METHOD) {
+      throw RequestError.methodNotFound(method);
+    }
+    this.applyCursorTodos(params);
+    return {};
+  }
+
+  private applyCursorTodos(params: Record<string, unknown>): void {
+    const parsed = parseAcpTodoItems(params);
+    if (!parsed) {
+      return;
+    }
+    this.deliverTranslatedEvents([
+      this.wrapTimeline(
+        this.taskState.apply(parsed.items, isAcpTodoMerge(params), parsed.removedIds),
+      ),
+    ]);
   }
 
   // Cache an asynchronously-delivered slash-command batch and unblock any
@@ -2894,7 +2974,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         ];
       case "plan":
         this.fallbackAssistantMessageId = null;
-        return [...pendingUserEvents, this.wrapTimeline(mapPlanToTimeline(update))];
+        return [
+          ...pendingUserEvents,
+          this.wrapTimeline(this.taskState.replace(mapPlanEntriesToTodo(update.entries).items)),
+        ];
       case "current_mode_update":
         this.handleCurrentModeUpdate(update);
         return [
@@ -2912,14 +2995,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.handleSessionInfoUpdate(update);
         return pendingUserEvents;
       case "usage_update":
-        this.handleUsageUpdate(update);
-        return pendingUserEvents;
+        return [...pendingUserEvents, ...this.handleUsageUpdate(update)];
       case "available_commands_update":
         this.cachedCommands = update.availableCommands.map((command) => ({
           name: command.name,
           description: command.description,
-          argumentHint: "",
-          kind: "command",
+          argumentHint: command.input?.hint ?? "",
+          kind: this.slashCommandKindResolver?.(command) ?? "command",
         }));
         this.settleCommandsReady();
         return pendingUserEvents;
@@ -2986,7 +3068,25 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       snapshot = this.toolSnapshotTransformer(snapshot);
     }
     this.toolCalls.set(toolCallId, snapshot);
+    const todo = this.mapTodoSnapshot(snapshot.rawInput, snapshot.title);
+    if (todo) {
+      return [this.wrapTimeline(todo)];
+    }
     return [this.wrapTimeline(mapToolSnapshotToTimeline(snapshot, this.terminalEntries))];
+  }
+
+  private mapTodoSnapshot(
+    rawInput: unknown,
+    title?: string | null,
+  ): Extract<AgentTimelineItem, { type: "todo" }> | null {
+    if (!isAcpTodoToolInput(rawInput, title)) {
+      return null;
+    }
+    const parsed = parseAcpTodoItems(rawInput);
+    if (!parsed) {
+      return null;
+    }
+    return this.taskState.apply(parsed.items, isAcpTodoMerge(rawInput), parsed.removedIds);
   }
 
   private createMessageTimelineItem(
@@ -3073,12 +3173,27 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
   }
 
-  private handleUsageUpdate(update: UsageUpdate): void {
-    void update;
+  private handleUsageUpdate(update: UsageUpdate): AgentStreamEvent[] {
+    if (!(update.size > 0)) {
+      return [];
+    }
+    const usage = { ...this.currentTurnUsage, ...mapACPUsageUpdate(update) };
+    this.currentTurnUsage = usage;
+    return [
+      {
+        type: "usage_updated",
+        provider: this.provider,
+        usage,
+        ...(this.activeForegroundTurnId ? { turnId: this.activeForegroundTurnId } : {}),
+      },
+    ];
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
-    this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
+    const promptUsage = mapACPUsage(response.usage);
+    this.currentTurnUsage = promptUsage
+      ? { ...this.currentTurnUsage, ...promptUsage }
+      : this.currentTurnUsage;
 
     switch (response.stopReason) {
       case "cancelled":
@@ -3498,16 +3613,6 @@ function mergeToolSnapshot(
     locations: coalesceDefined(update.locations, previous?.locations, null),
     rawInput: update.rawInput !== undefined ? update.rawInput : previous?.rawInput,
     rawOutput: update.rawOutput !== undefined ? update.rawOutput : previous?.rawOutput,
-  };
-}
-
-function mapPlanToTimeline(plan: Plan): AgentTimelineItem {
-  return {
-    type: "todo",
-    items: plan.entries.map((entry) => ({
-      text: entry.content,
-      completed: entry.status === "completed",
-    })),
   };
 }
 

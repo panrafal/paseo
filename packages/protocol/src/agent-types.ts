@@ -205,6 +205,10 @@ export const TOOL_CALL_ICON_NAMES = [
   "sparkles",
   "brain",
   "mic_vocal",
+  "calendar_clock",
+  "alarm_clock",
+  "message_square",
+  "bell",
 ] as const;
 
 export type ToolCallIconName = (typeof TOOL_CALL_ICON_NAMES)[number];
@@ -370,7 +374,13 @@ export interface AgentTaskItem {
 
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
-  | { type: "assistant_message"; text: string; messageId?: string }
+  | {
+      type: "assistant_message";
+      text: string;
+      messageId?: string;
+      /** Asked without pausing the turn; the answer arrives as a later user message. */
+      questions?: Array<{ title: string; options?: string[] }>;
+    }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
