@@ -61,3 +61,4 @@ tskimmett:fix/terminal-osc8-links-external
 origin/fix/timeline-fetch-missing-cwd
 
 origin/stored-agent-busy-status
+origin/fix/acp-child-process-leak
