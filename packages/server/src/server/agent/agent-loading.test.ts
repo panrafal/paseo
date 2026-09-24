@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, test } from "vitest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import { AgentManager } from "./agent-manager.js";
+import { AgentManager, WorkingDirectoryMissingError } from "./agent-manager.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
 import { startAgentRun } from "./agent-prompt.js";
 import { AgentStorage } from "./agent-storage.js";
@@ -192,6 +192,50 @@ test("loads an archived agent's history after its working directory is removed",
     expect(replies.every((item) => item.type === "assistant_message" && item.text.length > 0)).toBe(
       true,
     );
+  } finally {
+    await manager.closeAgent(agentId).catch(() => undefined);
+    await manager.flush().catch(() => undefined);
+    await storage.flush().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// A closed active agent keeps its recorded cwd after its worktree is removed, so an
+// interactive loader hits the missing directory. Callers need to tell that apart from
+// a genuine failure.
+test("reports a removed working directory as a typed error for an interactive resume", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "agent-loading-missing-cwd-active-"));
+  const workdir = path.join(root, "managed-worktree");
+  await mkdir(workdir, { recursive: true });
+  const logger = createTestLogger();
+  const storage = new AgentStorage(path.join(root, "agents"), logger);
+  const manager = new AgentManager({
+    clients: createTestAgentClients(),
+    registry: storage,
+    logger,
+  });
+  const agentId = "00000000-0000-4000-8000-000000000303";
+
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {
+      workspaceId: "workspace-active",
+    });
+    await manager.closeAgent(agent.id);
+    await manager.flush();
+    await storage.flush();
+    await rm(workdir, { recursive: true, force: true });
+
+    const error = await ensureAgentLoaded(agentId, {
+      agentManager: manager,
+      agentStorage: storage,
+      logger,
+    }).then(
+      () => null,
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toBeInstanceOf(WorkingDirectoryMissingError);
+    expect((error as WorkingDirectoryMissingError).cwd).toBe(workdir);
   } finally {
     await manager.closeAgent(agentId).catch(() => undefined);
     await manager.flush().catch(() => undefined);
