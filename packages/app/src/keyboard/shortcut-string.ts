@@ -254,7 +254,9 @@ export function isModifierKeyCode(code: string): boolean {
   return MODIFIER_CODES.has(code);
 }
 
-export function keyboardEventToComboString(event: KeyboardEvent): string | null {
+export function keyboardEventToComboString(
+  event: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "altKey" | "metaKey" | "shiftKey">,
+): string | null {
   if (isModifierKeyCode(event.code)) {
     return null;
   }

@@ -14,9 +14,11 @@ import type {
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
+  RequestError,
   type AgentCapabilities as ACPAgentCapabilities,
   type Error as ACPError,
   type AnyMessage,
+  type AvailableCommand,
   type Client as ACPClient,
   type ClientCapabilities as ACPClientCapabilities,
   type ConfigOptionUpdate,
@@ -31,7 +33,6 @@ import {
   type McpServer,
   type NewSessionResponse,
   type PermissionOption,
-  type Plan,
   type PromptResponse,
   type ReadTextFileRequest,
   type RequestPermissionRequest,
@@ -81,6 +82,7 @@ import {
   type AgentSession,
   type AgentSessionConfig,
   type AgentSlashCommand,
+  type AgentSlashCommandKind,
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
@@ -119,12 +121,21 @@ import {
   createStringCommandShellEnvOverlay,
 } from "../../../utils/string-command-shell.js";
 import { spawnProcess } from "../../../utils/spawn.js";
+import { spawnExitBoundProcess } from "../../../utils/exit-bound-process.js";
 import {
   type DiagnosticEntry,
   toDiagnosticErrorMessage,
   truncateForDiagnostic,
 } from "./diagnostic-utils.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
+import {
+  AcpTaskState,
+  CURSOR_UPDATE_TODOS_METHOD,
+  isAcpTodoMerge,
+  isAcpTodoToolInput,
+  mapPlanEntriesToTodo,
+  parseAcpTodoItems,
+} from "./acp-task-state.js";
 
 const ACP_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
 
@@ -390,6 +401,11 @@ export type ACPExtensionCommandsParser = (
   params: Record<string, unknown>,
 ) => AgentSlashCommand[] | null;
 
+// Lets a provider classify entries from the standard `available_commands_update`
+// session update (e.g. telling skills apart from built-in commands) without the
+// generic session carrying vendor knowledge.
+export type ACPSlashCommandKindResolver = (command: AvailableCommand) => AgentSlashCommandKind;
+
 /**
  * Context handed to an {@link ACPCatalogModelResolver} during `fetchCatalog`. It exposes
  * the already-derived models plus the live probe session so a resolver can refine them
@@ -442,6 +458,7 @@ interface ACPAgentClientOptions {
   ) => Promise<void>;
   capabilities?: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  slashCommandKindResolver?: ACPSlashCommandKindResolver;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
@@ -473,6 +490,7 @@ interface ACPAgentSessionOptions {
   ) => Promise<void>;
   capabilities: AgentCapabilityFlags;
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  slashCommandKindResolver?: ACPSlashCommandKindResolver;
   handle?: AgentPersistenceHandle;
   agentId?: string;
   launchEnv?: Record<string, string>;
@@ -682,11 +700,28 @@ export function mapACPUsage(usage: Usage | null | undefined): AgentUsage | undef
     return undefined;
   }
 
-  return {
-    inputTokens: usage.inputTokens ?? undefined,
-    outputTokens: usage.outputTokens ?? undefined,
-    cachedInputTokens: usage.cachedReadTokens ?? undefined,
+  const mapped: AgentUsage = {};
+  if (typeof usage.inputTokens === "number") {
+    mapped.inputTokens = usage.inputTokens;
+  }
+  if (typeof usage.outputTokens === "number") {
+    mapped.outputTokens = usage.outputTokens;
+  }
+  if (typeof usage.cachedReadTokens === "number") {
+    mapped.cachedInputTokens = usage.cachedReadTokens;
+  }
+  return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
+
+export function mapACPUsageUpdate(update: UsageUpdate): AgentUsage {
+  const mapped: AgentUsage = {
+    contextWindowMaxTokens: update.size,
+    contextWindowUsedTokens: update.used,
   };
+  if (update.cost?.currency === "USD") {
+    mapped.totalCostUsd = update.cost.amount;
+  }
+  return mapped;
 }
 
 export function resolveACPModeSelection({
@@ -905,6 +940,7 @@ export class ACPAgentClient implements AgentClient {
   private readonly waitForInitialCommands: boolean;
   private readonly initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly slashCommandKindResolver?: ACPSlashCommandKindResolver;
   private readonly importPromptCache = new Map<string, ACPImportPromptCacheEntry>();
   private readonly now: () => number;
   protected readonly terminateProcess: ProcessTerminator;
@@ -935,6 +971,7 @@ export class ACPAgentClient implements AgentClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.slashCommandKindResolver = options.slashCommandKindResolver;
     this.now = options.now ?? Date.now;
   }
 
@@ -966,6 +1003,7 @@ export class ACPAgentClient implements AgentClient {
         agentId: launchContext?.agentId,
         launchEnv: launchContext?.env,
         extensionCommandsParser: this.extensionCommandsParser,
+        slashCommandKindResolver: this.slashCommandKindResolver,
         waitForInitialCommands: this.waitForInitialCommands,
         initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
       },
@@ -1017,6 +1055,7 @@ export class ACPAgentClient implements AgentClient {
       agentId: launchContext?.agentId,
       launchEnv: launchContext?.env,
       extensionCommandsParser: this.extensionCommandsParser,
+      slashCommandKindResolver: this.slashCommandKindResolver,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
     });
@@ -1339,7 +1378,7 @@ export class ACPAgentClient implements AgentClient {
     client: ACPClient = this.buildProbeClient(),
   ): Promise<ACPProcessTransport> {
     const { command, args } = await this.resolveLaunchCommand();
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: process.cwd(),
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -1661,6 +1700,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private pendingUserMessage: PendingUserMessage | null = null;
   private submittedUserMessageTurnId: string | null = null;
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
+  private readonly taskState = new AcpTaskState();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
   private readonly initialHandle?: AgentPersistenceHandle;
@@ -1684,6 +1724,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private waitForInitialCommands: boolean;
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
+  private readonly slashCommandKindResolver?: ACPSlashCommandKindResolver;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
   private fallbackAssistantMessageId: string | null = null;
@@ -1724,6 +1765,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.waitForInitialCommands = options.waitForInitialCommands ?? false;
     this.initialCommandsWaitTimeoutMs = options.initialCommandsWaitTimeoutMs ?? 1500;
     this.extensionCommandsParser = options.extensionCommandsParser;
+    this.slashCommandKindResolver = options.slashCommandKindResolver;
   }
 
   get id(): string | null {
@@ -2433,8 +2475,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       } catch {}
 
       try {
+        // A provider that never answers session/close must not keep its
+        // process alive past the close.
         if (this.agentCapabilities?.sessionCapabilities?.close) {
-          await this.connection.unstable_closeSession({ sessionId: this.sessionId });
+          await withTimeout(
+            this.connection.unstable_closeSession({ sessionId: this.sessionId }),
+            ACP_PROBE_CLOSE_TIMEOUT_MS,
+            `ACP session/close timed out after ${ACP_PROBE_CLOSE_TIMEOUT_MS}ms`,
+          );
         }
       } catch (error) {
         this.logger.debug({ err: error }, "ACP closeSession failed during shutdown");
@@ -2567,6 +2615,45 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
       });
     }
+
+    if (method !== CURSOR_UPDATE_TODOS_METHOD) {
+      return;
+    }
+    this.applyCursorTodos(params);
+  }
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    this.logger.trace(
+      {
+        agentId: this.agentId,
+        provider: this.provider,
+        sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
+        method,
+        rawEvent: params,
+      },
+      "provider.acp.extension_method",
+    );
+
+    if (method !== CURSOR_UPDATE_TODOS_METHOD) {
+      throw RequestError.methodNotFound(method);
+    }
+    this.applyCursorTodos(params);
+    return {};
+  }
+
+  private applyCursorTodos(params: Record<string, unknown>): void {
+    const parsed = parseAcpTodoItems(params);
+    if (!parsed) {
+      return;
+    }
+    this.deliverTranslatedEvents([
+      this.wrapTimeline(
+        this.taskState.apply(parsed.items, isAcpTodoMerge(params), parsed.removedIds),
+      ),
+    ]);
   }
 
   // Cache an asynchronously-delivered slash-command batch and unblock any
@@ -2716,9 +2803,15 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       throw new Error(`${this.provider} command '${this.defaultCommand[0]}' not found`);
     }
 
+    // Node reports a missing cwd as `spawn <command> ENOENT`, which reads as a
+    // missing binary; archived worktrees are the usual cause.
+    if (!(await isDirectory(this.config.cwd))) {
+      throw new Error(`${this.provider} working directory does not exist: ${this.config.cwd}`);
+    }
+
     const command = prefix.command;
     const args = [...prefix.args, ...this.defaultCommand.slice(1)];
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -2731,6 +2824,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const stderrChunks: string[] = [];
     child.stderr.on("data", (chunk: Buffer | string) => {
       stderrChunks.push(chunk.toString());
+    });
+    // Without an 'error' listener a failed spawn is an uncaught exception that
+    // takes down the whole daemon worker.
+    const spawnError = new Promise<never>((_, reject) => {
+      child.on("error", (error) => {
+        this.logger.warn({ err: error }, "ACP agent process error");
+        reject(error);
+      });
     });
     child.once("exit", (code, signal) => {
       if (this.closed) {
@@ -2759,14 +2860,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.child = child;
     this.connection = connection;
     const initialize = await this.runACPRequest(() =>
-      connection.initialize({
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: buildACPClientCapabilities(
-          this.clientCapabilityMeta,
-          this.clientCapabilities,
-        ),
-        clientInfo: { name: "Paseo", version: "dev" },
-      }),
+      Promise.race([
+        connection.initialize({
+          protocolVersion: PROTOCOL_VERSION,
+          clientCapabilities: buildACPClientCapabilities(
+            this.clientCapabilityMeta,
+            this.clientCapabilities,
+          ),
+          clientInfo: { name: "Paseo", version: "dev" },
+        }),
+        spawnError,
+      ]),
     );
 
     return { child, connection, initialize };
@@ -2937,7 +3041,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         ];
       case "plan":
         this.fallbackAssistantMessageId = null;
-        return [...pendingUserEvents, this.wrapTimeline(mapPlanToTimeline(update))];
+        return [
+          ...pendingUserEvents,
+          this.wrapTimeline(this.taskState.replace(mapPlanEntriesToTodo(update.entries).items)),
+        ];
       case "current_mode_update":
         this.handleCurrentModeUpdate(update);
         return [
@@ -2955,14 +3062,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.handleSessionInfoUpdate(update);
         return pendingUserEvents;
       case "usage_update":
-        this.handleUsageUpdate(update);
-        return pendingUserEvents;
+        return [...pendingUserEvents, ...this.handleUsageUpdate(update)];
       case "available_commands_update":
         this.cachedCommands = update.availableCommands.map((command) => ({
           name: command.name,
           description: command.description,
-          argumentHint: "",
-          kind: "command",
+          argumentHint: command.input?.hint ?? "",
+          kind: this.slashCommandKindResolver?.(command) ?? "command",
         }));
         this.settleCommandsReady();
         return pendingUserEvents;
@@ -3029,7 +3135,25 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       snapshot = this.toolSnapshotTransformer(snapshot);
     }
     this.toolCalls.set(toolCallId, snapshot);
+    const todo = this.mapTodoSnapshot(snapshot.rawInput, snapshot.title);
+    if (todo) {
+      return [this.wrapTimeline(todo)];
+    }
     return [this.wrapTimeline(mapToolSnapshotToTimeline(snapshot, this.terminalEntries))];
+  }
+
+  private mapTodoSnapshot(
+    rawInput: unknown,
+    title?: string | null,
+  ): Extract<AgentTimelineItem, { type: "todo" }> | null {
+    if (!isAcpTodoToolInput(rawInput, title)) {
+      return null;
+    }
+    const parsed = parseAcpTodoItems(rawInput);
+    if (!parsed) {
+      return null;
+    }
+    return this.taskState.apply(parsed.items, isAcpTodoMerge(rawInput), parsed.removedIds);
   }
 
   private createMessageTimelineItem(
@@ -3116,12 +3240,27 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     }
   }
 
-  private handleUsageUpdate(update: UsageUpdate): void {
-    void update;
+  private handleUsageUpdate(update: UsageUpdate): AgentStreamEvent[] {
+    if (!(update.size > 0)) {
+      return [];
+    }
+    const usage = { ...this.currentTurnUsage, ...mapACPUsageUpdate(update) };
+    this.currentTurnUsage = usage;
+    return [
+      {
+        type: "usage_updated",
+        provider: this.provider,
+        usage,
+        ...(this.activeForegroundTurnId ? { turnId: this.activeForegroundTurnId } : {}),
+      },
+    ];
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
-    this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
+    const promptUsage = mapACPUsage(response.usage);
+    this.currentTurnUsage = promptUsage
+      ? { ...this.currentTurnUsage, ...promptUsage }
+      : this.currentTurnUsage;
 
     switch (response.stopReason) {
       case "cancelled":
@@ -3544,16 +3683,6 @@ function mergeToolSnapshot(
   };
 }
 
-function mapPlanToTimeline(plan: Plan): AgentTimelineItem {
-  return {
-    type: "todo",
-    items: plan.entries.map((entry) => ({
-      text: entry.content,
-      completed: entry.status === "completed",
-    })),
-  };
-}
-
 function mapToolSnapshotToTimeline(
   snapshot: ACPToolSnapshot,
   terminals: Map<string, TerminalEntry>,
@@ -3972,5 +4101,13 @@ async function terminateChildProcess(
     child.stdin.destroy();
     child.stdout.destroy();
     child.stderr.destroy();
+  }
+}
+
+async function isDirectory(dirPath: string): Promise<boolean> {
+  try {
+    return (await fs.stat(dirPath)).isDirectory();
+  } catch {
+    return false;
   }
 }

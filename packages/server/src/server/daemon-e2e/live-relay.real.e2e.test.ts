@@ -30,6 +30,7 @@ async function pairingOfferFor(daemon: TestPaseoDaemon): Promise<ConnectionOffer
     relayPublicEndpoint: relayEndpoint,
     relayUseTls: true,
     relayPublicUseTls: true,
+    deviceAuth: false,
     includeQr: false,
   });
   if (!pairing.url) {

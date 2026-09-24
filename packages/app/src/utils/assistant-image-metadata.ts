@@ -15,7 +15,6 @@ const ASSISTANT_IMAGE_PARSE_CACHE_LIMIT = 500;
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*]\((<[^>]+>|[^)\n]+)\)/g;
 const ASSISTANT_IMAGE_ESTIMATE_WIDTH = MAX_CONTENT_WIDTH - 8;
-const ASSISTANT_IMAGE_MIN_HEIGHT = 160;
 const ASSISTANT_IMAGE_BLOCK_GAP = 24;
 const ASSISTANT_MESSAGE_BASE_HEIGHT = 96;
 const ASSISTANT_MESSAGE_MIN_HEIGHT = 220;
@@ -187,10 +186,7 @@ export function estimateAssistantMessageHeightFromCache(markdown: string): numbe
     .map((source) => getAssistantImageMetadata({ source }))
     .filter((metadata): metadata is AssistantImageMetadata => metadata !== null)
     .map((metadata) =>
-      Math.max(
-        ASSISTANT_IMAGE_MIN_HEIGHT,
-        Math.round(ASSISTANT_IMAGE_ESTIMATE_WIDTH / metadata.aspectRatio),
-      ),
+      Math.round(Math.min(ASSISTANT_IMAGE_ESTIMATE_WIDTH, metadata.width) / metadata.aspectRatio),
     );
 
   if (knownHeights.length === 0) {
