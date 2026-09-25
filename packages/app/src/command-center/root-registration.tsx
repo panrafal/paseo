@@ -1,11 +1,12 @@
 import { useCallback, useMemo } from "react";
-import { router, type Href } from "expo-router";
+import { router, useGlobalSearchParams, useSegments, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import {
   CalendarClock,
   CircleDashed,
   Folder,
   FolderPlus,
+  Gauge,
   History,
   Home,
   Import,
@@ -20,6 +21,7 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useImportSession } from "@/hooks/use-import-session";
+import { useHostChooser } from "@/hosts/host-chooser";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import type { KeyboardActionId } from "@/keyboard/keyboard-action-dispatcher";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
@@ -33,6 +35,7 @@ import {
   buildSchedulesRoute,
   buildSessionsRoute,
   buildSettingsRoute,
+  buildSettingsHostSectionRoute,
 } from "@/utils/host-routes";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { CommandCenterContribution, CommandCenterIconProps } from "./contributions";
@@ -53,6 +56,9 @@ const ThemedKeyboard = withUnistyles(Keyboard, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 const ThemedSettings = withUnistyles(Settings, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
+const ThemedGauge = withUnistyles(Gauge, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 const ThemedHome = withUnistyles(Home, (theme) => ({ color: theme.colors.foregroundMuted }));
@@ -77,6 +83,10 @@ function AddProjectIcon({ size }: CommandCenterIconProps) {
 
 function SettingsIcon({ size }: CommandCenterIconProps) {
   return <ThemedSettings size={size} strokeWidth={2.2} />;
+}
+
+function UsageIcon({ size }: CommandCenterIconProps) {
+  return <ThemedGauge size={size} strokeWidth={2.2} />;
 }
 
 function HistoryIcon({ size }: CommandCenterIconProps) {
@@ -114,6 +124,11 @@ function PanelLeftIcon({ size }: CommandCenterIconProps) {
 export function CommandCenterRootActions() {
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const { t } = useTranslation();
+  const params = useGlobalSearchParams<{ serverId?: string | string[] }>();
+  const segments = useSegments();
+  const isHostRoute = segments.some((segment) => segment === "[serverId]");
+  const serverId = isHostRoute && typeof params.serverId === "string" ? params.serverId : null;
+  const chooseHost = useHostChooser();
   const { overrides } = useKeyboardShortcutOverrides();
   const shortcutsAvailable = useKeyboardShortcutsAvailable();
   const openAddProject = useOpenAddProject();
@@ -283,6 +298,31 @@ export function CommandCenterRootActions() {
             undefined,
         },
       },
+      {
+        id: "usage",
+        group: "actions",
+        groupRank: 0,
+        rank: 7,
+        keywords: ["usage", "quota", "limits", "tokens", "cost", "providers"],
+        visibility: "always",
+        run: () => {
+          clearCommandCenterFocusRestoreElement();
+          const openUsage = (hostId: string) => {
+            router.push(buildSettingsHostSectionRoute(hostId, "usage"));
+          };
+          if (serverId) {
+            openUsage(serverId);
+          } else {
+            chooseHost({ onChooseHost: openUsage });
+          }
+        },
+        presentation: {
+          kind: "action",
+          title: t("settings.hostSections.usage"),
+          sectionTitle: t("shell.commandCenter.actions"),
+          icon: UsageIcon,
+        },
+      },
       // Toggle left sidebar is global: it calls the panel store directly and works on every route.
       // The right sidebar and focus toggles do NOT belong here — their handlers live in
       // workspace-screen.tsx behind `enabled: isRouteFocused && ...`, so registering them globally
@@ -351,6 +391,7 @@ export function CommandCenterRootActions() {
 
     return availableActions;
   }, [
+    chooseHost,
     groupMode,
     homeRoute,
     keyboardActionDispatcher,
@@ -359,6 +400,7 @@ export function CommandCenterRootActions() {
     overrides,
     schedulesRoute,
     sessionsRoute,
+    serverId,
     setGroupMode,
     setShortcutsDialogOpen,
     settingsRoute,
