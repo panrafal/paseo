@@ -8,6 +8,7 @@ import {
 } from "@/contexts/session-workspace-upserts";
 
 const baseWorkspace: WorkspaceDescriptor = {
+  activityAt: null,
   id: "/repo/worktree",
   projectId: "/repo",
   projectDisplayName: "Repo",

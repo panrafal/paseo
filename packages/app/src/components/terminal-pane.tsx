@@ -62,6 +62,8 @@ import {
 } from "./terminal-resize-debouncer";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
+import { openServiceUrl } from "@/utils/open-service-url";
+import type { TerminalUrlOpenOptions } from "@/terminal/runtime/terminal-link-handler";
 import {
   applyTerminalRendererReadyChange,
   resolveTerminalStreamTarget,
@@ -89,6 +91,7 @@ interface TerminalPaneProps {
   isPaneFocused: boolean;
   onOpenFileExplorer: () => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
+  onOpenUrlInBrowserTab?: (url: string) => void;
 }
 
 const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
@@ -210,6 +213,7 @@ export function TerminalPane({
   isPaneFocused,
   onOpenFileExplorer,
   onOpenWorkspaceFile,
+  onOpenUrlInBrowserTab,
 }: TerminalPaneProps) {
   const { t } = useTranslation();
   const retainedPanelActive = useRetainedPanelActive();
@@ -916,6 +920,14 @@ export function TerminalPane({
     },
     [onOpenWorkspaceFile],
   );
+  const handleOpenUrl = useCallback(
+    (url: string, options: TerminalUrlOpenOptions) =>
+      openServiceUrl(url, {
+        openInApp: onOpenUrlInBrowserTab,
+        invertBehavior: options.invertBehavior,
+      }),
+    [onOpenUrlInBrowserTab],
+  );
 
   const toggleModifier = useCallback(
     (modifier: keyof ModifierState) => {
@@ -1061,6 +1073,7 @@ export function TerminalPane({
             onSelectionChange={handleSelectionChange}
             onResolveLocalFileLink={handleResolveLocalFileLink}
             onOpenLocalFileLink={handleOpenLocalFileLink}
+            onOpenUrl={handleOpenUrl}
             onPendingModifiersConsumed={handlePendingModifiersConsumed}
             pendingModifiers={modifiers}
             focusRequestToken={focusRequestToken}

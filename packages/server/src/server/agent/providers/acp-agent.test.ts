@@ -1,5 +1,7 @@
 import { type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { tmpdir } from "node:os";
+import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   AgentSideConnection,
@@ -26,6 +28,7 @@ import {
   deriveModelDefinitionsFromACP,
   deriveModesFromACP,
   mapACPUsage,
+  mapACPUsageUpdate,
   resolveACPModeSelection,
   resolveACPModelSelection,
   summarizeACPRequestError,
@@ -818,6 +821,42 @@ describe("mapACPUsage", () => {
       inputTokens: 11,
       outputTokens: 7,
       cachedInputTokens: 5,
+    });
+  });
+
+  test("omits missing token fields so later merges keep context occupancy", () => {
+    expect(mapACPUsage({ inputTokens: 11, outputTokens: 7, totalTokens: 18 })).toEqual({
+      inputTokens: 11,
+      outputTokens: 7,
+    });
+  });
+});
+
+describe("mapACPUsageUpdate", () => {
+  test("maps context occupancy and USD session cost", () => {
+    expect(
+      mapACPUsageUpdate({
+        used: 175,
+        size: 200_000,
+        cost: { amount: 0.42, currency: "USD" },
+      }),
+    ).toEqual({
+      contextWindowMaxTokens: 200_000,
+      contextWindowUsedTokens: 175,
+      totalCostUsd: 0.42,
+    });
+  });
+
+  test("leaves non-USD cost off totalCostUsd", () => {
+    expect(
+      mapACPUsageUpdate({
+        used: 10,
+        size: 100_000,
+        cost: { amount: 1.5, currency: "EUR" },
+      }),
+    ).toEqual({
+      contextWindowMaxTokens: 100_000,
+      contextWindowUsedTokens: 10,
     });
   });
 });
@@ -2503,6 +2542,11 @@ describe("ACPAgentSession slash commands", () => {
           name: "create_plan",
           description: "Draft a plan for the requested work",
         },
+        {
+          name: "explain",
+          description: "Explain the selected code",
+          input: { hint: "[prompt]" },
+        },
       ],
     });
 
@@ -2517,6 +2561,12 @@ describe("ACPAgentSession slash commands", () => {
         name: "create_plan",
         description: "Draft a plan for the requested work",
         argumentHint: "",
+        kind: "command",
+      },
+      {
+        name: "explain",
+        description: "Explain the selected code",
+        argumentHint: "[prompt]",
         kind: "command",
       },
     ]);
@@ -2534,7 +2584,178 @@ describe("ACPAgentSession slash commands", () => {
         argumentHint: "",
         kind: "command",
       },
+      {
+        name: "explain",
+        description: "Explain the selected code",
+        argumentHint: "[prompt]",
+        kind: "command",
+      },
     ]);
+  });
+
+  test("classifies commands through slashCommandKindResolver when provided", async () => {
+    const session = new ACPAgentSession(
+      {
+        provider: "devin",
+        cwd: "/tmp/paseo-acp-test",
+      },
+      {
+        provider: "devin",
+        logger: createTestLogger(),
+        defaultCommand: ["devin", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: true,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+        slashCommandKindResolver: (command) =>
+          command._meta?.["cognition.ai/category"] === "Skills" ? "skill" : "command",
+      },
+    );
+
+    asInternals<ACPSessionInternals>(session).translateSessionUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [
+        {
+          name: "compact",
+          description: "Compact the session",
+          _meta: { "cognition.ai/category": "Session" },
+        },
+        {
+          name: "plan",
+          description: "Draft a plan for the requested work",
+          _meta: { "cognition.ai/category": "Skills" },
+        },
+      ],
+    });
+
+    expect(await session.listCommands()).toEqual([
+      {
+        name: "compact",
+        description: "Compact the session",
+        argumentHint: "",
+        kind: "command",
+      },
+      {
+        name: "plan",
+        description: "Draft a plan for the requested work",
+        argumentHint: "",
+        kind: "skill",
+      },
+    ]);
+  });
+});
+
+describe("ACPAgentSession usage updates", () => {
+  function createUsageSession(): ACPAgentSession {
+    return new ACPAgentSession(
+      {
+        provider: "devin",
+        cwd: "/tmp/paseo-acp-test",
+      },
+      {
+        provider: "devin",
+        logger: createTestLogger(),
+        defaultCommand: ["devin", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: true,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+      },
+    );
+  }
+
+  test("emits usage_updated with context window totals on the active foreground turn", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+    internals.activeForegroundTurnId = "turn-1";
+
+    const events = internals.translateSessionUpdate({
+      sessionUpdate: "usage_update",
+      used: 33648,
+      size: 1_000_000,
+    });
+
+    expect(events).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+        },
+        turnId: "turn-1",
+      },
+    ]);
+  });
+
+  test("includes USD cost and reports the update without an active turn", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+
+    const events = internals.translateSessionUpdate({
+      sessionUpdate: "usage_update",
+      used: 33648,
+      size: 1_000_000,
+      cost: { amount: 1.5, currency: "USD" },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+          totalCostUsd: 1.5,
+        },
+      },
+    ]);
+  });
+
+  test("omits cost totals reported in a non-USD currency", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+
+    const events = internals.translateSessionUpdate({
+      sessionUpdate: "usage_update",
+      used: 33648,
+      size: 1_000_000,
+      cost: { amount: 2, currency: "EUR" },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+        },
+      },
+    ]);
+  });
+
+  test("ignores usage_update without a context window size", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+
+    expect(
+      internals.translateSessionUpdate({
+        sessionUpdate: "usage_update",
+        used: 33648,
+        size: 0,
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -2913,6 +3134,70 @@ describe("ACPAgentSession", () => {
       turnId,
     });
     expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
+  test("emits usage_updated from ACP usage_update and keeps occupancy on turn completion", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    let resolvePrompt!: (value: PromptResponse) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    const { turnId } = await session.startTurn("hello");
+
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "usage_update",
+        used: 175,
+        size: 200_000,
+        cost: { amount: 0.42, currency: "USD" },
+      },
+    });
+
+    expect(events.filter((event) => event.type === "usage_updated")).toEqual([
+      {
+        type: "usage_updated",
+        provider: "claude-acp",
+        usage: {
+          contextWindowMaxTokens: 200_000,
+          contextWindowUsedTokens: 175,
+          totalCostUsd: 0.42,
+        },
+        turnId,
+      },
+    ]);
+
+    resolvePrompt({
+      stopReason: "end_turn",
+      usage: { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(events.find((event) => event.type === "turn_completed")).toEqual({
+      type: "turn_completed",
+      provider: "claude-acp",
+      turnId,
+      usage: {
+        contextWindowMaxTokens: 200_000,
+        contextWindowUsedTokens: 175,
+        totalCostUsd: 0.42,
+        inputTokens: 11,
+        outputTokens: 7,
+      },
+    });
   });
 
   test("startTurn emits the submitted user message even when ACP does not echo it", async () => {
@@ -3595,6 +3880,91 @@ describe("ACPAgentSession initialization cleanup", () => {
   });
 });
 
+function createCursorLikeSession(
+  cwd: string,
+  terminator: FakeTerminator,
+  options: { handle?: { provider: string; sessionId: string } } = {},
+): ACPAgentSession {
+  return new ACPAgentSession(
+    { provider: "cursor", cwd },
+    {
+      provider: "cursor",
+      logger: createTestLogger(),
+      // An executable that always resolves, so the launch check passes.
+      defaultCommand: [process.execPath, "acp"],
+      defaultModes: [],
+      capabilities: { supportsStreaming: true, supportsSessionPersistence: true },
+      terminateProcess: terminator.terminate,
+      ...(options.handle ? { handle: options.handle } : {}),
+    },
+  );
+}
+
+function createPipedChildStub(): ChildProcessWithoutNullStreams {
+  const child = new EventEmitter() as ChildProcessWithoutNullStreams;
+  child.stdin = new PassThrough() as unknown as ChildProcessWithoutNullStreams["stdin"];
+  child.stdout = new PassThrough() as unknown as ChildProcessWithoutNullStreams["stdout"];
+  child.stderr = new PassThrough() as unknown as ChildProcessWithoutNullStreams["stderr"];
+  child.kill = vi.fn(() => true) as ChildProcessWithoutNullStreams["kill"];
+  return child;
+}
+
+describe("ACPAgentSession process lifecycle", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test("rejects resuming into a missing working directory without spawning", async () => {
+    const terminator = new FakeTerminator();
+    const spawn = vi.spyOn(spawnUtils, "spawnProcess");
+    const session = createCursorLikeSession(
+      "/tmp/paseo-acp-missing-worktree/sour-wombat",
+      terminator,
+      {
+        handle: { provider: "cursor", sessionId: "session-1" },
+      },
+    );
+
+    await expect(session.initializeResumedSession()).rejects.toThrow(
+      "cursor working directory does not exist: /tmp/paseo-acp-missing-worktree/sour-wombat",
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  test("rejects a failed spawn instead of raising an uncaught 'error' event", async () => {
+    const terminator = new FakeTerminator();
+    const child = createPipedChildStub();
+    vi.spyOn(spawnUtils, "spawnProcess").mockReturnValue(child);
+    const session = createCursorLikeSession(tmpdir(), terminator);
+
+    const initialization = session.initializeNewSession();
+    await vi.waitFor(() => expect(spawnUtils.spawnProcess).toHaveBeenCalledOnce());
+    child.emit("error", new Error("spawn cursor-agent ENOENT"));
+
+    await expect(initialization).rejects.toThrow("spawn cursor-agent ENOENT");
+    expect(terminator.terminated).toContain(child);
+  });
+
+  test("close() terminates the process when session/close never answers", async () => {
+    vi.useFakeTimers();
+    const terminator = new FakeTerminator();
+    const session = createSession({ terminateProcess: terminator.terminate });
+    const internals = asInternals<ACPCloseInternals & { agentCapabilities: unknown }>(session);
+    const child = createTerminalChildStub();
+    internals.child = child;
+    internals.sessionId = "session-1";
+    internals.agentCapabilities = { sessionCapabilities: { close: {} } };
+    internals.connection = { unstable_closeSession: () => new Promise(() => undefined) };
+
+    const close = session.close();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await close;
+
+    expect(terminator.terminated).toContain(child);
+  });
+});
+
 describe("ACPAgentClient probe cleanup", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -4146,6 +4516,160 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
       sessionId: "session-1",
       cwd: "/tmp/paseo-acp-test",
       mcpServers: [],
+    });
+  });
+});
+
+describe("ACP task snapshots", () => {
+  test("maps plan updates onto the Tasks track with in-progress status", () => {
+    const events = asInternals<ACPSessionInternals>(createSession()).translateSessionUpdate({
+      sessionUpdate: "plan",
+      entries: [
+        { content: "Inspect provider", status: "in_progress", priority: "medium" },
+        { content: "Ship fix", status: "pending", priority: "low" },
+      ],
+    });
+
+    expect(events).toMatchObject([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: {
+          type: "todo",
+          items: [
+            { id: "0", text: "Inspect provider", status: "in_progress", completed: false },
+            { id: "1", text: "Ship fix", status: "pending", completed: false },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test("maps Cursor updateTodos tool calls onto the Tasks track instead of a tool card", () => {
+    const events = asInternals<ACPSessionInternals>(createSession()).translateSessionUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "todo-1",
+      title: "Update TODOs: Inspect provider, Ship fix",
+      kind: "other",
+      status: "completed",
+      rawInput: {
+        _toolName: "updateTodos",
+        todos: [
+          { id: "a", content: "Inspect provider", status: 1 },
+          { id: "b", content: "Ship fix", status: 0 },
+        ],
+      },
+    });
+
+    expect(events).toMatchObject([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: {
+          type: "todo",
+          items: [
+            { id: "a", text: "Inspect provider", status: "in_progress", completed: false },
+            { id: "b", text: "Ship fix", status: "pending", completed: false },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test("maps cursor/update_todos extension notifications onto the Tasks track", async () => {
+    const session = createSessionWithConfig({ provider: "cursor" });
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.extNotification("cursor/update_todos", {
+      toolCallId: "todo-1",
+      merge: false,
+      todos: [
+        { id: "a", content: "Inspect provider", status: "in_progress" },
+        { id: "b", content: "Ship fix", status: "completed" },
+      ],
+    });
+
+    expect(events.filter((event) => event.type === "timeline")).toMatchObject([
+      {
+        type: "timeline",
+        provider: "cursor",
+        item: {
+          type: "todo",
+          items: [
+            { id: "a", text: "Inspect provider", status: "in_progress", completed: false },
+            { id: "b", text: "Ship fix", status: "completed", completed: true },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test("maps cursor/update_todos extension methods onto the Tasks track", async () => {
+    const session = createSessionWithConfig({ provider: "cursor" });
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await expect(
+      session.extMethod("cursor/update_todos", {
+        toolCallId: "todo-1",
+        merge: false,
+        todos: [
+          { id: "a", content: "Inspect provider", status: 1 },
+          { id: "b", content: "Ship fix", status: 2 },
+        ],
+      }),
+    ).resolves.toEqual({});
+
+    expect(events.filter((event) => event.type === "timeline")).toMatchObject([
+      {
+        type: "timeline",
+        provider: "cursor",
+        item: {
+          type: "todo",
+          items: [
+            { id: "a", text: "Inspect provider", status: "in_progress", completed: false },
+            { id: "b", text: "Ship fix", status: "completed", completed: true },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test("rejects unknown ACP extension methods", async () => {
+    const session = createSessionWithConfig({ provider: "cursor" });
+    await expect(session.extMethod("cursor/unknown_method", {})).rejects.toMatchObject({
+      code: -32601,
+    });
+  });
+
+  test("merge cursor/update_todos requests drop cancelled todos", async () => {
+    const session = createSessionWithConfig({ provider: "cursor" });
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.extMethod("cursor/update_todos", {
+      merge: false,
+      todos: [
+        { id: "a", content: "Keep", status: 0 },
+        { id: "b", content: "Drop", status: 0 },
+      ],
+    });
+    await session.extMethod("cursor/update_todos", {
+      merge: true,
+      todos: [{ id: "b", content: "Drop", status: 3 }],
+    });
+
+    expect(events.findLast((event) => event.type === "timeline")).toMatchObject({
+      type: "timeline",
+      provider: "cursor",
+      item: {
+        type: "todo",
+        items: [{ id: "a", text: "Keep", status: "pending", completed: false }],
+      },
     });
   });
 });

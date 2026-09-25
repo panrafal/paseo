@@ -26,6 +26,10 @@ vi.mock("@xterm/addon-ligatures/lib/addon-ligatures.mjs", () => ({
 
 vi.mock("@xterm/addon-search", () => ({
   SearchAddon: class SearchAddon {
+    onDidChangeResults(): { dispose: () => void } {
+      return { dispose: () => {} };
+    }
+
     dispose(): void {}
   },
 }));
@@ -38,6 +42,9 @@ vi.mock("@xterm/addon-unicode11", () => ({
 
 vi.mock("@xterm/addon-web-links", () => ({
   WebLinksAddon: class WebLinksAddon {
+    constructor(callback: WebLinksCallback) {
+      webLinksCallbacks.values.push(callback);
+    }
     dispose(): void {}
   },
 }));
@@ -50,7 +57,11 @@ vi.mock("@xterm/addon-webgl", () => ({
 }));
 
 const terminalConstructorOptions = vi.hoisted(() => ({
-  values: [] as unknown[],
+  values: [] as Array<{ linkHandler?: LinkHandler }>,
+}));
+
+const webLinksCallbacks = vi.hoisted(() => ({
+  values: [] as WebLinksCallback[],
 }));
 
 vi.mock("@xterm/xterm", () => ({
@@ -60,8 +71,9 @@ vi.mock("@xterm/xterm", () => ({
     unicode = { activeVersion: "" };
     parser = {
       registerCsiHandler: () => undefined,
+      registerOscHandler: () => undefined,
     };
-    constructor(options: unknown) {
+    constructor(options: { linkHandler?: LinkHandler }) {
       terminalConstructorOptions.values.push(options);
     }
     loadAddon(): void {}
@@ -70,6 +82,12 @@ vi.mock("@xterm/xterm", () => ({
     }
     open(): void {}
     onData(): { dispose: () => void } {
+      return { dispose: () => undefined };
+    }
+    onWriteParsed(): { dispose: () => void } {
+      return { dispose: () => undefined };
+    }
+    onScroll(): { dispose: () => void } {
       return { dispose: () => undefined };
     }
     attachCustomKeyEventHandler(): void {}
@@ -93,6 +111,84 @@ interface StubTerminal {
   options?: { theme?: unknown; scrollback?: number; fontFamily?: string; fontSize?: number };
   rows?: number;
   cols?: number;
+}
+
+interface LinkActivationEvent {
+  preventDefault: () => void;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+}
+
+interface LinkHandler {
+  activate: (event: LinkActivationEvent, uri: string) => void;
+}
+
+interface WebLinksCallback {
+  (event: LinkActivationEvent, uri: string): void;
+}
+
+interface TestWindow {
+  __paseoTerminal?: unknown;
+  addEventListener: (...args: unknown[]) => void;
+  clearTimeout: typeof clearTimeout;
+  requestAnimationFrame: (callback: FrameRequestCallback) => number;
+  removeEventListener: (...args: unknown[]) => void;
+  setTimeout: typeof setTimeout;
+}
+
+interface TestElement {
+  innerHTML: string;
+  offsetHeight: number;
+  offsetWidth: number;
+  parentElement: TestElement | null;
+  style: {
+    [property: string]: string | ((property: string, value: string) => void);
+    getPropertyValue: (property: string) => string;
+    setProperty: (property: string, value: string) => void;
+  };
+  addEventListener: () => void;
+  removeEventListener: () => void;
+  querySelector: () => null;
+  querySelectorAll: () => TestElement[];
+}
+
+function createTestElement(): TestElement {
+  const style = {
+    getPropertyValue: () => "",
+    setProperty: () => {},
+  } as TestElement["style"];
+  return {
+    innerHTML: "",
+    offsetHeight: 0,
+    offsetWidth: 0,
+    parentElement: null,
+    style,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+}
+
+function mountInput(): {
+  root: TestElement;
+  host: TestElement;
+} {
+  return {
+    root: createTestElement(),
+    host: createTestElement(),
+  };
+}
+
+function mountRuntime(runtime: TerminalEmulatorRuntime): void {
+  const { root, host } = mountInput();
+  runtime.mount({
+    root: root as unknown as HTMLDivElement,
+    host: host as unknown as HTMLDivElement,
+    initialSnapshot: null,
+    scrollback: 10_000,
+    theme: { background: "#0b0b0b", foreground: "#e6e6e6", cursor: "#e6e6e6" },
+  });
 }
 
 interface RuntimeFitProbe {
@@ -179,16 +275,59 @@ function decodeTerminalOutput(data: string | Uint8Array): string {
 
 describe("terminal-emulator-runtime", () => {
   const originalWindow = (globalThis as { window?: unknown }).window;
+  const originalDocument = (globalThis as { document?: unknown }).document;
+  const originalResizeObserver = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+  const originalRequestAnimationFrame = (globalThis as { requestAnimationFrame?: unknown })
+    .requestAnimationFrame;
+  const originalCancelAnimationFrame = (globalThis as { cancelAnimationFrame?: unknown })
+    .cancelAnimationFrame;
 
   beforeEach(() => {
-    (globalThis as { window?: { __paseoTerminal?: unknown } }).window = {
+    (globalThis as { window?: TestWindow }).window = {
+      addEventListener: () => {},
+      clearTimeout,
+      requestAnimationFrame: (callback: FrameRequestCallback) =>
+        setTimeout(() => callback(Date.now()), 0) as unknown as number,
+      removeEventListener: () => {},
+      setTimeout,
       __paseoTerminal: undefined,
     };
+    const documentElement = createTestElement();
+    const body = createTestElement();
+    (globalThis as { document?: unknown }).document = {
+      addEventListener: () => {},
+      body,
+      documentElement,
+      fonts: {
+        ready: Promise.resolve(),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+      removeEventListener: () => {},
+      visibilityState: "visible",
+    };
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class ResizeObserver {
+      disconnect(): void {}
+      observe(): void {}
+    };
+    (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame = (
+      callback: FrameRequestCallback,
+    ) => setTimeout(() => callback(Date.now()), 0);
+    (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame = (handle: number) => {
+      clearTimeout(handle);
+    };
     terminalConstructorOptions.values = [];
+    webLinksCallbacks.values = [];
   });
 
   afterEach(() => {
     (globalThis as { window?: unknown }).window = originalWindow;
+    (globalThis as { document?: unknown }).document = originalDocument;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver;
+    (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame =
+      originalRequestAnimationFrame;
+    (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame =
+      originalCancelAnimationFrame;
     vi.useRealTimers();
   });
 
@@ -246,6 +385,98 @@ describe("terminal-emulator-runtime", () => {
       expect(findRequests).toBe(opensFind ? 1 : 0);
       expect(prevented).toBe(opensFind);
       expect(stopped).toBe(opensFind);
+    },
+  );
+  it("routes OSC 8 hyperlink activation through the runtime callback", () => {
+    const onOpenUrl = vi.fn();
+    const runtime = new TerminalEmulatorRuntime();
+
+    runtime.setCallbacks({ callbacks: { onOpenUrl } });
+    mountRuntime(runtime);
+
+    const linkHandler = terminalConstructorOptions.values[0]?.linkHandler;
+    if (!linkHandler) {
+      throw new Error("Expected mount to configure an xterm link handler");
+    }
+    const event = { preventDefault: vi.fn() };
+
+    linkHandler.activate(event, "https://example.com/pull/42");
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/pull/42", {
+      invertBehavior: false,
+    });
+    runtime.unmount();
+  });
+
+  it("honors callbacks set after mounting when an OSC 8 link is activated", () => {
+    const runtime = new TerminalEmulatorRuntime();
+
+    mountRuntime(runtime);
+    const linkHandler = terminalConstructorOptions.values[0]?.linkHandler;
+    if (!linkHandler) {
+      throw new Error("Expected mount to configure an xterm link handler");
+    }
+    const onOpenUrl = vi.fn();
+    runtime.setCallbacks({ callbacks: { onOpenUrl } });
+
+    linkHandler.activate({ preventDefault: vi.fn() }, "https://example.com/late");
+
+    expect(onOpenUrl).toHaveBeenCalledTimes(1);
+    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/late", {
+      invertBehavior: false,
+    });
+    runtime.unmount();
+  });
+
+  it("routes plain-text URL activation through the runtime callback", () => {
+    const onOpenUrl = vi.fn();
+    const runtime = new TerminalEmulatorRuntime();
+
+    runtime.setCallbacks({ callbacks: { onOpenUrl } });
+    mountRuntime(runtime);
+    const callback = webLinksCallbacks.values[0];
+    if (!callback) {
+      throw new Error("Expected mount to configure a WebLinksAddon callback");
+    }
+    const event = { preventDefault: vi.fn() };
+
+    callback(event, "https://example.com/plain");
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/plain", {
+      invertBehavior: false,
+    });
+    runtime.unmount();
+  });
+
+  it.each([
+    { source: "osc8", metaKey: true, ctrlKey: false },
+    { source: "osc8", metaKey: false, ctrlKey: true },
+    { source: "plain", metaKey: true, ctrlKey: false },
+    { source: "plain", metaKey: false, ctrlKey: true },
+  ])(
+    "inverts the URL target for $source links clicked with meta=$metaKey ctrl=$ctrlKey",
+    ({ source, metaKey, ctrlKey }) => {
+      const onOpenUrl = vi.fn();
+      const runtime = new TerminalEmulatorRuntime();
+
+      runtime.setCallbacks({ callbacks: { onOpenUrl } });
+      mountRuntime(runtime);
+      const activate =
+        source === "osc8"
+          ? terminalConstructorOptions.values[0]?.linkHandler?.activate
+          : webLinksCallbacks.values[0];
+      if (!activate) {
+        throw new Error(`Expected mount to configure a ${source} link callback`);
+      }
+
+      activate({ preventDefault: vi.fn(), metaKey, ctrlKey }, "https://example.com/modified");
+
+      expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/modified", {
+        invertBehavior: true,
+      });
+      runtime.unmount();
     },
   );
 
