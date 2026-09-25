@@ -5036,6 +5036,10 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
       url: z.string(),
       qr: z.string().nullable().optional(),
       relayEnabled: z.boolean(),
+      // Absent from daemons whose pairing links never expire.
+      expiresAt: z.string().nullable().optional(),
+      // Time left when the daemon answered; clients time the link with their own clock.
+      expiresInMs: z.number().nullable().optional(),
     })
     .passthrough(),
 });

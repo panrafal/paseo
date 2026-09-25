@@ -1781,6 +1781,13 @@ export const ptBR: TranslationResources = {
       unableToPair: "Não foi possível parear host",
       errorTitle: "Erro",
     },
+    relayAuth: {
+      pairAgain:
+        "Este dispositivo não está mais pareado com o host. Escaneie um novo código de pareamento no host.",
+      passwordChanged: "A senha do host mudou. Escaneie um novo código de pareamento no host.",
+      linkUsed: "Este link de pareamento já foi usado ou expirou. Crie um novo no host.",
+      rateLimited: "Muitas tentativas de login falharam. Aguarde um minuto e tente novamente.",
+    },
     device: {
       loadingOffer: "Carregando oferta de pareamento...",
       failedToLoadOffer: "Falha ao carregar oferta de pareamento.",
@@ -1800,6 +1807,10 @@ export const ptBR: TranslationResources = {
       hint: "Escaneie este QR code com o Paseo no seu celular ou copie o link abaixo.",
       securityWarning:
         "Trate este link de pareamento como uma senha. Qualquer pessoa com o link pode acessar este daemon.",
+      oneTimeWarning:
+        "Este link pareia um único dispositivo e para de funcionar após 5 minutos. Não o compartilhe.",
+      expiresIn: "Expira em {{time}}",
+      newLink: "Obter novo link",
       qrUnavailable: "QR code indisponível.",
       qrAccessibility: "Código QR de pareamento",
       retry: "Tentar novamente",

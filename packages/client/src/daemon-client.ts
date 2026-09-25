@@ -151,6 +151,7 @@ import {
 } from "@getpaseo/protocol/binary-frames/index";
 import {
   createRelayE2eeTransportFactory,
+  type RelayAuthOptions,
   createWebSocketTransportFactory,
   decodeMessageData,
   defaultWebSocketFactory,
@@ -261,6 +262,13 @@ export type {
 } from "./daemon-client-transport.js";
 
 export type { TerminalStreamEvent };
+export { parseRelayAuthFailure, RelayAuthError } from "./daemon-client-transport.js";
+export type { RelayAuthOptions } from "./daemon-client-transport.js";
+export type {
+  RelayAuthFailureReason,
+  RelayAuthProof,
+  RelayDeviceCredential,
+} from "@getpaseo/relay/e2ee";
 
 export type ConnectionState =
   | { status: "idle" }
@@ -339,6 +347,7 @@ export interface DaemonClientConfig {
   e2ee?: {
     enabled?: boolean;
     daemonPublicKeyB64?: string;
+    auth?: RelayAuthOptions;
   };
   reconnect?: {
     enabled?: boolean;
@@ -1312,6 +1321,7 @@ export class DaemonClient {
           baseFactory: baseTransportFactory,
           daemonPublicKeyB64,
           logger: this.logger,
+          auth: this.config.e2ee?.auth,
         });
       }
       const transportUrl = this.resolveTransportUrlForAttempt();

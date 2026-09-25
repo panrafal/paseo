@@ -27,6 +27,8 @@ import {
 } from "@/utils/daemon-endpoints";
 import { resolveAppVersion } from "@/utils/app-version";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@getpaseo/protocol/connection-offer";
+import { createRelayAuthOptions, importRelayOffer } from "@/runtime/relay-auth";
+import { relayDeviceLabel } from "@/runtime/relay-device-label";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { isWeb } from "@/constants/platform";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
@@ -564,6 +566,10 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         e2ee: {
           enabled: true,
           daemonPublicKeyB64: connection.daemonPublicKeyB64,
+          auth: createRelayAuthOptions({
+            host: { serverId: host.serverId, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+            label: relayDeviceLabel(resolveAppVersion() ?? null),
+          }),
         },
       });
     },
@@ -1820,6 +1826,7 @@ export class HostRuntimeStore {
   }
 
   async upsertConnectionFromOffer(offer: ConnectionOffer, label?: string): Promise<HostProfile> {
+    await importRelayOffer(offer);
     // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
     const useTls = offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint);
     return this.upsertRelayConnection({

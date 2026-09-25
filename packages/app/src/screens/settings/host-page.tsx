@@ -1,3 +1,4 @@
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import {
   ArrowDown,
   ArrowUp,
@@ -227,12 +228,13 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
 }
 
 function HostConnectionError({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
   const snapshot = useHostRuntimeSnapshot(serverId);
   const lastError = snapshot?.lastError ?? null;
   const connectionError =
     typeof lastError === "string" && lastError.trim().length > 0 ? lastError.trim() : null;
   if (!connectionError) return null;
-  return <Text style={styles.errorText}>{connectionError}</Text>;
+  return <Text style={styles.errorText}>{formatHostConnectionError(connectionError, t)}</Text>;
 }
 
 export function HostConnectionsPage({ serverId }: { serverId: string }) {
