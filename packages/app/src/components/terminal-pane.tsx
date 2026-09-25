@@ -63,6 +63,7 @@ import {
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import { openServiceUrl } from "@/utils/open-service-url";
+import type { TerminalUrlOpenOptions } from "@/terminal/runtime/terminal-link-handler";
 import {
   applyTerminalRendererReadyChange,
   resolveTerminalStreamTarget,
@@ -920,7 +921,11 @@ export function TerminalPane({
     [onOpenWorkspaceFile],
   );
   const handleOpenUrl = useCallback(
-    (url: string) => openServiceUrl(url, { openInApp: onOpenUrlInBrowserTab }),
+    (url: string, options: TerminalUrlOpenOptions) =>
+      openServiceUrl(url, {
+        openInApp: onOpenUrlInBrowserTab,
+        invertBehavior: options.invertBehavior,
+      }),
     [onOpenUrlInBrowserTab],
   );
 

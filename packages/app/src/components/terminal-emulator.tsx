@@ -34,6 +34,7 @@ import type {
   TerminalLocalFileLinkTarget,
 } from "../terminal/local-links/terminal-local-link-provider";
 import type { TerminalClipboardWriter } from "../terminal/native-renderer/terminal-selection";
+import type { TerminalUrlOpener } from "../terminal/runtime/terminal-link-handler";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
 import { openExternalUrl } from "../utils/open-external-url";
 import { focusWithRetries } from "../utils/web-focus";
@@ -144,7 +145,7 @@ interface TerminalEmulatorProps {
     target: TerminalLocalFileLinkTarget,
     disposition: "main" | "side",
   ) => Promise<void> | void;
-  onOpenUrl?: (url: string) => Promise<void> | void;
+  onOpenUrl?: TerminalUrlOpener;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;

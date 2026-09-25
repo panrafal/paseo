@@ -30,7 +30,11 @@ import {
 } from "../local-links/terminal-local-link-provider";
 import { isFindShortcut, type FindShortcutPlatform } from "@/pane-find/find-shortcut";
 import { isMacUserAgent } from "@/utils/mac-user-agent";
-import { createTerminalLinkHandler } from "./terminal-link-handler";
+import {
+  activateTerminalUrl,
+  createTerminalLinkHandler,
+  type TerminalUrlOpener,
+} from "./terminal-link-handler";
 import { resolveTerminalFontFamily, resolveTerminalFontSize } from "./terminal-font";
 
 export type TerminalOutputData = Uint8Array;
@@ -73,7 +77,7 @@ export interface TerminalEmulatorRuntimeCallbacks {
     meta: boolean;
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
-  onOpenUrl?: (url: string) => Promise<void> | void;
+  onOpenUrl?: TerminalUrlOpener;
   onResolveLocalFileLink?: (
     source: TerminalLocalFileLinkSource,
   ) => Promise<TerminalLocalFileLinkTarget | null> | TerminalLocalFileLinkTarget | null;
@@ -460,10 +464,7 @@ export class TerminalEmulatorRuntime {
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(unicode11Addon);
     terminal.loadAddon(
-      new WebLinksAddon((event, uri) => {
-        event.preventDefault();
-        void this.callbacks.onOpenUrl?.(uri);
-      }),
+      new WebLinksAddon((event, uri) => activateTerminalUrl(event, uri, this.callbacks.onOpenUrl)),
     );
     const localFileLinkProvider = terminal.registerLinkProvider(
       createTerminalLocalFileLinkProvider(terminal, {

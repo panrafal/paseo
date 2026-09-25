@@ -113,12 +113,18 @@ interface StubTerminal {
   cols?: number;
 }
 
+interface LinkActivationEvent {
+  preventDefault: () => void;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+}
+
 interface LinkHandler {
-  activate: (event: { preventDefault: () => void }, uri: string) => void;
+  activate: (event: LinkActivationEvent, uri: string) => void;
 }
 
 interface WebLinksCallback {
-  (event: { preventDefault: () => void }, uri: string): void;
+  (event: LinkActivationEvent, uri: string): void;
 }
 
 interface TestWindow {
@@ -397,7 +403,9 @@ describe("terminal-emulator-runtime", () => {
     linkHandler.activate(event, "https://example.com/pull/42");
 
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
-    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/pull/42");
+    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/pull/42", {
+      invertBehavior: false,
+    });
     runtime.unmount();
   });
 
@@ -415,7 +423,9 @@ describe("terminal-emulator-runtime", () => {
     linkHandler.activate({ preventDefault: vi.fn() }, "https://example.com/late");
 
     expect(onOpenUrl).toHaveBeenCalledTimes(1);
-    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/late");
+    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/late", {
+      invertBehavior: false,
+    });
     runtime.unmount();
   });
 
@@ -434,9 +444,41 @@ describe("terminal-emulator-runtime", () => {
     callback(event, "https://example.com/plain");
 
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
-    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/plain");
+    expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/plain", {
+      invertBehavior: false,
+    });
     runtime.unmount();
   });
+
+  it.each([
+    { source: "osc8", metaKey: true, ctrlKey: false },
+    { source: "osc8", metaKey: false, ctrlKey: true },
+    { source: "plain", metaKey: true, ctrlKey: false },
+    { source: "plain", metaKey: false, ctrlKey: true },
+  ])(
+    "inverts the URL target for $source links clicked with meta=$metaKey ctrl=$ctrlKey",
+    ({ source, metaKey, ctrlKey }) => {
+      const onOpenUrl = vi.fn();
+      const runtime = new TerminalEmulatorRuntime();
+
+      runtime.setCallbacks({ callbacks: { onOpenUrl } });
+      mountRuntime(runtime);
+      const activate =
+        source === "osc8"
+          ? terminalConstructorOptions.values[0]?.linkHandler?.activate
+          : webLinksCallbacks.values[0];
+      if (!activate) {
+        throw new Error(`Expected mount to configure a ${source} link callback`);
+      }
+
+      activate({ preventDefault: vi.fn(), metaKey, ctrlKey }, "https://example.com/modified");
+
+      expect(onOpenUrl).toHaveBeenCalledWith("https://example.com/modified", {
+        invertBehavior: true,
+      });
+      runtime.unmount();
+    },
+  );
 
   it("drains contiguous plain writes without waiting for each commit, gating a clear behind them", () => {
     const { runtime, terminal, writeCallbacks, writeTexts } = createRuntimeWithTerminal();
