@@ -172,7 +172,8 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
   };
   return new ScheduleService({
     ...options,
-    store: options.store ?? new ScheduleStore(join(options.paseoHome, "schedules")),
+    store:
+      options.store ?? new ScheduleStore(join(options.paseoHome, "schedules"), createTestLogger()),
     createAgent:
       options.createAgent ??
       ((input) =>
@@ -597,7 +598,7 @@ describe("ScheduleService", () => {
 
   async function labelFixture(failAssignment = false) {
     const deps = await createRegistryBackedScheduleWorkspaceDeps(tempDir);
-    const store = new ScheduleStore(join(tempDir, "schedules"));
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
     const labels = createWorkspaceLabelService({
       paseoHome: tempDir,
       workspaceRegistry: deps.workspaceRegistry,

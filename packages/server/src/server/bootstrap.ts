@@ -868,7 +868,7 @@ export async function createPaseoDaemon(
     path.join(config.paseoHome, "projects", "workspaces.json"),
     logger,
   );
-  const scheduleStore = new ScheduleStore(path.join(config.paseoHome, "schedules"));
+  const scheduleStore = new ScheduleStore(path.join(config.paseoHome, "schedules"), logger);
   const workspaceLabelService = createWorkspaceLabelService({
     scheduleStore,
     logger,
