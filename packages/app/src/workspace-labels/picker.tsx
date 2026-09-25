@@ -162,14 +162,7 @@ function WorkspaceLabelPickerPage({
         />
       ))}
       {snapshot.rows.length > 0 ? <MenuSeparator /> : null}
-      <MenuSubTrigger
-        id={WORKSPACE_LABEL_CREATE_PAGE_ID}
-        leading={CREATE_LEADING}
-        disabled={offline}
-        testID="workspace-label-picker-create"
-      >
-        {t("workspaceLabels.create")}
-      </MenuSubTrigger>
+      <WorkspaceLabelCreateTrigger disabled={offline} />
       {error ? <MenuHint testID="workspace-label-picker-error">{error}</MenuHint> : null}
       {host?.status === "unsupported" ? (
         <MenuHint>{t("workspaceLabels.updateHostUse")}</MenuHint>
