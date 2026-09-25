@@ -30,6 +30,10 @@ import {
 } from "../local-links/terminal-local-link-provider";
 import { isFindShortcut, type FindShortcutPlatform } from "@/pane-find/find-shortcut";
 import { isMacUserAgent } from "@/utils/mac-user-agent";
+import {
+  activateTerminalUrl,
+  type TerminalUrlOpener,
+} from "./terminal-link-handler";
 import { resolveTerminalFontFamily, resolveTerminalFontSize } from "./terminal-font";
 
 export type TerminalOutputData = Uint8Array;
@@ -73,6 +77,7 @@ export interface TerminalEmulatorRuntimeCallbacks {
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
   onOpenExternalUrl?: (url: string) => Promise<void> | void;
+  onOpenUrl?: TerminalUrlOpener;
   onResolveLocalFileLink?: (
     source: TerminalLocalFileLinkSource,
   ) => Promise<TerminalLocalFileLinkTarget | null> | TerminalLocalFileLinkTarget | null;
@@ -435,6 +440,10 @@ export class TerminalEmulatorRuntime {
     this.emitInputModeChange();
 
     const openExternalLink = (event: MouseEvent, uri: string) => {
+      if (this.callbacks.onOpenUrl) {
+        activateTerminalUrl(event, uri, this.callbacks.onOpenUrl);
+        return;
+      }
       event.preventDefault();
       void this.callbacks.onOpenExternalUrl?.(uri);
     };
@@ -445,7 +454,6 @@ export class TerminalEmulatorRuntime {
       cursorStyle: "bar",
       fontFamily: resolveTerminalFontFamily(input.fontFamily),
       fontSize: resolveTerminalFontSize(input.fontSize),
-      // OSC 8 hyperlinks; without a handler xterm prompts and calls window.open().
       linkHandler: { activate: openExternalLink },
       lineHeight: 1.0,
       macOptionIsMeta: true,
