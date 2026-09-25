@@ -1,6 +1,7 @@
 import type pino from "pino";
 import type { KeyPair } from "@getpaseo/relay/e2ee";
 import type { ExternalSocketMetadata } from "./websocket-server.js";
+import type { RelayAuthenticator } from "./relay-auth/authenticator.js";
 import {
   startRelayTransport,
   type RelaySocketLike,
@@ -21,6 +22,8 @@ interface RelayRuntimeOptions {
   attachSocket(ws: RelaySocketLike, metadata?: ExternalSocketMetadata): Promise<void>;
   serverId: string;
   daemonKeyPair: KeyPair;
+  /** Null leaves relay clients unauthenticated, as before `daemon.relay.deviceAuth`. */
+  authenticator: RelayAuthenticator | null;
   startTransport?: typeof startRelayTransport;
 }
 
@@ -44,6 +47,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions): RelayRuntime {
       relayUseTls: config.useTls,
       serverId: options.serverId,
       daemonKeyPair: options.daemonKeyPair,
+      authenticator: options.authenticator ?? undefined,
     });
   }
 

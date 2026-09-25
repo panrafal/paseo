@@ -106,6 +106,12 @@ import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins/timeline";
+import { dispatchComposerAgentMessage } from "@/composer/actions";
+import { createMessageSubmissionWriter } from "@/composer/submission/writer";
+import { encodeImages } from "@/utils/encode-images";
+import { AssistantQuestionCard } from "./assistant-question-card";
+import { collectUnansweredQuestionItemIds } from "./assistant-question-state";
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -370,6 +376,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const showFileExplorer = getWorkspaceSurfaceConfig().showFileExplorer;
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -472,6 +479,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               target: createWorkspaceFileTabTarget(location),
             });
           }
+          return;
+        }
+
+        if (!showFileExplorer) {
           return;
         }
 
@@ -712,6 +723,34 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [context.capabilities, agentId, client, pendingClientMessageIds, resolvedServerId],
     );
 
+    const unansweredQuestionItemIds = useMemo(
+      () => collectUnansweredQuestionItemIds(effectiveStreamItems, effectiveStreamHead ?? []),
+      [effectiveStreamHead, effectiveStreamItems],
+    );
+    const isQuestionAnsweredInTimeline = useCallback(
+      (itemId: string) => !unansweredQuestionItemIds.has(itemId),
+      [unansweredQuestionItemIds],
+    );
+
+    // The agent asked without pausing its turn, so the answer steers the live turn instead of
+    // interrupting it.
+    const submitQuestionAnswer = useStableEvent(async (text: string) => {
+      if (!client) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      const session = useSessionStore.getState().sessions[resolvedServerId];
+      await dispatchComposerAgentMessage({
+        client,
+        agentId,
+        text,
+        attachments: [],
+        encodeImages,
+        submission: createMessageSubmissionWriter(resolvedServerId),
+        activeTurnBehavior: "steer",
+        activeTurnId: session?.agents.get(agentId)?.activeTurn?.turnId ?? undefined,
+      });
+    });
+
     const renderAssistantMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "assistant_message" }>) => {
         return (
@@ -737,10 +776,28 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 />
               )}
             </ChatFindExpansion>
+            {item.questions?.length ? (
+              <AssistantQuestionCard
+                questions={item.questions}
+                answeredInTimeline={isQuestionAnsweredInTimeline(item.id)}
+                readOnly={readOnly}
+                onSubmit={submitQuestionAnswer}
+              />
+            ) : null}
           </AssistantFileLinkResolverProvider>
         );
       },
-      [agentId, client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
+      [
+        agentId,
+        client,
+        handleInlinePathPress,
+        isQuestionAnsweredInTimeline,
+        readOnly,
+        resolvedServerId,
+        submitQuestionAnswer,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     const renderThoughtItem = useCallback(

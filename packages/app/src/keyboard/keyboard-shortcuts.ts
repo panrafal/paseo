@@ -157,6 +157,8 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
   general: [
     "toggle-command-center",
     "search-files",
+    "history-back",
+    "history-forward",
     "show-shortcuts",
     "toggle-settings",
     "cycle-theme",
@@ -167,6 +169,7 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "workspace-jump-index",
     "workspace-prev",
     "workspace-next",
+    "cycle-sidebar-grouping",
     "pin-workspace",
     "archive-workspace",
   ],
@@ -219,6 +222,7 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "workspace-tab-jump-index": "settings.shortcuts.help.jumpToTab",
   "workspace-prev": "settings.shortcuts.help.previousWorkspace",
   "workspace-next": "settings.shortcuts.help.nextWorkspace",
+  "cycle-sidebar-grouping": "settings.shortcuts.help.cycleSidebarGrouping",
   "workspace-tab-prev": "settings.shortcuts.help.previousTab",
   "workspace-tab-next": "settings.shortcuts.help.nextTab",
   "workspace-pane-split-right": "settings.shortcuts.help.splitPaneRight",
@@ -234,6 +238,8 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "workspace-pane-close": "settings.shortcuts.help.closePane",
   "workspace-terminal-new": "settings.shortcuts.help.newTerminal",
   "search-files": "settings.shortcuts.help.searchFiles",
+  "history-back": "settings.shortcuts.help.historyBack",
+  "history-forward": "settings.shortcuts.help.historyForward",
   "toggle-command-center": "settings.shortcuts.help.toggleCommandCenter",
   "show-shortcuts": "settings.shortcuts.help.showKeyboardShortcuts",
   "toggle-left-sidebar": "settings.shortcuts.help.toggleLeftSidebar",
@@ -309,6 +315,30 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
+  // --- Cycle sidebar grouping ---
+  {
+    id: "sidebar-grouping-cycle-cmd-semicolon-mac",
+    action: "sidebar.grouping.cycle",
+    combo: "Cmd+;",
+    when: { mac: true, commandCenter: false, editable: false, terminal: false },
+    help: {
+      id: "cycle-sidebar-grouping",
+      section: "workspaces",
+      label: "Cycle grouping",
+    },
+  },
+  {
+    id: "sidebar-grouping-cycle-ctrl-semicolon-non-mac",
+    action: "sidebar.grouping.cycle",
+    combo: "Ctrl+;",
+    when: { mac: false, commandCenter: false, editable: false, terminal: false },
+    help: {
+      id: "cycle-sidebar-grouping",
+      section: "workspaces",
+      label: "Cycle grouping",
+    },
+  },
+
   // --- Search files (switch project on the New Workspace screen) ---
   {
     id: "workspace-project-pick-cmd-p-mac",
@@ -330,6 +360,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "search-files",
       section: "general",
       label: "Search files",
+    },
+  },
+
+  // --- Route history ---
+  // These ship unassigned because browser/OS history conventions collide with
+  // existing workspace shortcuts and desktop window accelerators.
+  {
+    id: "navigation-history-back",
+    action: "navigation.history.back",
+    combo: "",
+    when: { commandCenter: false },
+    help: {
+      id: "history-back",
+      section: "general",
+      label: "History back",
+    },
+  },
+  {
+    id: "navigation-history-forward",
+    action: "navigation.history.forward",
+    combo: "",
+    when: { commandCenter: false },
+    help: {
+      id: "history-forward",
+      section: "general",
+      label: "History forward",
     },
   },
 
@@ -1308,7 +1364,13 @@ function matchesCombo(combo: KeyCombo, event: KeyboardShortcutInput, isMac: bool
     if (!!combo.ctrl !== event.ctrlKey) return false;
   }
   if (!!combo.alt !== event.altKey) return false;
-  if (!!combo.shift !== event.shiftKey) return false;
+  const shiftedLayoutProducesTargetKey =
+    combo.shift !== true &&
+    event.shiftKey &&
+    combo.key !== undefined &&
+    combo.shiftedKey !== undefined &&
+    event.key.toLowerCase() === combo.key;
+  if (!!combo.shift !== event.shiftKey && !shiftedLayoutProducesTargetKey) return false;
   if (combo.repeat === false && event.repeat) return false;
 
   if (combo.code === "Digit") {

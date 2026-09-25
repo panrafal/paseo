@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/text-input";
 
 const RELAY_DOCS_URL = "https://paseo.sh/docs/security";
+const MIN_LINK_REFRESH_DELAY_MS = 5_000;
 const FLEX_ONE_STYLE = { flex: 1 } as const;
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedShieldCheck = withUnistyles(ShieldCheck);
@@ -58,9 +59,26 @@ export function PairDeviceSection({ serverId, onClose }: PairDeviceSectionProps)
     },
     enabled: supportsPairingRpc && Boolean(client && isConnected),
     dataShape: "value",
-    staleTimeMs: 5 * 60 * 1000,
+    // Each link works once and expires, so never show a cached one.
+    staleTimeMs: 0,
     retry: 1,
   });
+  // Time the link with this clock: the host's clock may disagree, and a link that looks
+  // expired on arrival would otherwise be replaced in a loop.
+  const offerExpiresInMs = pairingQuery.data?.expiresInMs ?? null;
+  const offerDeadlineMs =
+    offerExpiresInMs === null ? null : pairingQuery.dataUpdatedAt + offerExpiresInMs;
+  const refetchPairingOffer = pairingQuery.refetch;
+  useEffect(() => {
+    if (offerDeadlineMs === null) return;
+    const timer = setTimeout(
+      () => {
+        void refetchPairingOffer();
+      },
+      Math.max(MIN_LINK_REFRESH_DELAY_MS, offerDeadlineMs - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [offerDeadlineMs, refetchPairingOffer]);
 
   const enableRelay = useMutation({
     mutationFn: async () => {
@@ -112,6 +130,8 @@ export function PairDeviceSection({ serverId, onClose }: PairDeviceSectionProps)
         isDisconnected={isDisconnected}
         error={pairingQuery.error}
         offer={pairingQuery.data}
+        offerDeadlineMs={offerDeadlineMs}
+        isRefreshingOffer={pairingQuery.isFetching}
         canConfigureRelay={canConfigureRelay}
         enablePending={enableRelay.isPending}
         enableError={enableRelay.error}
@@ -131,7 +151,9 @@ interface PairDeviceBodyProps {
   isPending: boolean;
   isDisconnected: boolean;
   error: Error | null;
-  offer: { relayEnabled: boolean; url: string } | undefined;
+  offer: { relayEnabled: boolean; url: string; expiresAt?: string | null } | undefined;
+  offerDeadlineMs: number | null;
+  isRefreshingOffer: boolean;
   canConfigureRelay: boolean;
   enablePending: boolean;
   enableError: Error | null;
@@ -232,7 +254,9 @@ function RelayHeroBadge() {
   );
 }
 
-function PairingOffer(props: PairDeviceBodyProps & { offer: { url: string } }) {
+function PairingOffer(
+  props: PairDeviceBodyProps & { offer: { url: string; expiresAt?: string | null } },
+) {
   const { t } = useTranslation();
   const inputRef = useRef<EditingTextInputHandle>(null);
   useEffect(() => inputRef.current?.replaceText(props.offer.url), [props.offer.url]);
@@ -262,7 +286,55 @@ function PairingOffer(props: PairDeviceBodyProps & { offer: { url: string } }) {
           {props.copied ? t("pairing.device.copied") : t("pairing.device.copy")}
         </Button>
       </View>
-      <Alert variant="warning" description={t("pairing.device.securityWarning")} />
+      {props.offerDeadlineMs === null ? null : (
+        <LinkExpiry
+          deadlineMs={props.offerDeadlineMs}
+          isRefreshing={props.isRefreshingOffer}
+          onNewLink={props.onRetry}
+        />
+      )}
+      <Alert
+        variant="warning"
+        description={
+          props.offer.expiresAt
+            ? t("pairing.device.oneTimeWarning")
+            : t("pairing.device.securityWarning")
+        }
+      />
+    </View>
+  );
+}
+
+function LinkExpiry({
+  deadlineMs,
+  isRefreshing,
+  onNewLink,
+}: {
+  deadlineMs: number;
+  isRefreshing: boolean;
+  onNewLink: () => void;
+}) {
+  const { t } = useTranslation();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const secondsLeft = Math.max(0, Math.ceil((deadlineMs - now) / 1000));
+  const time = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`;
+  return (
+    <View style={styles.expiryRow}>
+      <Text style={styles.expiryText}>{t("pairing.device.expiresIn", { time })}</Text>
+      <Button
+        variant="outline"
+        size="sm"
+        leftIcon={RotateCw}
+        loading={isRefreshing}
+        disabled={isRefreshing}
+        onPress={onNewLink}
+      >
+        {t("pairing.device.newLink")}
+      </Button>
     </View>
   );
 }
@@ -371,6 +443,16 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+  },
+  expiryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  expiryText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
   },
   inputWrapper: {
     flex: 1,
