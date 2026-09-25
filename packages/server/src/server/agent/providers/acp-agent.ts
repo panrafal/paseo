@@ -14,6 +14,7 @@ import type {
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
+  RequestError,
   type AgentCapabilities as ACPAgentCapabilities,
   type Error as ACPError,
   type AnyMessage,
@@ -32,7 +33,6 @@ import {
   type McpServer,
   type NewSessionResponse,
   type PermissionOption,
-  type Plan,
   type PromptResponse,
   type ReadTextFileRequest,
   type RequestPermissionRequest,
@@ -127,6 +127,14 @@ import {
   truncateForDiagnostic,
 } from "./diagnostic-utils.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
+import {
+  AcpTaskState,
+  CURSOR_UPDATE_TODOS_METHOD,
+  isAcpTodoMerge,
+  isAcpTodoToolInput,
+  mapPlanEntriesToTodo,
+  parseAcpTodoItems,
+} from "./acp-task-state.js";
 
 const ACP_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
 
@@ -1691,6 +1699,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private pendingUserMessage: PendingUserMessage | null = null;
   private submittedUserMessageTurnId: string | null = null;
   private readonly toolCalls = new Map<string, ACPToolSnapshot>();
+  private readonly taskState = new AcpTaskState();
   private readonly terminalEntries = new Map<string, TerminalEntry>();
   private readonly persistedHistory: AgentTimelineItem[] = [];
   private readonly initialHandle?: AgentPersistenceHandle;
@@ -2599,6 +2608,45 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
       });
     }
+
+    if (method !== CURSOR_UPDATE_TODOS_METHOD) {
+      return;
+    }
+    this.applyCursorTodos(params);
+  }
+
+  async extMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    this.logger.trace(
+      {
+        agentId: this.agentId,
+        provider: this.provider,
+        sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
+        method,
+        rawEvent: params,
+      },
+      "provider.acp.extension_method",
+    );
+
+    if (method !== CURSOR_UPDATE_TODOS_METHOD) {
+      throw RequestError.methodNotFound(method);
+    }
+    this.applyCursorTodos(params);
+    return {};
+  }
+
+  private applyCursorTodos(params: Record<string, unknown>): void {
+    const parsed = parseAcpTodoItems(params);
+    if (!parsed) {
+      return;
+    }
+    this.deliverTranslatedEvents([
+      this.wrapTimeline(
+        this.taskState.apply(parsed.items, isAcpTodoMerge(params), parsed.removedIds),
+      ),
+    ]);
   }
 
   // Cache an asynchronously-delivered slash-command batch and unblock any
@@ -2969,7 +3017,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         ];
       case "plan":
         this.fallbackAssistantMessageId = null;
-        return [...pendingUserEvents, this.wrapTimeline(mapPlanToTimeline(update))];
+        return [
+          ...pendingUserEvents,
+          this.wrapTimeline(this.taskState.replace(mapPlanEntriesToTodo(update.entries).items)),
+        ];
       case "current_mode_update":
         this.handleCurrentModeUpdate(update);
         return [
@@ -3060,7 +3111,25 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       snapshot = this.toolSnapshotTransformer(snapshot);
     }
     this.toolCalls.set(toolCallId, snapshot);
+    const todo = this.mapTodoSnapshot(snapshot.rawInput, snapshot.title);
+    if (todo) {
+      return [this.wrapTimeline(todo)];
+    }
     return [this.wrapTimeline(mapToolSnapshotToTimeline(snapshot, this.terminalEntries))];
+  }
+
+  private mapTodoSnapshot(
+    rawInput: unknown,
+    title?: string | null,
+  ): Extract<AgentTimelineItem, { type: "todo" }> | null {
+    if (!isAcpTodoToolInput(rawInput, title)) {
+      return null;
+    }
+    const parsed = parseAcpTodoItems(rawInput);
+    if (!parsed) {
+      return null;
+    }
+    return this.taskState.apply(parsed.items, isAcpTodoMerge(rawInput), parsed.removedIds);
   }
 
   private createMessageTimelineItem(
@@ -3587,16 +3656,6 @@ function mergeToolSnapshot(
     locations: coalesceDefined(update.locations, previous?.locations, null),
     rawInput: update.rawInput !== undefined ? update.rawInput : previous?.rawInput,
     rawOutput: update.rawOutput !== undefined ? update.rawOutput : previous?.rawOutput,
-  };
-}
-
-function mapPlanToTimeline(plan: Plan): AgentTimelineItem {
-  return {
-    type: "todo",
-    items: plan.entries.map((entry) => ({
-      text: entry.content,
-      completed: entry.status === "completed",
-    })),
   };
 }
 
