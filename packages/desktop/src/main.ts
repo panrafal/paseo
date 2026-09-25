@@ -101,11 +101,15 @@ import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
 import { installAppUpdateOnQuit } from "./features/auto-updater.js";
 import {
-  buildAgentDeepLinkRoute,
-  parseAgentDeepLink,
-  type AgentDeepLinkTarget,
-} from "@getpaseo/protocol/agent-deep-link";
-import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
+  buildDesktopNavigationRoute,
+  buildForwardedDeepLinkData,
+  DesktopNavigationInbox,
+  findDesktopDeepLink,
+  parseDesktopDeepLink,
+  readForwardedDeepLink,
+  type DesktopNavigationTarget,
+} from "./desktop-navigation.js";
+import { redactNewWorkspacePromptFromArgv } from "./new-workspace-navigation.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "paseo";
@@ -119,7 +123,7 @@ const DESKTOP_WINDOW_CHROME_MODE = resolveDesktopWindowChromeMode({
 });
 const UPDATE_QUIT_DEADLINE_MS = 5_000;
 const pendingBrowserWindowOpenRequests = new PendingBrowserWindowOpenRequests();
-const agentNavigationInbox = new AgentNavigationInbox();
+const navigationInbox = new DesktopNavigationInbox();
 
 // A second-instance launch can arrive before the packaged protocol handler,
 // IPC handlers, and first window exist. Wait for full bootstrap, not just
@@ -356,16 +360,16 @@ let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   argv: process.argv,
   isDefaultApp: process.defaultApp,
 });
-let pendingAgentNavigation = parseAgentDeepLinkFromArgv(process.argv);
+let pendingDeepLink = findDesktopDeepLink(process.argv);
 
 // Each window pulls its own pending open-project path on mount, keyed by
 // webContents id, so deep-linked windows (second-instance launches, the
 // in-app "Open in new window" action) land on the right project without
 // racing a global.
-let desktopWindowOwner: DesktopWindowOwner<AgentDeepLinkTarget>;
+let desktopWindowOwner: DesktopWindowOwner<DesktopNavigationTarget>;
 
 if (PASEO_DEBUG) {
-  log.info("[open-project] argv:", process.argv);
+  log.info("[open-project] argv:", redactNewWorkspacePromptFromArgv(process.argv));
   log.info("[open-project] isDefaultApp:", process.defaultApp);
   log.info("[open-project] pendingOpenProjectPath:", pendingOpenProjectPath);
 }
@@ -382,8 +386,8 @@ ipcMain.handle("paseo:get-pending-open-project", (event) => {
   return result;
 });
 
-ipcMain.handle("paseo:agent-navigation:ready", (event) => {
-  return agentNavigationInbox.windowReady(event.sender.id);
+ipcMain.handle("paseo:navigation:ready", (event) => {
+  return navigationInbox.windowReady(event.sender.id);
 });
 
 ipcMain.handle("paseo:browser:register-attached", (event, rawInput: unknown) => {
@@ -711,12 +715,12 @@ async function createWindow(
   options.onCreated?.(webContentsId);
   mainWindow.webContents.on("did-start-navigation", (_event, _url, isSameDocument, isMainFrame) => {
     if (isMainFrame && !isSameDocument) {
-      agentNavigationInbox.windowLoading(webContentsId);
+      navigationInbox.windowLoading(webContentsId);
     }
   });
   mainWindow.on("closed", () => {
     options.onClosed?.(webContentsId);
-    agentNavigationInbox.removeWindow(webContentsId);
+    navigationInbox.removeWindow(webContentsId);
     unregisterPaseoBrowserHost(webContentsId);
     browserKeyboard.detachHost(webContentsId);
   });
@@ -791,7 +795,7 @@ async function createWindow(
   return mainWindow;
 }
 
-function ownedDesktopWindow(win: BrowserWindow): OwnedDesktopWindow<AgentDeepLinkTarget> {
+function ownedDesktopWindow(win: BrowserWindow): OwnedDesktopWindow<DesktopNavigationTarget> {
   return {
     webContentsId: win.webContents.id,
     isDestroyed: () => win.isDestroyed(),
@@ -800,11 +804,11 @@ function ownedDesktopWindow(win: BrowserWindow): OwnedDesktopWindow<AgentDeepLin
     restore: () => win.restore(),
     show: () => win.show(),
     focus: () => win.focus(),
-    sendAgent: (target) => win.webContents.send("paseo:event:open-agent", target),
+    send: (target) => win.webContents.send("paseo:event:navigate", target),
   };
 }
 
-desktopWindowOwner = createDesktopWindowOwner<AgentDeepLinkTarget>({
+desktopWindowOwner = createDesktopWindowOwner<DesktopNavigationTarget>({
   async create(input) {
     const win = await createWindow({
       initialRoute: input.initialRoute,
@@ -820,64 +824,59 @@ desktopWindowOwner = createDesktopWindowOwner<AgentDeepLinkTarget>({
     if (!win) return null;
     return ownedDesktopWindow(win);
   },
-  agentRoute: buildAgentDeepLinkRoute,
-  deliverAgent: (webContentsId, target) =>
-    agentNavigationInbox.deliverOrQueue(webContentsId, target),
+  route: buildDesktopNavigationRoute,
+  deliver: (webContentsId, target) => navigationInbox.deliverOrQueue(webContentsId, target),
 });
 
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 
-function receiveAgentDeepLink(input: string): void {
-  const target = parseAgentDeepLink(input);
+// Deep links land in an existing window. Before bootstrap finishes, the newest
+// link waits and becomes the first window's route.
+function receiveDeepLink(input: string): void {
+  const target = parseDesktopDeepLink(input);
   if (!target) {
     return;
   }
 
-  if (bootstrapIsComplete) {
-    void desktopWindowOwner
-      .openOrFocusAgent(target)
-      .catch((error) => log.error("[window] failed to route agent link", error));
+  if (!bootstrapIsComplete) {
+    pendingDeepLink = input;
     return;
   }
 
-  pendingAgentNavigation = target;
-  void bootstrapComplete.then(() => {
-    if (pendingAgentNavigation !== target) {
-      return undefined;
-    }
-    pendingAgentNavigation = null;
-    void desktopWindowOwner
-      .openOrFocusAgent(target)
-      .catch((error) => log.error("[window] failed to route queued agent link", error));
-    return undefined;
-  });
+  void desktopWindowOwner
+    .openOrFocus(target)
+    .catch((error) => log.error("[window] failed to route deep link", error));
 }
 
 app.on("open-url", (event, url) => {
   event.preventDefault();
-  receiveAgentDeepLink(url);
+  receiveDeepLink(url);
 });
 
-function setupSingleInstanceLock(): boolean {
+async function setupSingleInstanceLock(): Promise<boolean> {
   if (DISABLE_SINGLE_INSTANCE_LOCK) {
     log.info("[single-instance] disabled by PASEO_DISABLE_SINGLE_INSTANCE_LOCK");
     return true;
   }
 
-  const gotLock = app.requestSingleInstanceLock();
+  // macOS delivers a launch link through open-url before `ready`. Wait for it so
+  // a process that loses the lock can forward the link instead of dropping it.
+  if (process.platform === "darwin") {
+    await app.whenReady();
+  }
+
+  const gotLock = app.requestSingleInstanceLock(buildForwardedDeepLinkData(pendingDeepLink));
   if (!gotLock) {
     app.quit();
     return false;
   }
 
-  app.on("second-instance", (_event, commandLine) => {
-    const agentTarget = parseAgentDeepLinkFromArgv(commandLine);
-    if (agentTarget) {
-      void bootstrapComplete
-        .then(() => desktopWindowOwner.openOrFocusAgent(agentTarget))
-        .catch((error) => log.error("[window] failed to route second-instance agent link", error));
+  app.on("second-instance", (_event, commandLine, _workingDirectory, additionalData) => {
+    const deepLink = findDesktopDeepLink(commandLine) ?? readForwardedDeepLink(additionalData);
+    if (deepLink) {
+      receiveDeepLink(deepLink);
       return;
     }
 
@@ -919,7 +918,7 @@ async function runCliPassthroughIfRequested(): Promise<boolean> {
 }
 
 async function bootstrap(): Promise<void> {
-  if (!setupSingleInstanceLock()) {
+  if (!(await setupSingleInstanceLock())) {
     return;
   }
 
@@ -983,10 +982,10 @@ async function bootstrap(): Promise<void> {
   });
 
   // The first window of the session restores and persists saved geometry.
-  const initialAgentNavigation = pendingAgentNavigation;
-  pendingAgentNavigation = null;
+  const initialNavigation = parseDesktopDeepLink(pendingDeepLink);
+  pendingDeepLink = null;
   await desktopWindowOwner.openPrimary({
-    initialRoute: initialAgentNavigation ? buildAgentDeepLinkRoute(initialAgentNavigation) : null,
+    initialRoute: initialNavigation ? buildDesktopNavigationRoute(initialNavigation) : null,
     pendingProjectPath: pendingOpenProjectPath,
   });
   pendingOpenProjectPath = null;
@@ -996,10 +995,10 @@ async function bootstrap(): Promise<void> {
   bootstrapIsComplete = true;
   resolveBootstrapComplete();
 
-  if (pendingAgentNavigation) {
-    const target = pendingAgentNavigation;
-    pendingAgentNavigation = null;
-    await desktopWindowOwner.openOrFocusAgent(target);
+  const lateNavigation = parseDesktopDeepLink(pendingDeepLink);
+  pendingDeepLink = null;
+  if (lateNavigation) {
+    await desktopWindowOwner.openOrFocus(lateNavigation);
   }
 
   app.on("activate", () => {
@@ -1010,7 +1009,7 @@ async function bootstrap(): Promise<void> {
 }
 
 void runDesktopStartup({
-  hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath || pendingAgentNavigation),
+  hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath || pendingDeepLink),
   runCliPassthroughIfRequested,
   inheritLoginShellEnv,
   bootstrapGui: bootstrap,
