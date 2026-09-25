@@ -4593,6 +4593,13 @@ export const AgentTimelineEntryPayloadSchema = z.object({
   collapsed: z.array(z.enum(["assistant_merge", "reasoning_merge", "tool_lifecycle", "identity"])),
 });
 
+/**
+ * Timeline fetch failed for a reason retrying cannot fix. The agent's recorded
+ * working directory is gone (its worktree was removed), so the daemon cannot
+ * resume it to read history.
+ */
+export const AGENT_TIMELINE_ERROR_CWD_MISSING = "agent_cwd_missing";
+
 export const FetchAgentTimelineResponseMessageSchema = z.object({
   type: z.literal("fetch_agent_timeline_response"),
   payload: z.object({
@@ -4617,6 +4624,9 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
     mergeWindow: z.boolean().optional(),
     entries: z.array(AgentTimelineEntryPayloadSchema),
     error: z.string().nullable(),
+    // Set when the failure is expected and cannot succeed on retry, so clients
+    // can stop retrying. Absent on older daemons: treat that as retryable.
+    errorCode: z.string().optional(),
   }),
 });
 
