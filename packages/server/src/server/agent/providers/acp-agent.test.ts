@@ -2540,6 +2540,11 @@ describe("ACPAgentSession slash commands", () => {
           name: "create_plan",
           description: "Draft a plan for the requested work",
         },
+        {
+          name: "explain",
+          description: "Explain the selected code",
+          input: { hint: "[prompt]" },
+        },
       ],
     });
 
@@ -2554,6 +2559,12 @@ describe("ACPAgentSession slash commands", () => {
         name: "create_plan",
         description: "Draft a plan for the requested work",
         argumentHint: "",
+        kind: "command",
+      },
+      {
+        name: "explain",
+        description: "Explain the selected code",
+        argumentHint: "[prompt]",
         kind: "command",
       },
     ]);
@@ -2571,7 +2582,178 @@ describe("ACPAgentSession slash commands", () => {
         argumentHint: "",
         kind: "command",
       },
+      {
+        name: "explain",
+        description: "Explain the selected code",
+        argumentHint: "[prompt]",
+        kind: "command",
+      },
     ]);
+  });
+
+  test("classifies commands through slashCommandKindResolver when provided", async () => {
+    const session = new ACPAgentSession(
+      {
+        provider: "devin",
+        cwd: "/tmp/paseo-acp-test",
+      },
+      {
+        provider: "devin",
+        logger: createTestLogger(),
+        defaultCommand: ["devin", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: true,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+        slashCommandKindResolver: (command) =>
+          command._meta?.["cognition.ai/category"] === "Skills" ? "skill" : "command",
+      },
+    );
+
+    asInternals<ACPSessionInternals>(session).translateSessionUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [
+        {
+          name: "compact",
+          description: "Compact the session",
+          _meta: { "cognition.ai/category": "Session" },
+        },
+        {
+          name: "plan",
+          description: "Draft a plan for the requested work",
+          _meta: { "cognition.ai/category": "Skills" },
+        },
+      ],
+    });
+
+    expect(await session.listCommands()).toEqual([
+      {
+        name: "compact",
+        description: "Compact the session",
+        argumentHint: "",
+        kind: "command",
+      },
+      {
+        name: "plan",
+        description: "Draft a plan for the requested work",
+        argumentHint: "",
+        kind: "skill",
+      },
+    ]);
+  });
+});
+
+describe("ACPAgentSession usage updates", () => {
+  function createUsageSession(): ACPAgentSession {
+    return new ACPAgentSession(
+      {
+        provider: "devin",
+        cwd: "/tmp/paseo-acp-test",
+      },
+      {
+        provider: "devin",
+        logger: createTestLogger(),
+        defaultCommand: ["devin", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: true,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+      },
+    );
+  }
+
+  test("emits usage_updated with context window totals on the active foreground turn", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+    internals.activeForegroundTurnId = "turn-1";
+
+    const events = internals.translateSessionUpdate({
+      sessionUpdate: "usage_update",
+      used: 33648,
+      size: 1_000_000,
+    });
+
+    expect(events).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+        },
+        turnId: "turn-1",
+      },
+    ]);
+  });
+
+  test("includes USD cost and reports the update without an active turn", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+
+    const events = internals.translateSessionUpdate({
+      sessionUpdate: "usage_update",
+      used: 33648,
+      size: 1_000_000,
+      cost: { amount: 1.5, currency: "USD" },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+          totalCostUsd: 1.5,
+        },
+      },
+    ]);
+  });
+
+  test("omits cost totals reported in a non-USD currency", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+
+    const events = internals.translateSessionUpdate({
+      sessionUpdate: "usage_update",
+      used: 33648,
+      size: 1_000_000,
+      cost: { amount: 2, currency: "EUR" },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+        },
+      },
+    ]);
+  });
+
+  test("ignores usage_update without a context window size", () => {
+    const session = createUsageSession();
+    const internals = asInternals<ACPSessionInternals>(session);
+
+    expect(
+      internals.translateSessionUpdate({
+        sessionUpdate: "usage_update",
+        used: 33648,
+        size: 0,
+      }),
+    ).toEqual([]);
   });
 });
 
