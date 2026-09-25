@@ -121,6 +121,7 @@ import {
   createStringCommandShellEnvOverlay,
 } from "../../../utils/string-command-shell.js";
 import { spawnProcess } from "../../../utils/spawn.js";
+import { spawnExitBoundProcess } from "../../../utils/exit-bound-process.js";
 import {
   type DiagnosticEntry,
   toDiagnosticErrorMessage,
@@ -1377,7 +1378,7 @@ export class ACPAgentClient implements AgentClient {
     client: ACPClient = this.buildProbeClient(),
   ): Promise<ACPProcessTransport> {
     const { command, args } = await this.resolveLaunchCommand();
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: process.cwd(),
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -2474,8 +2475,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       } catch {}
 
       try {
+        // A provider that never answers session/close must not keep its
+        // process alive past the close.
         if (this.agentCapabilities?.sessionCapabilities?.close) {
-          await this.connection.unstable_closeSession({ sessionId: this.sessionId });
+          await withTimeout(
+            this.connection.unstable_closeSession({ sessionId: this.sessionId }),
+            ACP_PROBE_CLOSE_TIMEOUT_MS,
+            `ACP session/close timed out after ${ACP_PROBE_CLOSE_TIMEOUT_MS}ms`,
+          );
         }
       } catch (error) {
         this.logger.debug({ err: error }, "ACP closeSession failed during shutdown");
@@ -2796,9 +2803,15 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       throw new Error(`${this.provider} command '${this.defaultCommand[0]}' not found`);
     }
 
+    // Node reports a missing cwd as `spawn <command> ENOENT`, which reads as a
+    // missing binary; archived worktrees are the usual cause.
+    if (!(await isDirectory(this.config.cwd))) {
+      throw new Error(`${this.provider} working directory does not exist: ${this.config.cwd}`);
+    }
+
     const command = prefix.command;
     const args = [...prefix.args, ...this.defaultCommand.slice(1)];
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -2811,6 +2824,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const stderrChunks: string[] = [];
     child.stderr.on("data", (chunk: Buffer | string) => {
       stderrChunks.push(chunk.toString());
+    });
+    // Without an 'error' listener a failed spawn is an uncaught exception that
+    // takes down the whole daemon worker.
+    const spawnError = new Promise<never>((_, reject) => {
+      child.on("error", (error) => {
+        this.logger.warn({ err: error }, "ACP agent process error");
+        reject(error);
+      });
     });
     child.once("exit", (code, signal) => {
       if (this.closed) {
@@ -2839,14 +2860,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.child = child;
     this.connection = connection;
     const initialize = await this.runACPRequest(() =>
-      connection.initialize({
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: buildACPClientCapabilities(
-          this.clientCapabilityMeta,
-          this.clientCapabilities,
-        ),
-        clientInfo: { name: "Paseo", version: "dev" },
-      }),
+      Promise.race([
+        connection.initialize({
+          protocolVersion: PROTOCOL_VERSION,
+          clientCapabilities: buildACPClientCapabilities(
+            this.clientCapabilityMeta,
+            this.clientCapabilities,
+          ),
+          clientInfo: { name: "Paseo", version: "dev" },
+        }),
+        spawnError,
+      ]),
     );
 
     return { child, connection, initialize };
@@ -4077,5 +4101,13 @@ async function terminateChildProcess(
     child.stdin.destroy();
     child.stdout.destroy();
     child.stderr.destroy();
+  }
+}
+
+async function isDirectory(dirPath: string): Promise<boolean> {
+  try {
+    return (await fs.stat(dirPath)).isDirectory();
+  } catch {
+    return false;
   }
 }
