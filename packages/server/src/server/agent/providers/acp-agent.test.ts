@@ -26,6 +26,7 @@ import {
   deriveModelDefinitionsFromACP,
   deriveModesFromACP,
   mapACPUsage,
+  mapACPUsageUpdate,
   resolveACPModeSelection,
   resolveACPModelSelection,
   summarizeACPRequestError,
@@ -818,6 +819,42 @@ describe("mapACPUsage", () => {
       inputTokens: 11,
       outputTokens: 7,
       cachedInputTokens: 5,
+    });
+  });
+
+  test("omits missing token fields so later merges keep context occupancy", () => {
+    expect(mapACPUsage({ inputTokens: 11, outputTokens: 7, totalTokens: 18 })).toEqual({
+      inputTokens: 11,
+      outputTokens: 7,
+    });
+  });
+});
+
+describe("mapACPUsageUpdate", () => {
+  test("maps context occupancy and USD session cost", () => {
+    expect(
+      mapACPUsageUpdate({
+        used: 175,
+        size: 200_000,
+        cost: { amount: 0.42, currency: "USD" },
+      }),
+    ).toEqual({
+      contextWindowMaxTokens: 200_000,
+      contextWindowUsedTokens: 175,
+      totalCostUsd: 0.42,
+    });
+  });
+
+  test("leaves non-USD cost off totalCostUsd", () => {
+    expect(
+      mapACPUsageUpdate({
+        used: 10,
+        size: 100_000,
+        cost: { amount: 1.5, currency: "EUR" },
+      }),
+    ).toEqual({
+      contextWindowMaxTokens: 100_000,
+      contextWindowUsedTokens: 10,
     });
   });
 });
@@ -2913,6 +2950,70 @@ describe("ACPAgentSession", () => {
       turnId,
     });
     expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
+  test("emits usage_updated from ACP usage_update and keeps occupancy on turn completion", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    let resolvePrompt!: (value: PromptResponse) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    const { turnId } = await session.startTurn("hello");
+
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "usage_update",
+        used: 175,
+        size: 200_000,
+        cost: { amount: 0.42, currency: "USD" },
+      },
+    });
+
+    expect(events.filter((event) => event.type === "usage_updated")).toEqual([
+      {
+        type: "usage_updated",
+        provider: "claude-acp",
+        usage: {
+          contextWindowMaxTokens: 200_000,
+          contextWindowUsedTokens: 175,
+          totalCostUsd: 0.42,
+        },
+        turnId,
+      },
+    ]);
+
+    resolvePrompt({
+      stopReason: "end_turn",
+      usage: { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(events.find((event) => event.type === "turn_completed")).toEqual({
+      type: "turn_completed",
+      provider: "claude-acp",
+      turnId,
+      usage: {
+        contextWindowMaxTokens: 200_000,
+        contextWindowUsedTokens: 175,
+        totalCostUsd: 0.42,
+        inputTokens: 11,
+        outputTokens: 7,
+      },
+    });
   });
 
   test("startTurn emits the submitted user message even when ACP does not echo it", async () => {
