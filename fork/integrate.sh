@@ -16,14 +16,15 @@
 #   fork/integrate.sh add <branch>      list <branch> in fork/branches and merge it in
 #   fork/integrate.sh rebuild           rebuild from upstream/main + fork-base + fork/branches
 #   fork/integrate.sh rebase-branches   rebase fork-base and our patch branches onto
-#                                       upstream/main, then rebuild
+#                                       upstream/main, verify each one, then rebuild
 #
 # Flags:
 #   --push       publish results, including fork-upstream on update/rebase
 #   --agent      hand conflicts and build or test failures to a Paseo agent
 #                (Codex Luna Max by default)
 #   --no-fetch   use the refs already fetched
-#   --no-verify  skip the build and tests (fork/verify.sh) after the merges
+#   --no-verify  skip the build, lint and tests (fork/verify.sh) of each rebased
+#                branch and of the merged integration
 #
 # See fork/README.md. Settings live in fork/config.sh.
 # External PRs: add owner:branch to fetch from https://github.com/owner/paseo.git.
@@ -55,7 +56,7 @@ for arg in "$@"; do
     --no-fetch) fetch=0 ;;
     --no-verify) verify=0 ;;
     -h | --help)
-      sed -n '3,28p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,29p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*) die "unknown flag: $arg" ;;
@@ -647,85 +648,97 @@ verify_integration() {
     return 0
   fi
   section "🧪" "Verify integration"
-  run_verify && return 0
-  if [ "$use_agent" -eq 1 ] && fix_with_agent && run_verify; then
+  run_verify "$INTEGRATE_DIR" && return 0
+  if [ "$use_agent" -eq 1 ] &&
+    fix_with_agent "$INTEGRATE_DIR" "the integration build" "$(integration_fix_context)" \
+      "6. In your final message, name the patch branch that should carry the fix,
+   so the owner can move it there." &&
+    run_verify "$INTEGRATE_DIR"; then
+    warn "the fix lives only in $INTEGRATION_REF — move it to the patch branch it belongs to, or the next rebuild needs it again"
     return 0
   fi
   stop_on_verify_failure
 }
 
 run_verify() {
-  local head
-  head="$(worktree_head)"
-  say "Building and testing $(short "$head") — log in $VERIFY_LOG"
+  local dir="$1" head
+  head="$(git -C "$dir" rev-parse HEAD)"
+  say "Building, linting and testing $(short "$head") — log in $VERIFY_LOG"
   mkdir -p "$WORK_ROOT"
-  if "$VERIFY_CMD" "$INTEGRATE_DIR" "$BASE" >"$VERIFY_LOG" 2>&1; then
-    say "build and tests pass"
+  if "$VERIFY_CMD" "$dir" "$BASE" >"$VERIFY_LOG" 2>&1; then
+    say "build, lint and tests pass"
     return 0
   fi
-  warn "build or tests failed at $(short "$head"):"
+  warn "build, lint or tests failed at $(short "$head"):"
   tail -n 30 "$VERIFY_LOG" | sed 's/^/    /' >&2
   return 1
 }
 
-# Returns non-zero if the agent did not commit a fix.
+integration_fix_context() {
+  cat <<CONTEXT
+Context: this fork keeps an integration branch, '$INTEGRATION_REF', that is
+'$BASE' (upstream) plus a series of personal patch branches, merged in. The
+merges went through without conflicts, but the result does not build, lint or
+pass its tests. The usual cause is an upstream change a patch did not expect: a
+renamed export, a new required argument, a moved file.
+
+Patch branches and the files each changes. Read a patch's intent from its own
+commits: git log $BASE..<branch> -- <file>
+$(branch_files)
+CONTEXT
+}
+
+# Hand the failure in $VERIFY_LOG, verified in $1, to an agent that commits a
+# fix on top of $1's HEAD. $2 names the job, $3 says what the tree is, $4 is an
+# extra last step. Returns non-zero if the agent did not commit a fix.
 fix_with_agent() {
-  local before agent_status=0
-  before="$(worktree_head)"
+  local dir="$1" what="$2" context="$3" last_step="${4:-}" before agent_status=0
+  before="$(git -C "$dir" rev-parse HEAD)"
   command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
-  section "🤖" "Fix the integration build"
+  section "🤖" "Fix $what"
   say "Handing the failure to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING)"
   paseo run \
-    --cwd "$INTEGRATE_DIR" \
+    --cwd "$dir" \
     --provider "$FORK_AGENT_PROVIDER" \
     --model "$FORK_AGENT_MODEL" \
     --thinking "$FORK_AGENT_THINKING" \
     --mode "$FORK_AGENT_MODE" \
     --wait-timeout "$FORK_AGENT_TIMEOUT" \
-    --title "fork integrate: fix build" \
+    --title "fork integrate: fix $what" \
     --label fork-integrate=1 \
-    "You are fixing a failed build or test run in a throwaway worktree at $INTEGRATE_DIR.
+    "You are fixing a failed build, lint or test run in a throwaway worktree at $dir.
 
-Context: this fork keeps an integration branch, '$INTEGRATION_REF', that is
-'$BASE' (upstream) plus a series of personal patch branches, merged in. The
-merges went through without conflicts, but the result does not build or its
-tests fail. The usual cause is an upstream change a patch did not expect: a
-renamed export, a new required argument, a moved file.
+$context
 
 The full output is in $VERIFY_LOG; it was produced by:
-  $VERIFY_CMD $INTEGRATE_DIR $BASE
+  $VERIFY_CMD $dir $BASE
 Dependencies are already installed.
-
-Patch branches and the files each changes. Read a patch's intent from its own
-commits: git log $BASE..<branch> -- <file>
-$(branch_files)
 
 Do this and nothing else:
 1. Find the cause of each failure. Read the upstream change with
    git log -p $BASE -- <file> and the patch's side with the command above.
 2. Fix it so the upstream change and the intent of every patch both survive.
    Re-express the patch on upstream's new code. Never revert an upstream
-   change, and never delete, skip or loosen a test to make it pass.
-3. Re-run the step that failed (npm run build:server, npm run typecheck, or
-   node_modules/.bin/vitest run <file> in the package) until it passes.
+   change, and never delete, skip or loosen a test or a lint rule to make it pass.
+3. Re-run the step that failed (npm run build:server, npm run typecheck,
+   npm run lint, or node_modules/.bin/vitest run <file> in the package) until
+   it passes.
 4. Discard build churn (git checkout -- package-lock.json and generated
    files you did not mean to change), then commit only your fix:
-   git add <files> && git commit -m 'fork: fix <what> after <upstream change>'
+   git add <files> && git commit -m 'Fix <what> after <upstream change>'
 5. Do not push, do not amend or rewrite history, do not touch any other
    branch or worktree.
-6. In your final message, name the patch branch that should carry the fix,
-   so the owner can move it there.
+$last_step
 
 If the failure cannot be fixed without a decision only the repo owner can
 make, stop without committing and explain why." || agent_status=$?
 
   [ "$agent_status" -eq 0 ] || return 1
-  ! git -C "$INTEGRATE_DIR" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1 || return 1
-  [ "$(worktree_head)" != "$before" ] || return 1
-  git merge-base --is-ancestor "$before" "$(worktree_head)" || return 1
+  ! git -C "$dir" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1 || return 1
+  [ "$(git -C "$dir" rev-parse HEAD)" != "$before" ] || return 1
+  git merge-base --is-ancestor "$before" "$(git -C "$dir" rev-parse HEAD)" || return 1
   say "agent committed:"
-  git -C "$INTEGRATE_DIR" log --oneline "$before..HEAD" | sed 's/^/    /'
-  warn "the fix lives only in $INTEGRATION_REF — move it to the patch branch it belongs to, or the next rebuild needs it again"
+  git -C "$dir" log --oneline "$before..HEAD" | sed 's/^/    /'
 }
 
 # Every listed branch and the files it changes relative to upstream.
@@ -1181,6 +1194,81 @@ catch_up_branch() {
   warn "$branch and $remote have diverged — rebasing the local one; the push will drop what only $remote has"
 }
 
+# Every branch rebase-branches handles is built, linted and tested on its own
+# before it is pushed, so a patch that upstream broke is fixed on the branch —
+# where its PR sees the fix and every rebuild gets it — rather than in the
+# integration. A tip that passed is recorded and not verified again, so a
+# re-run after a failure only verifies what is left. The checkout keeps its
+# node_modules from branch to branch; everything else untracked is cleaned.
+
+VERIFY_DIR="$WORK_ROOT/verify-branch"
+VERIFIED_LIST="$WORK_ROOT/verified-branches"
+
+open_verify_dir() {
+  local sha="$1"
+  if ! git -C "$VERIFY_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    rm -rf "$VERIFY_DIR"
+    git worktree prune
+    mkdir -p "$WORK_ROOT"
+    git worktree add --detach "$VERIFY_DIR" "$sha" >/dev/null
+    return 0
+  fi
+  git -C "$VERIFY_DIR" checkout -q -f --detach "$sha"
+  git -C "$VERIFY_DIR" clean -q -fdx -e node_modules
+}
+
+verify_branch() {
+  local branch="$1" sha
+  [ "$verify" -eq 1 ] || return 0
+  sha="$(git rev-parse "$branch")"
+  if grep -qxF -- "$sha" "$VERIFIED_LIST" 2>/dev/null; then
+    say "verify $branch: $(short "$sha") passed before"
+    return 0
+  fi
+  section "🧪" "Verify $branch"
+  open_verify_dir "$sha"
+  if ! run_verify "$VERIFY_DIR"; then
+    if [ "$use_agent" -eq 0 ] ||
+      ! fix_with_agent "$VERIFY_DIR" "$branch" "$(branch_fix_context "$branch")" ||
+      ! run_verify "$VERIFY_DIR"; then
+      stop_on_branch_failure "$branch"
+    fi
+    move_branch "$branch" "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
+    say "$branch now carries the fix"
+  fi
+  git rev-parse "$branch" >>"$VERIFIED_LIST"
+}
+
+branch_fix_context() {
+  local branch="$1"
+  cat <<CONTEXT
+Context: '$branch' is a branch of this fork that sits directly on '$BASE'
+(upstream); HEAD is its tip, just rebased onto the current upstream. On the new
+upstream it does not build, lint or pass its tests. The usual cause is an
+upstream change the branch did not expect: a renamed export, a new required
+argument, a moved file. Read the branch's intent from its own commits:
+git log $BASE..HEAD -- <file>. The files it changes:
+$(git diff --name-only "$BASE...$branch" | sed 's/^/  /')
+
+Your commit becomes part of '$branch' and of its upstream PR, so keep it to
+what the branch needs. If a failure also happens on $BASE without the branch
+(check in a scratch worktree of $BASE, not with git stash), it is upstream's
+own: do not fix it; stop without committing and say so.
+CONTEXT
+}
+
+stop_on_branch_failure() {
+  local branch="$1" attempt
+  attempt="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
+  git -C "$VERIFY_DIR" checkout -q -- . 2>/dev/null || true
+  [ "$attempt" = "$(git rev-parse "$branch")" ] || say "the agent's unfinished attempt is at $(short "$attempt"): git log $branch..$attempt"
+  die "$branch does not build, lint or pass its tests on $BASE, so it was not pushed and the integration was not rebuilt.
+The output is in $VERIFY_LOG.
+Fix the branch, commit, and re-run the same command: $branch is verified again,
+and branches that already passed are not. Or re-run with --agent to let a
+Paseo agent try, or with --no-verify to skip the step."
+}
+
 rebase_patch_branches() {
   local ref local_branch i
   for ref in "$TOOLING_REF" ${REFS[@]+"${REFS[@]}"}; do
@@ -1200,6 +1288,7 @@ rebase_patch_branches() {
     else
       rebase_branch "$local_branch"
     fi
+    verify_branch "$local_branch"
     publish_branch "$local_branch"
   done
   # Rebased local branches are now ahead of their remote refs; merge those.
