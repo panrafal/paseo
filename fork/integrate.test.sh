@@ -692,6 +692,79 @@ AGENT
   export PATH="$original_path"
 }
 
+scenario_verify_branches() {
+  fixture verify-branches
+  patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
+  patch_branch feat-b broken-b.txt 'b'
+  list_branch origin/feat-a
+  list_branch origin/feat-b
+  run rebuild --push --no-verify
+  # A rebased branch that fails verification is not pushed, and nothing is
+  # rebuilt; the branches before it are.
+  upstream_commit c.txt 'c' "upstream: add c"
+  local tip_b old_main
+  tip_b="$(at origin/feat-b)"
+  old_main="$(at origin/main)"
+  assert_fails "broken branch stops the run" run rebase-branches --push
+  assert_log "feat-b does not build"
+  assert_log "TS2554"
+  assert_eq "fork-base, feat-a and feat-b verified" "$(verify_calls)" 3
+  assert_eq "verified in the branch checkout" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | sort -u)" "$FORK_WORK_ROOT/verify-branch"
+  assert_eq "feat-b not pushed" "$(at origin/feat-b)" "$tip_b"
+  assert_eq "feat-a pushed" "$(at origin/feat-a)" "$(at feat-a)"
+  assert_eq "main untouched" "$(at origin/main)" "$old_main"
+  # Fixed on the branch, the re-run verifies only feat-b, then the integration.
+  git -C "$R" worktree add -q "$F/wt-b" feat-b
+  git -C "$F/wt-b" rm -q broken-b.txt
+  git -C "$F/wt-b" commit -q -m "patch: fix b"
+  git -C "$R" worktree remove "$F/wt-b"
+  assert "re-run after the fix" run rebase-branches --push
+  assert_log "fork-base: .* passed before"
+  assert_eq "feat-b and the integration verified" "$(verify_calls)" 5
+  assert_eq "fixed feat-b pushed" "$(at origin/feat-b)" "$(at feat-b)"
+  assert "main rebuilt on upstream" git -C "$R" cat-file -e main:c.txt
+  # --no-verify skips the branches too.
+  upstream_commit c2.txt 'c2' "upstream: add c2"
+  assert "rebase-branches --no-verify" run rebase-branches --push --no-verify
+  assert_eq "nothing verified" "$(verify_calls)" 5
+  # With --agent the fix is committed on the branch itself and pushed with it.
+  patch_branch feat-c broken-c.txt 'c'
+  list_branch origin/feat-c
+  local original_path="$PATH"
+  mkdir -p "$F/bin"
+  cat >"$F/bin/paseo" <<'AGENT'
+#!/usr/bin/env bash
+set -euo pipefail
+shift
+while [ "$#" -gt 1 ]; do
+  if [ "$1" = --cwd ]; then dir="$2"; fi
+  shift 2
+done
+printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
+[ "${TEST_AGENT_MODE:-}" != giveup ] || exit 0
+cd "$dir"
+git rm -q broken*.txt
+git commit -q -m "fork: fix after upstream change"
+AGENT
+  chmod +x "$F/bin/paseo"
+  export PATH="$F/bin:$PATH"
+  upstream_commit c3.txt 'c3' "upstream: add c3"
+  local tip_c
+  tip_c="$(at feat-c)"
+  export TEST_AGENT_MODE=giveup
+  assert_fails "agent that commits nothing stops the run" run rebase-branches --agent --push
+  assert_log "feat-c does not build"
+  assert_eq "feat-c not pushed" "$(at origin/feat-c)" "$tip_c"
+  unset TEST_AGENT_MODE
+  assert "agent fixes the branch" run rebase-branches --agent --push
+  assert "agent was told the branch" grep -q "'feat-c' is a branch" "$FORK_WORK_ROOT/prompt"
+  assert_log "feat-c now carries the fix"
+  assert_eq "fix is the branch tip" "$(git -C "$R" log -1 --format=%s origin/feat-c)" "fork: fix after upstream change"
+  assert "feat-c on upstream" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-c
+  assert_fails "fix is in main" git -C "$R" cat-file -e main:broken-c.txt
+  export PATH="$original_path"
+}
+
 scenario_seed() {
   fixture seed
   patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
@@ -905,7 +978,7 @@ run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; 
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebase_agent verify rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
+all=(rebase_agent verify verify_branches rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"
