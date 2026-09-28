@@ -20,8 +20,10 @@
 #
 # Flags:
 #   --push       publish results, including fork-upstream on update/rebase
-#   --agent      hand conflicts to a Paseo agent (Codex Luna Max by default)
+#   --agent      hand conflicts and build or test failures to a Paseo agent
+#                (Codex Luna Max by default)
 #   --no-fetch   use the refs already fetched
+#   --no-verify  skip the build and tests (fork/verify.sh) after the merges
 #
 # See fork/README.md. Settings live in fork/config.sh.
 # External PRs: add owner:branch to fetch from https://github.com/owner/paseo.git.
@@ -41,7 +43,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/config.sh"
 
 cmd="" branch_arg=""
-push=0 fetch=1 use_agent=0
+push=0 fetch=1 use_agent=0 verify=1
 for arg in "$@"; do
   case "$arg" in
     rebase | add | rebuild | rebase-branches)
@@ -51,8 +53,9 @@ for arg in "$@"; do
     --push) push=1 ;;
     --agent) use_agent=1 ;;
     --no-fetch) fetch=0 ;;
+    --no-verify) verify=0 ;;
     -h | --help)
-      sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,28p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*) die "unknown flag: $arg" ;;
@@ -77,6 +80,8 @@ require_repo
 [ "$(git config --get rerere.autoupdate || true)" = "true" ] || git config rerere.autoupdate true
 
 TOOLING_DIR="$WORK_ROOT/tooling" # scratch worktree for commits to fork-base
+VERIFY_CMD="${FORK_VERIFY_CMD:-$HERE/verify.sh}"
+VERIFY_LOG="$WORK_ROOT/verify.log"
 REBASE_DIR="$WORK_ROOT/rebase"   # scratch worktree for rebasing one patch branch
 
 # ------------------------------------------------------------- helpers ----
@@ -628,6 +633,137 @@ MSG
   exit 1
 }
 
+# ----------------------------------------------------------- verify ----
+# Build and test the merged tree before it is stamped. A clean merge can still
+# break the build: upstream renames or changes a signature a patch calls, and
+# git has nothing to say about it. With --agent a failure is handed to an
+# agent, which commits its fix into the integration; otherwise, or when the
+# fix does not pass either, the run stops with the worktree left in place,
+# like a conflict.
+
+verify_integration() {
+  if [ "$verify" -eq 0 ]; then
+    say "Skipping build and tests (--no-verify)"
+    return 0
+  fi
+  section "🧪" "Verify integration"
+  run_verify && return 0
+  if [ "$use_agent" -eq 1 ] && fix_with_agent && run_verify; then
+    return 0
+  fi
+  stop_on_verify_failure
+}
+
+run_verify() {
+  local head
+  head="$(worktree_head)"
+  say "Building and testing $(short "$head") — log in $VERIFY_LOG"
+  mkdir -p "$WORK_ROOT"
+  if "$VERIFY_CMD" "$INTEGRATE_DIR" "$BASE" >"$VERIFY_LOG" 2>&1; then
+    say "build and tests pass"
+    return 0
+  fi
+  warn "build or tests failed at $(short "$head"):"
+  tail -n 30 "$VERIFY_LOG" | sed 's/^/    /' >&2
+  return 1
+}
+
+# Returns non-zero if the agent did not commit a fix.
+fix_with_agent() {
+  local before agent_status=0
+  before="$(worktree_head)"
+  command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
+  section "🤖" "Fix the integration build"
+  say "Handing the failure to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING)"
+  paseo run \
+    --cwd "$INTEGRATE_DIR" \
+    --provider "$FORK_AGENT_PROVIDER" \
+    --model "$FORK_AGENT_MODEL" \
+    --thinking "$FORK_AGENT_THINKING" \
+    --mode "$FORK_AGENT_MODE" \
+    --wait-timeout "$FORK_AGENT_TIMEOUT" \
+    --title "fork integrate: fix build" \
+    --label fork-integrate=1 \
+    "You are fixing a failed build or test run in a throwaway worktree at $INTEGRATE_DIR.
+
+Context: this fork keeps an integration branch, '$INTEGRATION_REF', that is
+'$BASE' (upstream) plus a series of personal patch branches, merged in. The
+merges went through without conflicts, but the result does not build or its
+tests fail. The usual cause is an upstream change a patch did not expect: a
+renamed export, a new required argument, a moved file.
+
+The full output is in $VERIFY_LOG; it was produced by:
+  $VERIFY_CMD $INTEGRATE_DIR $BASE
+Dependencies are already installed.
+
+Patch branches and the files each changes. Read a patch's intent from its own
+commits: git log $BASE..<branch> -- <file>
+$(branch_files)
+
+Do this and nothing else:
+1. Find the cause of each failure. Read the upstream change with
+   git log -p $BASE -- <file> and the patch's side with the command above.
+2. Fix it so the upstream change and the intent of every patch both survive.
+   Re-express the patch on upstream's new code. Never revert an upstream
+   change, and never delete, skip or loosen a test to make it pass.
+3. Re-run the step that failed (npm run build:server, npm run typecheck, or
+   node_modules/.bin/vitest run <file> in the package) until it passes.
+4. Discard build churn (git checkout -- package-lock.json and generated
+   files you did not mean to change), then commit only your fix:
+   git add <files> && git commit -m 'fork: fix <what> after <upstream change>'
+5. Do not push, do not amend or rewrite history, do not touch any other
+   branch or worktree.
+6. In your final message, name the patch branch that should carry the fix,
+   so the owner can move it there.
+
+If the failure cannot be fixed without a decision only the repo owner can
+make, stop without committing and explain why." || agent_status=$?
+
+  [ "$agent_status" -eq 0 ] || return 1
+  ! git -C "$INTEGRATE_DIR" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1 || return 1
+  [ "$(worktree_head)" != "$before" ] || return 1
+  git merge-base --is-ancestor "$before" "$(worktree_head)" || return 1
+  say "agent committed:"
+  git -C "$INTEGRATE_DIR" log --oneline "$before..HEAD" | sed 's/^/    /'
+  warn "the fix lives only in $INTEGRATION_REF — move it to the patch branch it belongs to, or the next rebuild needs it again"
+}
+
+# Every listed branch and the files it changes relative to upstream.
+branch_files() {
+  local ref base
+  for ref in ${REFS[@]+"${REFS[@]}"}; do
+    base="$(git merge-base "$BASE" "$ref" 2>/dev/null || true)"
+    [ -n "$base" ] || continue
+    echo "  $ref:"
+    git diff --name-only "$base" "$ref" | sed 's/^/    /'
+  done
+}
+
+stop_on_verify_failure() {
+  trap - EXIT
+  git -C "$INTEGRATE_DIR" checkout -q -- . 2>/dev/null || true
+  cat >&2 <<MSG
+
+The merged integration does not build or pass its tests; nothing was stamped
+or published. The output is in:
+
+  $VERIFY_LOG
+
+Fix it in the worktree, commit, then re-run this command; it continues from
+your commit and verifies again:
+
+  cd $INTEGRATE_DIR
+  # edit, then:
+  git add -A && git commit -m 'fork: fix ...'
+  fork/integrate.sh $cmd${branch_arg:+ $branch_arg}
+
+Better still, fix the patch branch that broke, push it, and re-run.
+Or re-run with --agent to let a Paseo agent try.
+To abandon: git worktree remove --force '$INTEGRATE_DIR'
+MSG
+  exit 1
+}
+
 # Give the result a build number: bump it on fork-base and merge that in, so
 # the number is inside the commit it identifies. Runs after every content
 # merge because fork/build-number has to count the version the tree carries,
@@ -847,6 +983,7 @@ cmd_rebase() {
   if [ "$(worktree_head)" = "$before" ] && git merge-base --is-ancestor "$TOOLING_REF" "$before"; then
     say "$INTEGRATION_REF already has $BASE, $TOOLING_REF and every listed branch"
   else
+    verify_integration
     stamp
   fi
   finish "$before"
@@ -905,6 +1042,7 @@ cmd_add() {
   fi
   open_worktree "$before" "$ADD_REF"
   merge_branch "$ADD_REF"
+  verify_integration
   if [ "$listed" -eq 1 ]; then
     stamp
   else
@@ -945,6 +1083,7 @@ cmd_rebuild() {
     merge_ref "$ref" "Merge $ref into $INTEGRATION_REF" \
       "merge of $ref into $INTEGRATION_REF" "$(sides_branch "$ref")"
   done
+  verify_integration
   stamp
   finish "$base"
   # What the rebuild changed where the patches live. Upstream's own edits to
