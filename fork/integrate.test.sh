@@ -183,8 +183,9 @@ scenario_rebase() {
   local old_int old_main
   old_int="$(at fork-integration)"
   old_main="$(at main)"
-  upstream_commit c.txt 'c' "upstream: add c"
+  upstream_commit c.txt 'c' "upstream: add c [skip ci]"
   assert "rebase --push" run rebase --push
+  assert_fails "main's message drops upstream's [skip ci]" grep -qi "\[skip ci\]" <(git -C "$R" log -1 --format=%B main)
   assert_eq "routine update refreshes fork-upstream" "$(at fork-upstream)" "$(at upstream/main)"
   assert_eq "routine update publishes fork-upstream" "$(at origin/fork-upstream)" "$(at upstream/main)"
   assert_fails "still not after a rebase" grep -q "no longer in fork/branches" "$F/last.log"
