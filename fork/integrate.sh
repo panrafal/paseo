@@ -815,7 +815,9 @@ target_message() {
   local tip="$1" base="$2" ref entry merged
   echo "fork: build $(git show "$tip:fork/build-number" | awk '{print $1 "-panrafal." $2}')"
   echo
-  echo "$BASE: $base $(git log -1 --format=%s "$base")"
+  # Upstream's subject can carry [skip ci] and the like; GitHub honors those
+  # anywhere in the head commit's message and would skip main's workflows.
+  echo "$BASE: $base $(git log -1 --format=%s "$base" | tr '[]' '()')"
   echo "$INTEGRATION_REF: $tip"
   echo "$TOOLING_REF: $(merged_tip_of "$TOOLING_REF" || git rev-parse "$TOOLING_REF")"
   echo "branches:"
