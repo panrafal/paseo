@@ -8,6 +8,7 @@ import type { HostProfile } from "@/types/host-connection";
 import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { parseRelayConnectionUri } from "@/utils/daemon-endpoints";
 import { parseConnectionOfferFromUrl } from "@getpaseo/protocol/connection-offer";
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adaptive-modal-sheet";
 import { getConnectionAuthFailureReason } from "@/utils/test-daemon-connection";
 import { PairingTargetTracker } from "./pair-link-credentials";
@@ -171,7 +172,9 @@ function PairLinkModalContent({
         handleClose();
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : t("pairing.link.errors.unableToPair");
+          error instanceof Error
+            ? formatHostConnectionError(error.message, t)
+            : t("pairing.link.errors.unableToPair");
         setErrorMessage(message);
         if (getConnectionAuthFailureReason(error)) {
           setNeedsPassword(true);

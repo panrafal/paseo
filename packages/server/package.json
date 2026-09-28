@@ -53,6 +53,11 @@
       "source": "./src/server/pairing-offer.ts",
       "default": "./dist/server/server/pairing-offer.js"
     },
+    "./relay-devices": {
+      "types": "./dist/server/server/relay-auth/store.d.ts",
+      "source": "./src/server/relay-auth/store.ts",
+      "default": "./dist/server/server/relay-auth/store.js"
+    },
     "./agent-activity": {
       "types": "./dist/server/server/agent/activity-curator.d.ts",
       "source": "./src/server/agent/activity-curator.ts",

@@ -2058,6 +2058,8 @@ describe("daemon status + pairing RPC", () => {
           url: "",
           qr: null,
           relayEnabled: false,
+          expiresAt: null,
+          expiresInMs: null,
         },
       },
     ]);
