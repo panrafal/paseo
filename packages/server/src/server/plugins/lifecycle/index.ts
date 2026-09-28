@@ -37,6 +37,7 @@ const beforeSchemas = {
       cwd: z.string(),
       reason: z.enum(["create", "resume", "refresh", "import"]),
       purpose: z.enum(["interactive", "history"]),
+      labels: z.record(z.string(), z.string()),
       env: z.record(z.string(), z.string()),
     })
     .strict(),
@@ -129,6 +130,14 @@ export function publishAgentStream(
   }
 }
 
+function sameStringRecord(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftKeys = Object.keys(left);
+  if (leftKeys.length !== Object.keys(right).length) {
+    return false;
+  }
+  return leftKeys.every((key) => left[key] === right[key]);
+}
+
 export function validateBeforeResult<Name extends keyof PluginBeforeRequests>(
   name: Name,
   input: PluginBeforeRequests[Name],
@@ -144,7 +153,8 @@ export function validateBeforeResult<Name extends keyof PluginBeforeRequests>(
       previous.provider !== next.provider ||
       previous.cwd !== next.cwd ||
       previous.reason !== next.reason ||
-      previous.purpose !== next.purpose
+      previous.purpose !== next.purpose ||
+      !sameStringRecord(previous.labels, next.labels)
     ) {
       throw new Error("agent.session_open hooks can only change env");
     }

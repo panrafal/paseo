@@ -61,9 +61,10 @@ ACP permission options are rendered as ordered actions and Paseo returns the sel
 ACP shims can own model discovery through `catalogModelResolver`; the shared client owns the probe
 process and refresh deadline. Keep vendor RPCs in the shim. Cursor uses
 `cursor/list_available_models` because switching models during discovery writes its saved CLI
-preferences and selection history. Cursor versions without that extension must be updated. Kimi
-still probes model selections in its own shim. The initial session supplies modes and the current
-model; it does not override the model list returned by a resolver.
+preferences and selection history. Cursor versions without that extension must be updated. Cursor
+todos use `cursor/update_todos` and `updateTodos` tool calls; ACP `sessionUpdate: "plan"` is the
+Create Plan tool. Kimi still probes model selections in its own shim. The initial session supplies
+modes and the current model; it does not override the model list returned by a resolver.
 
 ### Direct
 
@@ -206,11 +207,15 @@ To add plan usage for a provider, add `packages/server/src/services/quota-fetche
 - optional `balances` for credits, USD, requests, or tokens
 - optional `details` for provider-specific rows
 
-Keep the protocol shape provider-agnostic. Do not add provider-specific renderers for new limit windows; labels and generic bars should carry the UI. API responses should be parsed and normalized with Zod inside the fetcher, while the protocol boundary stays strict so old/new client compatibility is explicit.
+Keep limit windows and balances provider-agnostic; labels and generic bars carry their UI. Account actions such as Codex banked resets need their own capability-gated controls. Parse and normalize API responses with Zod inside the fetcher, while keeping the protocol boundary compatible across versions.
+
+Codex reset redemption spends an account resource. Confirm the selected reset, reuse its idempotency key on retry, and never automatically retry the POST. A timeout can arrive after the credit was spent, so invalidate pre-redemption usage reads even on failure. Keep reset-detail failures separate from quota-window availability, and honor the backend’s per-credit plan eligibility.
 
 Kimi Code usage follows the CLI-managed credential file at `KIMI_CODE_HOME` or `~/.kimi-code/credentials/kimi-code.json`; do not probe the legacy `~/.kimi` path as the primary source for current Kimi Code installs.
 
-Cursor usage reads the desktop `state.vscdb` token first, then `cursor-agent`'s `~/.config/cursor/auth.json`. Headless hosts only have the CLI file.
+Cursor usage uses `CURSOR_ACCESS_TOKEN` / `CURSOR_TOKEN` if set, otherwise the desktop `state.vscdb` token, then `cursor-agent`'s `~/.config/cursor/auth.json`. Headless hosts only have the CLI file.
+
+Kilo usage reads the CLI's OAuth token from `~/.local/share/kilo/auth.json` (`kilo.access`) and calls `GET https://api.kilo.ai/api/profile/balance`. Kilo's gateway has no limit/window endpoint yet, so this reports a single USD balance rather than a percentage window.
 
 ### Usage fetchers are read-only on credentials
 

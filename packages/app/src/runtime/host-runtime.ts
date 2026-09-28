@@ -29,8 +29,11 @@ import {
 } from "@/utils/daemon-endpoints";
 import { resolveAppVersion } from "@/utils/app-version";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@getpaseo/protocol/connection-offer";
-import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { createRelayAuthOptions, importRelayOffer } from "@/runtime/relay-auth";
+import { relayDeviceLabel } from "@/runtime/relay-device-label";
+import { shouldUseDesktopDaemon, shouldUseVscodeDaemon } from "@/desktop/daemon/desktop-daemon";
 import { isWeb } from "@/constants/platform";
+import { getVscodeRuntimeConfig } from "@/desktop/vscode/host";
 import { connectToDaemon, getConnectionAuthFailureReason } from "@/utils/test-daemon-connection";
 import { getOrCreateClientId } from "@/utils/client-id";
 import { z } from "zod";
@@ -90,6 +93,7 @@ export type HostRegistryStatus = "loading" | "ready";
 
 export type ActiveConnection =
   | { type: "directTcp"; endpoint: string; display: string }
+  | { type: "directTcpBridge"; endpoint: string; display: string }
   | { type: "directSocket"; endpoint: string; display: "socket" }
   | { type: "directPipe"; endpoint: string; display: "pipe" }
   | { type: "remoteSsh"; endpoint: string; display: string }
@@ -234,6 +238,13 @@ function toActiveConnection(connection: HostConnection): ActiveConnection {
   if (connection.type === "directTcp") {
     return {
       type: "directTcp",
+      endpoint: connection.endpoint,
+      display: connection.endpoint,
+    };
+  }
+  if (connection.type === "directTcpBridge") {
+    return {
+      type: "directTcpBridge",
       endpoint: connection.endpoint,
       display: connection.endpoint,
     };
@@ -525,14 +536,23 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         ...(host.password ? { password: host.password } : {}),
         localCredential: () => readDesktopManagedLocalCredential(connection),
       } satisfies Omit<DaemonClientConfig, "url">;
-      if (connection.type === "directSocket" || connection.type === "directPipe") {
+      if (
+        connection.type === "directSocket" ||
+        connection.type === "directPipe" ||
+        connection.type === "directTcpBridge"
+      ) {
+        const target =
+          connection.type === "directTcpBridge"
+            ? { transportType: "tcp" as const, endpoint: connection.endpoint }
+            : {
+                transportType:
+                  connection.type === "directSocket" ? ("socket" as const) : ("pipe" as const),
+                transportPath: connection.path,
+              };
         return new DaemonClient({
           ...base,
           ...(desktopTransportFactory ? { transportFactory: desktopTransportFactory } : {}),
-          url: buildDesktopDaemonTransportUrl({
-            transportType: connection.type === "directSocket" ? "socket" : "pipe",
-            transportPath: connection.path,
-          }),
+          url: buildDesktopDaemonTransportUrl(target),
         });
       }
       if (connection.type === "remoteSsh") {
@@ -570,6 +590,10 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         e2ee: {
           enabled: true,
           daemonPublicKeyB64: connection.daemonPublicKeyB64,
+          auth: createRelayAuthOptions({
+            host: { serverId: host.serverId, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+            label: relayDeviceLabel(resolveAppVersion() ?? null),
+          }),
         },
       });
     },
@@ -1518,7 +1542,10 @@ export class HostRuntimeStore {
 
   private async runBoot(): Promise<void> {
     const override = readConfiguredLocalDaemonOverride();
-    await this.loadFromStorage();
+    const useVscodeDaemon = shouldUseVscodeDaemon();
+    // A webview's persisted localhost may belong to another local or Remote SSH
+    // extension host. VS Code sessions use only their injected bridge endpoint.
+    await this.loadFromStorage({ includeHostRegistry: !useVscodeDaemon });
     this.markHostRegistryLoaded();
 
     let isE2E: string | null = null;
@@ -1532,6 +1559,11 @@ export class HostRuntimeStore {
     }
 
     if (shouldUseDesktopDaemon()) {
+      return;
+    }
+
+    if (useVscodeDaemon) {
+      await this.bootstrapVscodeDaemon();
       return;
     }
 
@@ -1552,38 +1584,18 @@ export class HostRuntimeStore {
     }
   }
 
-  private async loadFromStorage(): Promise<void> {
+  private async loadFromStorage(
+    options: { includeHostRegistry: boolean } = {
+      includeHostRegistry: true,
+    },
+  ): Promise<void> {
     let shouldPersistHosts = false;
     let profiles: HostProfile[] = [];
     try {
-      const stored = await readValidatedJson(
-        this.storage,
-        REGISTRY_STORAGE_KEY,
-        StoredHostRegistrySchema,
-      );
-      if (stored) {
-        const normalizedProfiles: HostProfile[] = [];
-        for (const entry of stored) {
-          const profile = normalizeStoredHostProfile(entry);
-          if (!profile) {
-            await this.storage.removeItem(REGISTRY_STORAGE_KEY);
-            normalizedProfiles.length = 0;
-            break;
-          }
-          // COMPAT(connectionPassword): added in v0.9.1, remove after 2027-03-24 with stored-password migration.
-          if (
-            entry.connections.some(
-              (connection) => connection.type === "directTcp" && connection.password,
-            )
-          ) {
-            shouldPersistHosts = true;
-          }
-          normalizedProfiles.push(profile);
-        }
-        profiles = normalizedProfiles.filter((entry) => !isPlaceholderServerId(entry.serverId));
-        if (profiles.length !== normalizedProfiles.length) {
-          shouldPersistHosts = true;
-        }
+      if (options.includeHostRegistry) {
+        const storedRegistry = await this.loadStoredHostProfiles();
+        profiles = storedRegistry.profiles;
+        shouldPersistHosts = storedRegistry.shouldPersist;
       }
       this.hosts = profiles;
       this.replicaCache.setHosts(profiles.map((profile) => profile.serverId));
@@ -1609,6 +1621,49 @@ export class HostRuntimeStore {
     }
   }
 
+  private async loadStoredHostProfiles(): Promise<{
+    profiles: HostProfile[];
+    shouldPersist: boolean;
+  }> {
+    const stored = await readValidatedJson(
+      this.storage,
+      REGISTRY_STORAGE_KEY,
+      StoredHostRegistrySchema,
+    );
+    if (!stored) {
+      return { profiles: [], shouldPersist: false };
+    }
+
+    const normalizedProfiles: HostProfile[] = [];
+    let shouldPersist = false;
+    for (const entry of stored) {
+      const profile = normalizeStoredHostProfile(entry);
+      if (!profile) {
+        await this.storage.removeItem(REGISTRY_STORAGE_KEY);
+        normalizedProfiles.length = 0;
+        break;
+      }
+      // COMPAT(connectionPassword): added in v0.9.1, remove after 2027-03-24 with stored-password migration.
+      if (
+        entry.connections.some(
+          (connection) => connection.type === "directTcp" && connection.password,
+        )
+      ) {
+        shouldPersist = true;
+      }
+      normalizedProfiles.push(profile);
+    }
+
+    const profiles = normalizedProfiles.filter((entry) => !isPlaceholderServerId(entry.serverId));
+    if (profiles.length !== normalizedProfiles.length) {
+      shouldPersist = true;
+    }
+    return {
+      profiles,
+      shouldPersist,
+    };
+  }
+
   private markHostRegistryLoaded(): void {
     if (this.hostRegistryLoaded) {
       return;
@@ -1631,6 +1686,42 @@ export class HostRuntimeStore {
     } catch (error) {
       console.warn("[HostRuntime] bootstrap probe failed", {
         endpoint: LOCALHOST_FALLBACK_ENDPOINT,
+        error,
+      });
+    }
+  }
+
+  private async bootstrapVscodeDaemon(): Promise<void> {
+    const endpoint = getVscodeRuntimeConfig()?.endpoint?.trim();
+    if (!endpoint) {
+      return;
+    }
+
+    let normalizedEndpoint: string;
+    try {
+      normalizedEndpoint = normalizeHostPort(endpoint);
+    } catch (error) {
+      console.warn("[HostRuntime] VS Code daemon endpoint is invalid", { endpoint, error });
+      return;
+    }
+
+    const connection: HostConnection = {
+      id: `bridge:${normalizedEndpoint}`,
+      type: "directTcpBridge",
+      endpoint: normalizedEndpoint,
+    };
+    if (registryHasConnection(this.hosts, connection)) {
+      return;
+    }
+
+    try {
+      await this.probeAndUpsertConnection({
+        connection,
+        timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS,
+      });
+    } catch (error) {
+      console.warn("[HostRuntime] VS Code bootstrap probe failed", {
+        endpoint: normalizedEndpoint,
         error,
       });
     }
@@ -1916,6 +2007,7 @@ export class HostRuntimeStore {
     label?: string,
     password?: string,
   ): Promise<HostProfile> {
+    await importRelayOffer(offer);
     // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
     const useTls = offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint);
     return this.upsertRelayConnection({
@@ -1944,6 +2036,7 @@ export class HostRuntimeStore {
     const parsed = parseOfferConnectionUrl(offerUrlOrFragment);
     const offer = parsed.offer;
     const credential = password ?? parsed.password;
+    await importRelayOffer(offer);
     const useTls = offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint);
     const relayEndpoint = normalizeHostPort(offer.relay.endpoint);
     const connection: HostConnection = {
@@ -2159,6 +2252,11 @@ export class HostRuntimeStore {
   }
 
   private async persistHosts(hosts = this.hosts): Promise<void> {
+    // Keep the injected bridge session-local so concurrent VS Code windows do
+    // not overwrite one another's daemon registry.
+    if (shouldUseVscodeDaemon()) {
+      return;
+    }
     await this.storage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(hosts));
   }
 

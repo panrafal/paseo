@@ -7,6 +7,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import type { BarcodeScanningResult, BarcodeSettings } from "expo-camera";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
 import { isWeb } from "@/constants/platform";
 import { BackHeader } from "@/components/headers/back-header";
@@ -175,10 +176,14 @@ export default function PairScanScreen() {
           else setPasswordOfferUrl(offerUrl);
           return outcome;
         })
-        .catch((error) => setScanError(error instanceof Error ? error.message : String(error)))
+        .catch((error) =>
+          setScanError(
+            error instanceof Error ? formatHostConnectionError(error.message, t) : String(error),
+          ),
+        )
         .finally(() => setIsPairing(false));
     },
-    [isPairing, navigateToPairedHost, passwordOfferUrl, source],
+    [isPairing, navigateToPairedHost, passwordOfferUrl, source, t],
   );
 
   const handleRouterBack = useCallback(() => router.back(), [router]);

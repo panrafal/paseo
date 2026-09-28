@@ -9,6 +9,7 @@ function connectionListen(connection: HostConnection): string | null {
       return `unix://${connection.path}`;
     case "directPipe":
       return `pipe://${connection.path}`;
+    case "directTcpBridge":
     case "remoteSsh":
     case "relay":
       return null;

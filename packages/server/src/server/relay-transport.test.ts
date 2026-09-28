@@ -1,8 +1,17 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type pino from "pino";
-import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
+import {
+  createClientChannel,
+  parseRelayAuthResultFrame,
+  type Transport,
+} from "@getpaseo/relay/e2ee";
 import { exportPublicKey, generateKeyPair } from "@getpaseo/relay";
-import { startRelayTransport } from "./relay-transport";
+import { RelayAuthenticator, type RelayPasswordBinding } from "./relay-auth/authenticator";
+import { RelayDeviceStore } from "./relay-auth/store";
+import { startRelayTransport, type RelayAuthTiming } from "./relay-transport";
 
 function createMockLogger() {
   const messages: { level: "debug" | "info" | "warn" | "error"; args: unknown[] }[] = [];
@@ -348,5 +357,262 @@ describe("relay-transport control lifecycle", () => {
 
     expect(relay.sockets[0]?.url).toMatch(/^wss:\/\/\[::1\]\/ws\?/);
     expect(relay.sockets[1]?.url).toMatch(/^wss:\/\/\[::1\]\/ws\?/);
+  });
+});
+
+describe("relay-transport client authentication", () => {
+  const controllers: Array<{ stop: () => Promise<void> }> = [];
+  let relay: ReturnType<typeof createFakeWebSockets>;
+  let home: string;
+  let store: RelayDeviceStore;
+
+  beforeEach(() => {
+    relay = createFakeWebSockets();
+    home = mkdtempSync(path.join(tmpdir(), "paseo-relay-transport-auth-"));
+    store = new RelayDeviceStore({ paseoHome: home });
+  });
+
+  afterEach(async () => {
+    await Promise.all(controllers.map((controller) => controller.stop()));
+    controllers.length = 0;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  async function connectClient(
+    input: {
+      authTiming?: RelayAuthTiming;
+      password?: RelayPasswordBinding;
+      deviceStore?: RelayDeviceStore;
+    } = {},
+  ) {
+    const daemonKeyPair = generateKeyPair();
+    const attached: unknown[] = [];
+    const controller = startRelayTransport({
+      logger: createMockLogger() as unknown as pino.Logger,
+      attachSocket: async (socket) => {
+        attached.push(socket);
+      },
+      relayEndpoint: "relay.paseo.sh:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      daemonKeyPair,
+      authenticator: new RelayAuthenticator({
+        store: input.deviceStore ?? store,
+        password: input.password ?? null,
+      }),
+      authTiming: input.authTiming,
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(JSON.stringify({ type: "sync", connectionIds: [] }), false);
+    control.message(JSON.stringify({ type: "connected", connectionId: "clt_test" }), false);
+    const dataSocket = relay.sockets[1];
+    const closes: Array<{ code: unknown; reason: unknown }> = [];
+    dataSocket.on("close", (code, reason) => closes.push({ code, reason }));
+    dataSocket.open();
+
+    const clientTransport: Transport = {
+      send: (data) => dataSocket.message(data, data instanceof ArrayBuffer),
+      close: () => undefined,
+      onmessage: null,
+      onclose: null,
+      onerror: null,
+    };
+    dataSocket.onSend = (data) => {
+      clientTransport.onmessage?.({
+        data: data instanceof Uint8Array ? data.slice().buffer : data,
+        isBinary: data instanceof ArrayBuffer || data instanceof Uint8Array,
+      });
+    };
+    const received: string[] = [];
+    let resolveOpen: (() => void) | undefined;
+    const opened = new Promise<void>((resolve) => {
+      resolveOpen = resolve;
+    });
+    const channel = await createClientChannel(
+      clientTransport,
+      exportPublicKey(daemonKeyPair.publicKey),
+      {
+        onopen: () => resolveOpen?.(),
+        onmessage: (data) => {
+          if (typeof data === "string") received.push(data);
+        },
+      },
+    );
+    await opened;
+    return { channel, attached, closes, received };
+  }
+
+  test("announces relayAuth to the client", async () => {
+    const { channel } = await connectClient();
+
+    expect(channel.peerCapabilities().relayAuth).toBe(true);
+  });
+
+  test("attaches a client that pairs with a one-time token and issues its credential", async () => {
+    const { token } = store.createInvitation({ ttlMs: 60_000, now: new Date() });
+    const { channel, attached, received } = await connectClient();
+
+    await channel.send(JSON.stringify({ type: "relay_auth", v: 1, method: "token", token }));
+
+    await vi.waitFor(() => expect(attached).toHaveLength(1));
+    const [device] = store.listDevices();
+    expect(received.map((frame) => parseRelayAuthResultFrame(frame))).toEqual([
+      {
+        type: "relay_auth_result",
+        ok: true,
+        credential: { id: device?.id, secret: expect.any(String) },
+      },
+    ]);
+  });
+
+  test("attaches a returning device that presents its credential", async () => {
+    const { credential } = store.createDevice({
+      label: "Phone",
+      passwordFingerprint: null,
+      now: new Date(),
+    });
+    const { channel, attached, received } = await connectClient();
+
+    await channel.send(
+      JSON.stringify({ type: "relay_auth", v: 1, method: "credential", ...credential }),
+    );
+
+    await vi.waitFor(() => expect(attached).toHaveLength(1));
+    expect(received.map((frame) => parseRelayAuthResultFrame(frame))).toEqual([
+      { type: "relay_auth_result", ok: true },
+    ]);
+  });
+
+  test("rejects a credential issued before the password changed", async () => {
+    const { credential } = store.createDevice({
+      label: "Phone",
+      passwordFingerprint: "bcrypt:old",
+      now: new Date(),
+    });
+    const { channel, attached, closes, received } = await connectClient({
+      password: { hash: "unused", fingerprint: "bcrypt:new" },
+    });
+
+    await channel.send(
+      JSON.stringify({ type: "relay_auth", v: 1, method: "credential", ...credential }),
+    );
+
+    await vi.waitFor(() => expect(closes).toHaveLength(1));
+    expect(received.map((frame) => parseRelayAuthResultFrame(frame))).toEqual([
+      { type: "relay_auth_result", ok: false, reason: "password_changed" },
+    ]);
+    expect(closes[0]).toEqual({ code: 4401, reason: "password_changed" });
+    expect(attached).toEqual([]);
+  });
+
+  test("closes a client whose first frame is application traffic", async () => {
+    const { channel, attached, closes, received } = await connectClient();
+
+    await channel.send(JSON.stringify({ type: "hello", clientId: "c", protocolVersion: 1 }));
+
+    await vi.waitFor(() => expect(closes).toHaveLength(1));
+    expect(closes[0]).toEqual({
+      code: 4401,
+      reason: "Pairing required. Update the app and pair this device again.",
+    });
+    expect(attached).toEqual([]);
+    expect(received).toEqual([]);
+  });
+
+  test("closes a client that sends nothing before the authentication timeout", async () => {
+    const { attached, closes } = await connectClient({
+      authTiming: { timeoutMs: 20, revocationCheckMs: 60_000 },
+    });
+
+    await vi.waitFor(() => expect(closes).toHaveLength(1));
+    expect(closes[0]).toEqual({
+      code: 4401,
+      reason: "Pairing required. Update the app and pair this device again.",
+    });
+    expect(attached).toEqual([]);
+  });
+
+  test("tells the client why authentication failed before closing", async () => {
+    const { channel, attached, closes, received } = await connectClient();
+
+    await channel.send(
+      JSON.stringify({ type: "relay_auth", v: 1, method: "token", token: "not-a-token" }),
+    );
+
+    await vi.waitFor(() => expect(closes).toHaveLength(1));
+    expect(received.map((frame) => parseRelayAuthResultFrame(frame))).toEqual([
+      { type: "relay_auth_result", ok: false, reason: "invalid_token" },
+    ]);
+    expect(closes[0]).toEqual({ code: 4401, reason: "invalid_token" });
+    expect(attached).toEqual([]);
+  });
+
+  test("does not read the device file while no session is open", async () => {
+    class CountingDeviceStore extends RelayDeviceStore {
+      listCalls = 0;
+      override listDevices() {
+        this.listCalls += 1;
+        return super.listDevices();
+      }
+    }
+    const deviceStore = new CountingDeviceStore({ paseoHome: home });
+    await connectClient({ authTiming: { timeoutMs: 10_000, revocationCheckMs: 10 }, deviceStore });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(deviceStore.listCalls).toBe(0);
+  });
+
+  test("closes open sessions instead of crashing when the device file can't be read", async () => {
+    class UnreadableDeviceStore extends RelayDeviceStore {
+      failReads = false;
+      override listDevices() {
+        if (this.failReads) throw new Error("EACCES: permission denied");
+        return super.listDevices();
+      }
+    }
+    const deviceStore = new UnreadableDeviceStore({ paseoHome: home });
+    const { credential } = deviceStore.createDevice({
+      label: "Phone",
+      passwordFingerprint: null,
+      now: new Date(),
+    });
+    const { channel, attached, closes } = await connectClient({
+      authTiming: { timeoutMs: 10_000, revocationCheckMs: 20 },
+      deviceStore,
+    });
+    await channel.send(
+      JSON.stringify({ type: "relay_auth", v: 1, method: "credential", ...credential }),
+    );
+    await vi.waitFor(() => expect(attached).toHaveLength(1));
+
+    deviceStore.failReads = true;
+
+    await vi.waitFor(() => expect(closes).toHaveLength(1));
+    expect(closes[0]).toEqual({ code: 4401, reason: "invalid_credential" });
+  });
+
+  test("closes an open session once its device is revoked", async () => {
+    const { device, credential } = store.createDevice({
+      label: "Phone",
+      passwordFingerprint: null,
+      now: new Date(),
+    });
+    const { channel, attached, closes } = await connectClient({
+      authTiming: { timeoutMs: 10_000, revocationCheckMs: 20 },
+    });
+    await channel.send(
+      JSON.stringify({ type: "relay_auth", v: 1, method: "credential", ...credential }),
+    );
+    await vi.waitFor(() => expect(attached).toHaveLength(1));
+
+    store.revokeDevice(device.id);
+
+    await vi.waitFor(() => expect(closes).toHaveLength(1));
+    expect(closes[0]).toEqual({ code: 4401, reason: "invalid_credential" });
   });
 });
