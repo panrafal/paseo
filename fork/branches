@@ -18,7 +18,6 @@
 # through upstream/main instead.
 
 # Open PRs against getpaseo/paseo.
-origin/add-daemon-loopback-password-bypass
 origin/add-paseo-deeplink-hash-prompts
 origin/paseo-ls/add-labels-filter
 # origin/add-search-transcript-terminal
