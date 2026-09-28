@@ -36,6 +36,7 @@ export interface PluginSessionOpenRequest {
   cwd: string;
   reason: "create" | "resume" | "refresh" | "import";
   purpose: "interactive" | "history";
+  labels: Record<string, string>;
   env: Record<string, string>;
 }
 

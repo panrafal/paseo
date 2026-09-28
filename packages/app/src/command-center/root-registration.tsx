@@ -1,11 +1,12 @@
-import { useMemo } from "react";
-import { router, type Href } from "expo-router";
+import { useCallback, useMemo } from "react";
+import { router, useGlobalSearchParams, useSegments, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
 import {
   CalendarClock,
   CircleDashed,
   Folder,
   FolderPlus,
+  Gauge,
   History,
   Home,
   Import,
@@ -16,21 +17,25 @@ import {
 } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
 import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useImportSession } from "@/hooks/use-import-session";
+import { useHostChooser } from "@/hosts/host-chooser";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
+import type { KeyboardActionId } from "@/keyboard/keyboard-action-dispatcher";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { resolveShortcutKeysForAction } from "@/keyboard/keyboard-shortcuts";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { usePanelStore } from "@/stores/panel-store";
-import { useSidebarViewStore } from "@/stores/sidebar-view-store";
+import { nextSidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { clearCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
   buildOpenProjectRoute,
   buildSchedulesRoute,
   buildSessionsRoute,
   buildSettingsRoute,
+  buildSettingsHostSectionRoute,
 } from "@/utils/host-routes";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { CommandCenterContribution, CommandCenterIconProps } from "./contributions";
@@ -53,6 +58,9 @@ const ThemedKeyboard = withUnistyles(Keyboard, (theme) => ({
 const ThemedSettings = withUnistyles(Settings, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
+const ThemedGauge = withUnistyles(Gauge, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
 const ThemedHome = withUnistyles(Home, (theme) => ({ color: theme.colors.foregroundMuted }));
 const ThemedImport = withUnistyles(Import, (theme) => ({ color: theme.colors.foregroundMuted }));
 const ThemedFolder = withUnistyles(Folder, (theme) => ({ color: theme.colors.foregroundMuted }));
@@ -62,6 +70,8 @@ const ThemedCircleDashed = withUnistyles(CircleDashed, (theme) => ({
 const ThemedPanelLeft = withUnistyles(PanelLeft, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
+
+const SIDEBAR_GROUPING_ACTIONS: readonly KeyboardActionId[] = ["sidebar.grouping.cycle"];
 
 function PlusIcon({ size }: CommandCenterIconProps) {
   return <ThemedPlus size={size} strokeWidth={2.4} />;
@@ -73,6 +83,10 @@ function AddProjectIcon({ size }: CommandCenterIconProps) {
 
 function SettingsIcon({ size }: CommandCenterIconProps) {
   return <ThemedSettings size={size} strokeWidth={2.2} />;
+}
+
+function UsageIcon({ size }: CommandCenterIconProps) {
+  return <ThemedGauge size={size} strokeWidth={2.2} />;
 }
 
 function HistoryIcon({ size }: CommandCenterIconProps) {
@@ -110,6 +124,11 @@ function PanelLeftIcon({ size }: CommandCenterIconProps) {
 export function CommandCenterRootActions() {
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const { t } = useTranslation();
+  const params = useGlobalSearchParams<{ serverId?: string | string[] }>();
+  const segments = useSegments();
+  const isHostRoute = segments.some((segment) => segment === "[serverId]");
+  const serverId = isHostRoute && typeof params.serverId === "string" ? params.serverId : null;
+  const chooseHost = useHostChooser();
   const { overrides } = useKeyboardShortcutOverrides();
   const shortcutsAvailable = useKeyboardShortcutsAvailable();
   const openAddProject = useOpenAddProject();
@@ -131,6 +150,19 @@ export function CommandCenterRootActions() {
     () => ({ isMac: getShortcutOs() === "mac", isDesktop: getIsElectronRuntime() }),
     [],
   );
+  const cycleSidebarGrouping = useCallback(() => {
+    setGroupMode(nextSidebarGroupMode(groupMode));
+    return true;
+  }, [groupMode, setGroupMode]);
+
+  useKeyboardActionHandler({
+    handlerId: "sidebar-grouping-global",
+    actions: SIDEBAR_GROUPING_ACTIONS,
+    enabled: true,
+    priority: 0,
+    handle: cycleSidebarGrouping,
+  });
+
   const actions = useMemo<CommandCenterContribution[]>(() => {
     const availableActions: CommandCenterContribution[] = [
       {
@@ -266,6 +298,31 @@ export function CommandCenterRootActions() {
             undefined,
         },
       },
+      {
+        id: "usage",
+        group: "actions",
+        groupRank: 0,
+        rank: 7,
+        keywords: ["usage", "quota", "limits", "tokens", "cost", "providers"],
+        visibility: "always",
+        run: () => {
+          clearCommandCenterFocusRestoreElement();
+          const openUsage = (hostId: string) => {
+            router.push(buildSettingsHostSectionRoute(hostId, "usage"));
+          };
+          if (serverId) {
+            openUsage(serverId);
+          } else {
+            chooseHost({ onChooseHost: openUsage });
+          }
+        },
+        presentation: {
+          kind: "action",
+          title: t("settings.hostSections.usage"),
+          sectionTitle: t("shell.commandCenter.actions"),
+          icon: UsageIcon,
+        },
+      },
       // Toggle left sidebar is global: it calls the panel store directly and works on every route.
       // The right sidebar and focus toggles do NOT belong here — their handlers live in
       // workspace-screen.tsx behind `enabled: isRouteFocused && ...`, so registering them globally
@@ -325,12 +382,16 @@ export function CommandCenterRootActions() {
           groupByStatus: t("shell.commandCenter.groupByStatus"),
         },
         icons: { project: FolderIcon, status: CircleDashedIcon },
+        shortcutKeys:
+          resolveShortcutKeysForAction("cycle-sidebar-grouping", overrides, shortcutPlatform) ??
+          undefined,
         setGroupMode,
       }),
     );
 
     return availableActions;
   }, [
+    chooseHost,
     groupMode,
     homeRoute,
     keyboardActionDispatcher,
@@ -339,6 +400,7 @@ export function CommandCenterRootActions() {
     overrides,
     schedulesRoute,
     sessionsRoute,
+    serverId,
     setGroupMode,
     setShortcutsDialogOpen,
     settingsRoute,
