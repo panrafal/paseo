@@ -20,7 +20,6 @@
 # Open PRs against getpaseo/paseo.
 origin/add-paseo-deeplink-hash-prompts
 origin/paseo-ls/add-labels-filter
-# origin/add-search-transcript-terminal
 origin/feat/terminal-close-confirm
 origin/sidebar-grouping-toggle
 origin/allowedorigins-domain-patterns
