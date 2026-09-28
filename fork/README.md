@@ -77,9 +77,11 @@ fork/integrate.sh rebase --agent --push
    is merged through a link to the tip that was merged before, so only the
    difference between the two versions lands rather than every amended line
    conflicting.
-4. Bump the build number on `fork-base` and merge it in, so the number is
+4. Build and test the result with `fork/verify.sh` — see
+   [Build and test failures](#build-and-test-failures).
+5. Bump the build number on `fork-base` and merge it in, so the number is
    inside the commit it identifies. A run that merged nothing bumps nothing.
-5. Derive `main`: `fork-integration`'s tree as one commit on the newest
+6. Derive `main`: `fork-integration`'s tree as one commit on the newest
    upstream commit it contains, with a message naming the integration commit
    and every branch tip that went in. Refresh `fork-upstream` to the fetched
    `upstream/main` and push all four fork branches together.
@@ -90,8 +92,9 @@ checkout alone. A checkout sitting on `main`, `fork-base`, `fork-upstream` or
 `fork-integration` is hard-reset to the result when the run succeeds, and
 one with uncommitted changes to tracked files stops the run before any work
 is done — stash or discard them first; do not commit them on `main`, the
-next publish drops the commit. Drop `--agent` to stop on conflicts instead,
-`--push` to keep everything local — it prints the push to run.
+next publish drops the commit. Drop `--agent` to stop on conflicts and build
+failures instead, `--push` to keep everything local — it prints the push to
+run, and add `--no-verify` to skip the build and tests.
 
 It also reports what it cannot fix: a listed branch it cannot resolve, a
 branch that looks merged upstream (every commit has an equivalent on
@@ -225,12 +228,36 @@ On the routine path the agent is the mechanism, not `rerere`: the next
 upstream merge starts from the resolved text, so the conflict does not come
 back in the same shape.
 
+### Build and test failures
+
+A clean merge can still break the build: upstream renames an export or adds a
+required argument, and a patch still uses the old shape. `rebase`, `add` and
+`rebuild` (and so `rebase-branches`) run `fork/verify.sh` in the scratch
+worktree after the merges and before the build number is stamped:
+`npm install`, `npm run build:server`, `npm run typecheck`, and vitest on the
+test files the fork changes relative to upstream plus the test beside each
+source file it changes. Browser and e2e tests are skipped, and the full suite
+never runs — it is too heavy for the devbox. Every step runs even after one
+fails, so the log in `~/.paseo-fork/verify.log` lists all failures.
+
+With `--agent`, a failure is handed to the same agent as conflicts, with the
+log and the files each patch branch changes. It commits its fix into the
+integration, and the run verifies again. The fix lives only in
+`fork-integration`, so the run warns you to move it to the patch branch that
+owns it; the next `rebuild` needs it again otherwise.
+
+Without `--agent`, or when the fix still fails, the run stops with nothing
+stamped or published and the worktree left in place. Fix the patch branch and
+re-run, or commit a fix in the worktree and re-run the same command: it
+continues from your commit and verifies again. `--no-verify` skips the step.
+
 ### Tests
 
 `fork/integrate.test.sh` runs every command against scratch repositories
 under a temp directory: rebuild, the routine rebase, branch drift, add,
 conflicts and re-runs, rebase-branches, author-owned PR updates and force-pushes,
-seeding a fresh clone, diverged branches, dirty checkouts, and the saved base
+seeding a fresh clone, diverged branches, dirty checkouts, build and test
+failures with and without the agent (`fork/verify.sh` is stubbed), and the saved base
 used by `fork/new-branch.sh`. Nothing touches this repository or
 `~/.paseo-fork`. Run it after changing `fork/integrate.sh`.
 
