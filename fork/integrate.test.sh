@@ -76,6 +76,18 @@ fixture() {
   git -C "$R" add -A && git -C "$R" commit -q -m "fork: tooling"
   git -C "$R" push -q -u origin fork-base 2>/dev/null
   export FORK_WORK_ROOT="$F/work"
+  # Stands in for fork/verify.sh: the tree "fails to build" while it holds a
+  # broken*.txt. Every call is logged as "<dir> <base>".
+  cat >"$F/verify" <<'VERIFY'
+#!/usr/bin/env bash
+echo "$1 $2" >>"$FORK_WORK_ROOT/verify-calls"
+if compgen -G "$1/broken*.txt" >/dev/null; then
+  echo "error TS2554: Expected 2 arguments, but got 1."
+  exit 1
+fi
+VERIFY
+  chmod +x "$F/verify"
+  export FORK_VERIFY_CMD="$F/verify"
 }
 
 # A patch branch off upstream/main: $1 name, $2 file, $3 content. Local and
@@ -614,6 +626,72 @@ AGENT
   export PATH="$original_path"
 }
 
+verify_calls() { wc -l <"$FORK_WORK_ROOT/verify-calls" 2>/dev/null | tr -d ' ' || echo 0; }
+
+scenario_verify() {
+  fixture verify
+  patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
+  list_branch origin/feat-a
+  assert "rebuild verifies" run rebuild --push
+  assert_eq "verified once" "$(verify_calls)" 1
+  assert_eq "verified against upstream" "$(cut -d' ' -f2 "$FORK_WORK_ROOT/verify-calls")" upstream/main
+  assert "rebuild --no-verify" run rebuild --push --no-verify
+  assert_log "no-verify"
+  assert_eq "not verified" "$(verify_calls)" 1
+  assert "rebase no-op" run rebase --push
+  assert_eq "a no-op is not verified" "$(verify_calls)" 1
+  # A clean merge that breaks the build stops before anything is stamped.
+  local old_int old_main wt="$FORK_WORK_ROOT/integrate"
+  old_int="$(at fork-integration)"
+  old_main="$(at main)"
+  upstream_commit broken.txt 'x' "upstream: change a signature"
+  assert_fails "rebase stops on a broken build" run rebase --push
+  assert_log "does not build"
+  assert_log "TS2554"
+  assert_eq "integration untouched" "$(at fork-integration)" "$old_int"
+  assert_eq "main untouched" "$(at origin/main)" "$old_main"
+  assert_eq "no bump while stopped" "$(build_number fork-base)" "0.7.2 2"
+  assert "worktree kept" test -d "$wt"
+  # Fix it by hand in the worktree and re-run: it continues and verifies.
+  git -C "$wt" rm -q broken.txt && git -C "$wt" commit -q -m "fork: fix the call"
+  assert "re-run continues" run rebase --push
+  assert_log "continuing from the merge"
+  assert_fails "fix is in main" git -C "$R" cat-file -e main:broken.txt
+  assert_eq "one bump" "$(build_number main)" "0.7.2 3"
+  # With --agent the failure goes to an agent, which commits the fix.
+  local original_path="$PATH"
+  mkdir -p "$F/bin"
+  cat >"$F/bin/paseo" <<'AGENT'
+#!/usr/bin/env bash
+set -euo pipefail
+shift
+while [ "$#" -gt 1 ]; do
+  if [ "$1" = --cwd ]; then dir="$2"; fi
+  shift 2
+done
+printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
+[ "${TEST_AGENT_MODE:-}" != giveup ] || exit 0
+cd "$dir"
+git rm -q broken*.txt
+git commit -q -m "fork: fix after upstream change"
+AGENT
+  chmod +x "$F/bin/paseo"
+  export PATH="$F/bin:$PATH"
+  upstream_commit broken2.txt 'y' "upstream: change another signature"
+  export TEST_AGENT_MODE=giveup
+  assert_fails "agent that commits nothing stops the run" run rebase --agent --push
+  assert_log "does not build"
+  git -C "$R" worktree remove --force "$wt"
+  unset TEST_AGENT_MODE
+  assert "agent fixes the build" run rebase --agent --push
+  assert "agent was given the log" grep -q verify.log "$FORK_WORK_ROOT/prompt"
+  assert "agent was told the branches" grep -q "origin/feat-a" "$FORK_WORK_ROOT/prompt"
+  assert_log "the fix lives only in fork-integration"
+  assert_fails "agent fix is in main" git -C "$R" cat-file -e main:broken2.txt
+  assert_eq "pushed" "$(at origin/main)" "$(at main)"
+  export PATH="$original_path"
+}
+
 scenario_seed() {
   fixture seed
   patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
@@ -827,7 +905,7 @@ run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; 
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebase_agent rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
+all=(rebase_agent verify rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"
