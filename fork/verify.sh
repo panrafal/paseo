@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 #
-# fork/verify.sh <dir> <base> — build and test an integration tree.
+# fork/verify.sh <dir> <base> — build, lint and test a fork tree.
 #
-# fork/integrate.sh runs this in its scratch worktree after the merges and
-# before it stamps a build, so a patch that no longer fits upstream's code
-# stops the run instead of reaching main. <base> is the upstream commit the
-# tree sits on; the tests that run are the ones the fork touches relative to
-# it, never the whole suite, which is too heavy to run here.
+# fork/integrate.sh runs this on every branch rebase-branches rebases, and in
+# its scratch worktree after the merges and before it stamps a build, so a
+# patch that no longer fits upstream's code stops the run instead of reaching
+# main. <base> is the upstream commit the tree sits on; the tests that run are
+# the ones the fork touches relative to it, never the whole suite, which is
+# too heavy to run here.
 #
 #   1. npm install
 #   2. npm run build:server   the daemon packages, as fork/build.sh daemon builds them
 #   3. npm run typecheck      every workspace, the app and desktop included
-#   4. vitest on every test file the fork changes, plus the test next to
+#   4. npm run lint
+#   5. vitest on every test file the fork changes, plus the test next to
 #      every source file it changes. Browser and e2e tests are skipped.
 #
 # Every step after the install runs even when an earlier one fails, so the log
@@ -41,6 +43,9 @@ npm run build:server || failures+=("npm run build:server")
 
 step "npm run typecheck"
 npm run typecheck || failures+=("npm run typecheck")
+
+step "npm run lint"
+npm run lint || failures+=("npm run lint")
 
 # The test files to run: changed tests, and the sibling test of a changed
 # source file. Only packages with a vitest config; browser and e2e tests need
@@ -81,4 +86,4 @@ for pkg in ${packages[@]+"${packages[@]}"}; do
 done
 [ "${#packages[@]}" -gt 0 ] || say "no fork-touched tests to run"
 [ "${#failures[@]}" -eq 0 ] || die "failed: $(printf '%s; ' "${failures[@]}")"
-say "build, typecheck and tests pass"
+say "build, typecheck, lint and tests pass"
