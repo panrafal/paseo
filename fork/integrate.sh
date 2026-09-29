@@ -1257,6 +1257,18 @@ abandon_rebase() {
   drop_rebase_branch "$1"
 }
 
+drop_saved() {
+  local branch="$1" saved sha
+  saved="$(saved_dir_of "$branch")"
+  [ -e "$saved" ] || return 0
+  sha="$(git -C "$saved" rev-parse -q --verify HEAD 2>/dev/null || true)"
+  progress_warn "dropping the unfinished rebase of $branch kept at $saved${sha:+ (its HEAD was $(short "$sha"))}"
+  git -C "$saved" rebase --abort >/dev/null 2>&1 || true
+  git worktree remove --force "$saved" >/dev/null 2>&1 || rm -rf "$saved"
+  git worktree prune
+  git branch -q -D "$(rebase_branch_name "$branch")" 2>/dev/null || true
+}
+
 # The rebase runs on a scratch branch, not a detached HEAD. Rebasing a detached
 # HEAD writes "detached HEAD" to rebase-merge/head-name, and the daemon takes
 # that for the branch name: creating the agent's workspace fails on
@@ -1271,7 +1283,8 @@ drop_rebase_branch() {
 saved_dir_of() { echo "$SAVED_DIR/${1//\//__}"; }
 
 # Move the job's checkout aside, rebase and node_modules included, so the next
-# job in its slot does not reset it. That slot starts a fresh checkout.
+# job in its slot does not reset it. That slot starts a fresh checkout. It is
+# kept for a look until the branch's next rebase, which drops it.
 save_checkout() {
   local branch="$1" saved
   saved="$(saved_dir_of "$branch")"
@@ -1285,9 +1298,7 @@ save_checkout() {
 # commit, so keep resolving until it is done.
 rebase_branch() {
   local branch="$1" position stopped_at sha saved
-  saved="$(saved_dir_of "$branch")"
-  [ ! -e "$saved" ] || die "saved rebase worktree at $saved — recover it or explicitly remove it before retrying:
-  git worktree remove --force '$saved'"
+  drop_saved "$branch"
   open_verify_dir "$branch"
   git -C "$VERIFY_DIR" checkout -q -B "$(rebase_branch_name "$branch")"
   git -C "$VERIFY_DIR" rebase "$BASE" >/dev/null 2>&1 || true
@@ -1302,7 +1313,7 @@ rebase_branch() {
       progress "$branch: rebase conflict"
       if ! resolve_with_agent "$VERIFY_DIR" "rebase of $branch onto $BASE" "$(sides_rebase)" rebase; then
         saved="$(save_checkout "$branch")"
-        die "agent did not finish rebase of $branch onto $BASE. Worktree preserved at $saved; recover it before retrying."
+        die "agent did not finish rebase of $branch onto $BASE. Its worktree is kept at $saved until the next run, which starts the rebase over."
       fi
       break
     fi
@@ -1418,6 +1429,11 @@ progress() {
   [ "$JOB" -eq 0 ] || say "$*" >&3
 }
 
+progress_warn() {
+  warn "$*"
+  [ "$JOB" -eq 0 ] || warn "$*" 2>&3
+}
+
 VERIFY_LOCK=""
 take_verify_lock() {
   local i
@@ -1433,7 +1449,12 @@ take_verify_lock() {
 }
 release_verify_lock() {
   [ -z "$VERIFY_LOCK" ] || rmdir "$VERIFY_LOCK" 2>/dev/null || true
-  VERIFY_LOCK=""
+  progress_warn() {
+  warn "$*"
+  [ "$JOB" -eq 0 ] || warn "$*" 2>&3
+}
+
+VERIFY_LOCK=""
 }
 
 # $1 is the branch, $2 its slot, $3 its tip before the rebase. Runs in a

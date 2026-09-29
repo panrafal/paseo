@@ -608,17 +608,21 @@ AGENT
     assert_eq "$mode branch unchanged" "$(at feat-a)" "$tip"
     assert_eq "$mode branch not pushed" "$(at origin/feat-a)" "$tip"
     assert "$mode worktree preserved" test -d "$FORK_WORK_ROOT/saved/feat-a"
-    assert_log "Worktree preserved"
-    assert_fails "$mode saved worktree protected on retry" run rebase-branches --agent --push
-    assert_log "saved rebase worktree"
-    git -C "$FORK_WORK_ROOT/saved/feat-a" rebase --abort >/dev/null 2>&1 || true
-    git -C "$R" worktree remove --force "$FORK_WORK_ROOT/saved/feat-a"
+    assert_log "kept at .*/saved/feat-a until the next run"
+    touch "$FORK_WORK_ROOT/saved/feat-a/marker"
+    # Without the resolution rerere recorded, the retry needs the agent again.
+    git -C "$R" rerere clear
+    rm -rf "$R/.git/rr-cache"
+    assert_fails "$mode retry fails the same way" run rebase-branches --agent --push
+    assert_log "dropping the unfinished rebase of feat-a"
+    assert_fails "$mode retry started over" test -e "$FORK_WORK_ROOT/saved/feat-a/marker"
     git -C "$R" rerere clear
     rm -rf "$R/.git/rr-cache"
   done
   unset TEST_AGENT_MODE
   rm -f "$FORK_WORK_ROOT/calls" "$FORK_WORK_ROOT/conflicts"
   assert "one agent finishes multi-conflict rebase" run rebase-branches --agent --push
+  assert_log "dropping the unfinished rebase of feat-a"
   assert_eq "one agent call" "$(cat "$FORK_WORK_ROOT/calls")" run
   assert_eq "two conflicting commits resolved" "$(wc -l <"$FORK_WORK_ROOT/conflicts" | tr -d ' ')" 2
   assert "agent instructed to continue without hooks" grep -q 'git -c core.hooksPath=/dev/null rebase --continue' "$FORK_WORK_ROOT/prompt"
