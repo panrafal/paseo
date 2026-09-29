@@ -1254,6 +1254,17 @@ rebase_position() {
 
 abandon_rebase() {
   git -C "$VERIFY_DIR" rebase --abort >/dev/null 2>&1 || true
+  drop_rebase_branch "$1"
+}
+
+# The rebase runs on a scratch branch, not a detached HEAD. Rebasing a detached
+# HEAD writes "detached HEAD" to rebase-merge/head-name, and the daemon takes
+# that for the branch name: creating the agent's workspace fails on
+# `git rev-list origin/main...detached HEAD`.
+rebase_branch_name() { echo "fork-rebase/$1"; }
+drop_rebase_branch() {
+  git -C "$VERIFY_DIR" checkout -q --detach 2>/dev/null || true
+  git branch -q -D "$(rebase_branch_name "$1")" 2>/dev/null || true
 }
 
 # Where the checkout of a rebase an agent did not finish is kept.
@@ -1278,13 +1289,14 @@ rebase_branch() {
   [ ! -e "$saved" ] || die "saved rebase worktree at $saved — recover it or explicitly remove it before retrying:
   git worktree remove --force '$saved'"
   open_verify_dir "$branch"
+  git -C "$VERIFY_DIR" checkout -q -B "$(rebase_branch_name "$branch")"
   git -C "$VERIFY_DIR" rebase "$BASE" >/dev/null 2>&1 || true
   while rebase_in_progress "$VERIFY_DIR"; do
     position="$(rebase_position "$VERIFY_DIR")"
     stopped_at="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
     if [ -n "$(unmerged "$VERIFY_DIR")" ]; then
       if [ "$use_agent" -eq 0 ]; then
-        abandon_rebase
+        abandon_rebase "$branch"
         die "rebase of $branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
       fi
       progress "$branch: rebase conflict"
@@ -1303,11 +1315,12 @@ rebase_branch() {
       GIT_EDITOR=true git -C "$VERIFY_DIR" -c core.hooksPath=/dev/null rebase --continue >/dev/null 2>&1 || true
     fi
     if rebase_in_progress "$VERIFY_DIR" && [ "$(rebase_position "$VERIFY_DIR")" = "$position" ]; then
-      abandon_rebase
+      abandon_rebase "$branch"
       die "rebase of $branch onto $BASE is not making progress. Rebase it by hand."
     fi
   done
   sha="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
+  drop_rebase_branch "$branch"
   move_branch "$branch" "$sha"
   progress "$branch: rebased onto $BASE"
 }
