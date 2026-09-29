@@ -237,8 +237,8 @@ checks that the rebase finished on upstream with a clean worktree, verifies
 the branch, and sends a failure back to the same agent, which already knows
 the branch. An unfinished or failed agent run moves the slot to
 `~/.paseo-fork/saved/<branch>`, and the next job in that slot starts a fresh
-checkout. Recover the saved one or remove it with `git worktree remove
---force` before retrying that branch; retrying refuses to overwrite it.
+checkout. It stays there for a look until the branch's next rebase, which
+drops it with a warning naming the commit its HEAD was on and starts over.
 
 For integration merges, without `--agent` or when the agent gives up, the run
 stops and leaves the scratch worktree in place. Resolve there, commit, and re-run the same
