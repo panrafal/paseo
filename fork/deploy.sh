@@ -14,7 +14,9 @@
 # comes from the same commit. Then, all at once:
 #
 #   daemon    built on the devbox over ssh; once no agent there is running,
-#             installed with npm, the service restarted, the healthcheck run
+#             installed with npm, the service restarted and checked, the box
+#             healthcheck reported; once installed, its client tarballs are
+#             published to the release
 #   desktop   built by GitHub Actions; installed in Terminal after every job
 #             finishes and no local agent is running, since updating the Mac
 #             app stops the hosting daemon
@@ -130,10 +132,19 @@ job_daemon() {
   # esbuild and node-pty install unconfigured.
   devbox_admin "sudo npm install -g --prefix $FORK_DEVBOX_NPM_PREFIX --allow-scripts=esbuild,node-pty ${tarballs[*]}"
   note "installed into $FORK_DEVBOX_NPM_PREFIX on the devbox"
+  touch "$DEPLOY_DIR/daemon.installed"
   # systemctl returns as soon as the unit is started, not when the daemon is
-  # serving; the pause is for the healthcheck.
-  devbox_admin "sudo systemctl restart $FORK_DEVBOX_SERVICE && sleep $FORK_DEVBOX_SETTLE && $FORK_DEVBOX_HEALTHCHECK"
-  note "service $FORK_DEVBOX_SERVICE restarted, healthcheck passed"
+  # serving; the pause is for the check.
+  devbox_admin "sudo systemctl restart $FORK_DEVBOX_SERVICE && sleep $FORK_DEVBOX_SETTLE && $FORK_DEVBOX_DAEMON_CHECK"
+  note "service $FORK_DEVBOX_SERVICE restarted and answering"
+  local health
+  if health="$(devbox_admin "$FORK_DEVBOX_HEALTHCHECK" 2>&1)"; then
+    note "box healthcheck passed"
+  else
+    note "box healthcheck unhealthy (does not fail the deploy):"
+    grep 'FAIL ' <<<"$health" | while IFS= read -r line; do note "$line"; done
+  fi
+  printf '%s\n' "$health"
 }
 
 # dist is under a home the admin account cannot read, so sudo cat.
@@ -319,7 +330,7 @@ VERSION="$(fork_version)"
 say "Deploying $VERSION from $(git log -1 --format='%h %s' "$TARGET")"
 
 mkdir -p "$DEPLOY_DIR"
-rm -f "$DEPLOY_DIR"/*.log "$DEPLOY_DIR"/*.result "$DEPLOY_DIR"/*.exit "$DEPLOY_DIR"/*.progress
+rm -f "$DEPLOY_DIR"/*.log "$DEPLOY_DIR"/*.result "$DEPLOY_DIR"/*.exit "$DEPLOY_DIR"/*.progress "$DEPLOY_DIR"/*.installed
 
 # The local build checkout is shared by vscode and ios; prepare it once, up
 # front, rather than have both jobs race to npm install into it.
@@ -406,9 +417,12 @@ wait
 
 # After wait, not inside job_daemon: job_desktop pushes a tag whose Actions
 # workflow creates the same release, so uploading from the parallel daemon
-# job would race it.
+# job would race it. Gated on the install, not on the job's exit: devbox
+# clients (devhub's devflows) must follow the daemon the box now runs, and the
+# healthcheck that ends the job also fails on their outage — gating on it kept
+# 0.9.2 and 0.10.0 unpublished while devflows could not reach the new daemon.
 publish_rc=0
-if wants daemon && [ "${STATUS[daemon]}" = 0 ]; then
+if wants daemon && [ -e "$DEPLOY_DIR/daemon.installed" ]; then
   set +e
   (
     set -euo pipefail
