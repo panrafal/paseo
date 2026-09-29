@@ -582,6 +582,7 @@ if [ "$cmd" = send ]; then
   git commit -q -m "fork: fix after upstream change"
   exit 0
 fi
+cat "$(git rev-parse --git-path rebase-merge/head-name)" >"$FORK_WORK_ROOT/head-name"
 if [ "${TEST_AGENT_MODE:-}" = abort ]; then
   git rebase --abort
   exit 0
@@ -627,6 +628,8 @@ AGENT
   assert_eq "both patch commits kept" "$(git -C "$R" rev-list --count upstream/main..feat-a)" 2
   assert_eq "resolved content published" "$(git -C "$R" show origin/feat-a:a.txt)" 'upstream + patch two'
   assert_fails "nothing saved" test -e "$FORK_WORK_ROOT/saved/feat-a"
+  assert_eq "rebased on a named branch, which the daemon can read" "$(cat "$FORK_WORK_ROOT/head-name")" refs/heads/fork-rebase/feat-a
+  assert_fails "scratch branch removed" git -C "$R" show-ref --verify -q refs/heads/fork-rebase/feat-a
   # A resolution that does not build goes back to the agent that made it.
   upstream_commit a.txt $'upstream again\n' "upstream: another conflicting change"
   rm -f "$FORK_WORK_ROOT/calls"
