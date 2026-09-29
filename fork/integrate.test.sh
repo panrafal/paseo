@@ -824,6 +824,7 @@ AGENT
   unset TEST_AGENT_MODE
   assert "agent fixes the branch" run rebase-branches --agent --push
   assert "agent was told the branch" grep -q "'feat-c' is a branch" "$FORK_WORK_ROOT/prompt"
+  assert "agent checks upstream in its own checkout" grep -q "git switch -q --detach upstream/main" "$FORK_WORK_ROOT/prompt"
   assert_log "feat-c now carries the fix"
   assert_eq "fix is the branch tip" "$(git -C "$R" log -1 --format=%s origin/feat-c)" "fork: fix after upstream change"
   assert "feat-c on upstream" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-c
