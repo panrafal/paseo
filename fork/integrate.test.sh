@@ -643,7 +643,7 @@ AGENT
   assert "one agent finishes multi-conflict rebase" run rebase-branches --agent --push
   assert_eq "one agent call" "$(cat "$FORK_WORK_ROOT/calls")" run
   assert_eq "two conflicting commits resolved" "$(wc -l <"$FORK_WORK_ROOT/conflicts" | tr -d ' ')" 2
-  assert "agent instructed to continue" grep -q 'git rebase --continue' "$FORK_WORK_ROOT/prompt"
+  assert "agent instructed to continue without hooks" grep -q 'git -c core.hooksPath=/dev/null rebase --continue' "$FORK_WORK_ROOT/prompt"
   assert "agent told the result is verified" grep -q 'Do not build' "$FORK_WORK_ROOT/prompt"
   assert "agent resolved in a slot" grep -qx "$FORK_WORK_ROOT/verify\(-[0-9]*\)\?" "$FORK_WORK_ROOT/agent-dir"
   assert "branch based on upstream" git -C "$R" merge-base --is-ancestor upstream/main feat-a
@@ -657,6 +657,7 @@ AGENT
   assert "resolution fixed by the same agent" run rebase-branches --agent --push
   assert_eq "run, then send to it" "$(tr '\n' ' ' <"$FORK_WORK_ROOT/calls")" "run send agent-1 "
   assert "fix prompt sent" grep -q 'fixing a failed build' "$FORK_WORK_ROOT/prompt"
+  assert "fix committed without hooks" grep -q 'git -c core.hooksPath=/dev/null commit' "$FORK_WORK_ROOT/prompt"
   assert_log "feat-a now carries the fix"
   assert_fails "fix is published" git -C "$R" cat-file -e origin/feat-a:broken-agent.txt
   unset TEST_AGENT_MODE
