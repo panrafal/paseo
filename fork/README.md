@@ -292,7 +292,10 @@ rebuild, so the integration's own check rarely has anything left to find. A
 tip that passed before is skipped, so a re-run after a failure verifies only
 what is left. With `--agent`, a failure goes to the agent that resolved the
 branch's conflicts, or to a new one, which commits its fix on top of the
-branch; the run verifies again and moves the branch to it. Without `--agent`,
+branch; the run verifies again and moves the branch to it. The agent gets the
+exact `fork/verify.sh` command the run used and is told to check with it
+alone, not with the repo-wide typecheck and tests the repo's agent
+instructions ask for. Without `--agent`,
 or when the fix still fails, that branch is not pushed and the run stops
 before rebuilding. Fix the branch, commit, and re-run. When upstream itself fails, the agent stops without committing; run
 with `--no-verify` until upstream is fixed.
