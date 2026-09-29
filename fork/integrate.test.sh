@@ -576,29 +576,7 @@ scenario_rebase_agent() {
   local tip original_path="$PATH"
   tip="$(at feat-a)"
   mkdir -p "$F/bin"
-  cat >"$F/bin/paseo" <<'AGENT'
-#!/usr/bin/env bash
-set -euo pipefail
-cmd="$1"
-shift
-if [ "$cmd" = send ]; then
-  shift 2
-  echo "send $1" >>"$FORK_WORK_ROOT/calls"
-  shift
-  dir="$(cat "$FORK_WORK_ROOT/agent-dir")"
-else
-  [ "$cmd" = run ]
-  while [ "$#" -gt 1 ]; do
-    if [ "$1" = --cwd ]; then dir="$2"; fi
-    shift 2
-  done
-  echo run >>"$FORK_WORK_ROOT/calls"
-  echo "$dir" >"$FORK_WORK_ROOT/agent-dir"
-fi
-printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
-echo '{"agentId": "agent-1", "status": "completed"}'
-exec >&2
-cd "$dir"
+  agent_stub "$F/bin/paseo" <<'AGENT'
 if [ "$cmd" = send ]; then
   git rm -q broken*.txt
   git commit -q -m "fork: fix after upstream change"
@@ -621,7 +599,6 @@ case "${TEST_AGENT_MODE:-}" in
   breaks) echo x >broken-agent.txt && git add broken-agent.txt && git commit -q -m "patch: breaks the build" ;;
 esac
 AGENT
-  chmod +x "$F/bin/paseo"
   export PATH="$F/bin:$PATH"
   local mode
   for mode in partial abort dirty failed; do
@@ -664,6 +641,61 @@ AGENT
   export PATH="$original_path"
 }
 
+# Stands in for the paseo CLI: run --background starts "agent-1" and does its
+# work at once, send --no-wait hands it more, wait reports it idle and stop is
+# logged. $1 is the stub, stdin the work, run in the agent's directory with
+# $cmd (run or send) and $prompt set.
+agent_stub() {
+  {
+    cat <<'PRELUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+W="$FORK_WORK_ROOT"
+cmd="$1"
+shift
+case "$cmd" in
+  wait)
+    if [ -n "${TEST_AGENT_BUSY:-}" ]; then
+      touch "$W/agent-busy"
+      sleep 30
+    fi
+    echo '{"agentId": "agent-1", "status": "idle"}'
+    exit 0
+    ;;
+  stop)
+    echo "stop $1" >>"$W/calls"
+    exit 0
+    ;;
+  send)
+    [ "$1" = --no-wait ] && shift
+    echo "send $1" >>"$W/calls"
+    prompt="$2"
+    dir="$(cat "$W/agent-dir")"
+    ;;
+  run)
+    while [ "$#" -gt 1 ]; do
+      case "$1" in
+        --cwd) dir="$2" && shift 2 ;;
+        --background | --quiet) shift ;;
+        *) shift 2 ;;
+      esac
+    done
+    prompt="$1"
+    echo run >>"$W/calls"
+    echo "$dir" >"$W/agent-dir"
+    echo "${PASEO_WORKSPACE_ID:-none}" >"$W/agent-workspace"
+    echo agent-1
+    ;;
+esac
+printf '%s\n' "$prompt" >"$W/prompt"
+exec >&2
+cd "$dir"
+PRELUDE
+    cat
+  } >"$1"
+  chmod +x "$1"
+}
+
 verify_calls() { wc -l <"$FORK_WORK_ROOT/verify-calls" 2>/dev/null | tr -d ' ' || echo 0; }
 
 scenario_verify() {
@@ -699,23 +731,11 @@ scenario_verify() {
   # With --agent the failure goes to an agent, which commits the fix.
   local original_path="$PATH"
   mkdir -p "$F/bin"
-  cat >"$F/bin/paseo" <<'AGENT'
-#!/usr/bin/env bash
-set -euo pipefail
-shift
-while [ "$#" -gt 1 ]; do
-  if [ "$1" = --cwd ]; then dir="$2"; fi
-  shift 2
-done
-printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
-echo '{"agentId": "agent-1", "status": "completed"}'
-exec >&2
+  agent_stub "$F/bin/paseo" <<'AGENT'
 [ "${TEST_AGENT_MODE:-}" != giveup ] || exit 0
-cd "$dir"
 git rm -q broken*.txt
 git commit -q -m "fork: fix after upstream change"
 AGENT
-  chmod +x "$F/bin/paseo"
   export PATH="$F/bin:$PATH"
   upstream_commit broken2.txt 'y' "upstream: change another signature"
   export TEST_AGENT_MODE=giveup
@@ -781,23 +801,11 @@ scenario_verify_branches() {
   list_branch origin/feat-c
   local original_path="$PATH"
   mkdir -p "$F/bin"
-  cat >"$F/bin/paseo" <<'AGENT'
-#!/usr/bin/env bash
-set -euo pipefail
-shift
-while [ "$#" -gt 1 ]; do
-  if [ "$1" = --cwd ]; then dir="$2"; fi
-  shift 2
-done
-printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
-echo '{"agentId": "agent-1", "status": "completed"}'
-exec >&2
+  agent_stub "$F/bin/paseo" <<'AGENT'
 [ "${TEST_AGENT_MODE:-}" != giveup ] || exit 0
-cd "$dir"
 git rm -q broken*.txt
 git commit -q -m "fork: fix after upstream change"
 AGENT
-  chmod +x "$F/bin/paseo"
   export PATH="$F/bin:$PATH"
   upstream_commit c3.txt 'c3' "upstream: add c3"
   local tip_c
@@ -857,6 +865,47 @@ run_jobs() {
   local jobs="$1" verify_jobs="$2"
   shift 2
   FORK_JOBS="$jobs" FORK_VERIFY_JOBS="$verify_jobs" run "$@"
+}
+
+# Stopping a run stops its builds and agents, and starts nothing new.
+scenario_stop() {
+  fixture stop
+  patch_branch feat-a broken-a.txt 'a'
+  patch_branch feat-b slow.txt 'b'
+  list_branch origin/feat-a
+  list_branch origin/feat-b
+  run rebuild --push --no-verify
+  cat >"$F/verify" <<'VERIFY'
+#!/usr/bin/env bash
+if [ -e "$1/slow.txt" ]; then
+  echo "$$" >"$FORK_WORK_ROOT/slow.pid"
+  sleep 30
+  exit 1
+fi
+if compgen -G "$1/broken*.txt" >/dev/null; then exit 1; fi
+VERIFY
+  local original_path="$PATH" pid status=0 i
+  mkdir -p "$F/bin"
+  agent_stub "$F/bin/paseo" </dev/null
+  export PATH="$F/bin:$PATH" TEST_AGENT_BUSY=1 PASEO_WORKSPACE_ID=wks-caller
+  upstream_commit c.txt 'c' "upstream: add c"
+  (cd "$R" && exec "$INTEGRATE" rebase-branches --agent --push) >"$F/last.log" 2>&1 &
+  pid=$!
+  for ((i = 0; i < 200; i++)); do
+    [ -e "$FORK_WORK_ROOT/agent-busy" ] && [ -e "$FORK_WORK_ROOT/slow.pid" ] && break
+    sleep 0.1
+  done
+  kill -TERM "$pid"
+  wait "$pid" || status=$?
+  unset TEST_AGENT_BUSY PASEO_WORKSPACE_ID
+  export PATH="$original_path"
+  assert_eq "run stopped" "$status" 130
+  assert_log "stopping"
+  assert "the agent working is stopped" grep -qx "stop agent-1" "$FORK_WORK_ROOT/calls"
+  assert_eq "no agent started after the stop" "$(grep -c '^run' "$FORK_WORK_ROOT/calls")" 1
+  assert_fails "the build is killed" kill -0 "$(cat "$FORK_WORK_ROOT/slow.pid")"
+  assert_eq "agent started outside the caller's workspace" "$(cat "$FORK_WORK_ROOT/agent-workspace")" none
+  assert_fails "feat-b not pushed" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-b
 }
 
 scenario_seed() {
@@ -1072,7 +1121,7 @@ run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; 
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebase_agent verify verify_branches parallel rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
+all=(rebase_agent verify verify_branches parallel stop rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"
