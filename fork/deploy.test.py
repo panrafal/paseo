@@ -67,6 +67,13 @@ if [[ "$*" == *"bash -s"* ]]; then
   fi
   exit "${WAIT_EXIT:-0}"
 fi
+if [[ "$*" == *"systemctl restart"* ]]; then
+  exit "${DAEMON_CHECK_EXIT:-0}"
+fi
+if [[ "$*" == *"devbox-healthcheck"* ]]; then
+  [ "${HEALTH_EXIT:-0}" = 0 ] || echo '  FAIL  queue dlq              21 dead-lettered job(s)'
+  exit "${HEALTH_EXIT:-0}"
+fi
 if [[ "$*" == *"sudo cat"* ]]; then
   printf ''
   exit 0
@@ -217,6 +224,26 @@ echo 'Update finished'
         if path.exists():
             calls = path.read_text()
         self.assertNotIn("release upload", calls)
+
+    def test_unhealthy_box_is_reported_without_failing(self):
+        result = self.deploy("daemon", HEALTH_EXIT="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("           box healthcheck unhealthy (does not fail the deploy):\n", result.stdout)
+        self.assertIn("             FAIL  queue dlq              21 dead-lettered job(s)\n", result.stdout)
+        calls = (self.root / "gh.calls").read_text()
+        self.assertIn("release upload fork-v0.7.2-panrafal.9", calls)
+
+    def test_failed_daemon_check_after_install_still_publishes(self):
+        result = self.deploy("daemon", DAEMON_CHECK_EXIT="1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        calls = (self.root / "gh.calls").read_text()
+        self.assertIn("release upload fork-v0.7.2-panrafal.9", calls)
+
+    def test_failed_install_does_not_publish(self):
+        result = self.deploy("daemon", WAIT_EXIT="5")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        path = self.root / "gh.calls"
+        self.assertNotIn("release upload", path.read_text() if path.exists() else "")
 
 
 if __name__ == "__main__":
