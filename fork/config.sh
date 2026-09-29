@@ -37,10 +37,14 @@ FORK_DEVBOX_REPO="${FORK_DEVBOX_REPO:-/home/$FORK_DEVBOX_USER/projects/paseo}"
 FORK_DEVBOX_WORK_ROOT="${FORK_DEVBOX_WORK_ROOT:-/home/$FORK_DEVBOX_USER/.paseo-fork}"
 FORK_DEVBOX_NPM_PREFIX="${FORK_DEVBOX_NPM_PREFIX:-/usr}"
 FORK_DEVBOX_SERVICE="${FORK_DEVBOX_SERVICE:-paseo}"
-# Run after the restart to confirm the new daemon actually came up. The pause
-# is there because systemd returns as soon as the unit is started, not when the
-# daemon is serving.
+# Run after the restart to confirm the new daemon actually came up; its failure
+# fails the daemon job. The pause is there because systemd returns as soon as
+# the unit is started, not when the daemon is serving.
 FORK_DEVBOX_SETTLE="${FORK_DEVBOX_SETTLE:-8}"
+FORK_DEVBOX_DAEMON_CHECK="${FORK_DEVBOX_DAEMON_CHECK:-systemctl is-active --quiet paseo && curl -fsS -m 8 -o /dev/null http://127.0.0.1:6767/api/health}"
+# The whole box's healthcheck, run afterwards and only reported: it also fails
+# on things the daemon install neither caused nor fixes (queue backlogs, a
+# skipped maintenance window).
 FORK_DEVBOX_HEALTHCHECK="${FORK_DEVBOX_HEALTHCHECK:-sudo devbox-healthcheck}"
 # The devbox account VS Code and Cursor SSH in as. The VS Code extension goes
 # into that account's ~/.vscode-server and ~/.cursor-server.
