@@ -128,11 +128,17 @@ that rebases, verifies and pushes it, `FORK_JOBS` (4) at a time, in a slot of
 its own: `~/.paseo-fork/verify`, `verify-2`, `verify-3`, … Every slot keeps
 its own `node_modules`, so the first run pays one `npm install` per slot. Only
 `FORK_VERIFY_JOBS` (2) build and test at once; four at once, next to agents
-doing the same, freezes the devbox. The terminal gets a line per branch as it
-finishes; the rest goes to `~/.paseo-fork/rebase-branches/<branch>.log` (`/` becomes `__`), next
-to the branch's `<branch>.verify.log`. A failed branch does not stop the
+doing the same, freezes the devbox. The terminal prints the `tail -f` command
+for each branch's log, `~/.paseo-fork/rebase-branches/<branch>.log` (`/`
+becomes `__`), then a line when it hits a conflict, fails its build (with the
+path of `<branch>.verify.log`), hands work to an agent (with the `paseo logs -f`
+command to watch it) and finishes. A failed branch does not stop the
 others: every branch that passes is pushed, and the run then stops before the
-rebuild and lists the ones that failed. A local branch that is
+rebuild and lists the ones that failed.
+
+Ctrl-C stops every job, its builds and the agents it started, and nothing
+starts or pushes after it. Branches already pushed stay pushed; a conflict an
+agent was resolving is abandoned, and the next run starts it over. A local branch that is
 behind its published copy is fast-forwarded first; one that has diverged is rebased as it is, with
 a warning, and the push drops what only the published copy had. A checkout
 sitting on one of those branches is reset like one on `main`. Do this when
@@ -217,7 +223,10 @@ from the patch's own commits, and told never to drop an upstream change to
 make a patch apply nor a patch's feature because its lines no longer fit. The
 default is Codex `gpt-5.6-luna` with `xhigh` thinking and `auto-review` mode.
 Override `FORK_AGENT_PROVIDER`, `FORK_AGENT_MODEL`, `FORK_AGENT_THINKING`, or
-`FORK_AGENT_MODE` before running if needed. Agents commit with git hooks off
+`FORK_AGENT_MODE` before running if needed. Each agent starts in the checkout
+it works on, even when the script runs in a Paseo terminal: `paseo run`
+otherwise puts it in the terminal's workspace, whatever `--cwd` says, because
+the terminal exports `PASEO_WORKSPACE_ID`. Agents commit with git hooks off
 (`-c core.hooksPath=/dev/null`): the hooks run the same checks that a fixer
 has just run and `fork/verify.sh` runs next.
 
