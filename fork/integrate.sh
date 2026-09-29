@@ -83,6 +83,8 @@ require_repo
 TOOLING_DIR="$WORK_ROOT/tooling" # scratch worktree for commits to fork-base
 VERIFY_CMD="${FORK_VERIFY_CMD:-$HERE/verify.sh}"
 VERIFY_LOG="$WORK_ROOT/verify.log"
+VERIFY_DIR="$WORK_ROOT/verify"         # checkout every verify runs in (keeps node_modules)
+VERIFIED_LIST="$WORK_ROOT/verified"    # commits that passed, one sha per line
 REBASE_DIR="$WORK_ROOT/rebase"   # scratch worktree for rebasing one patch branch
 
 # ------------------------------------------------------------- helpers ----
@@ -641,31 +643,86 @@ MSG
 # agent, which commits its fix into the integration; otherwise, or when the
 # fix does not pass either, the run stops with the worktree left in place,
 # like a conflict.
+#
+# Every verify, of a branch or of the integration, runs in one checkout that
+# keeps its node_modules and build outputs, so an unchanged lockfile costs no
+# install and an unchanged library no build (fork/verify.sh). A commit
+# that passes is recorded, and a later verify of a tree derived from it only
+# checks what changed since (fork/verify.sh).
 
+open_verify_dir() {
+  local sha="$1"
+  # COMPAT(verify-dir): the checkout was verify-branch before 2026-09-29; moving
+  # it keeps its node_modules. Remove after 2026-12-31.
+  [ -e "$VERIFY_DIR" ] || [ ! -d "$WORK_ROOT/verify-branch" ] ||
+    git worktree move "$WORK_ROOT/verify-branch" "$VERIFY_DIR" 2>/dev/null || true
+  if ! git -C "$VERIFY_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    rm -rf "$VERIFY_DIR"
+    git worktree prune
+    mkdir -p "$WORK_ROOT"
+    git worktree add --detach "$VERIFY_DIR" "$sha" >/dev/null
+    return 0
+  fi
+  git -C "$VERIFY_DIR" checkout -q -f --detach "$sha"
+  git -C "$VERIFY_DIR" clean -q -fdx -e node_modules -e dist -e build
+}
+
+is_verified() { grep -qxF -- "$1" "$VERIFIED_LIST" 2>/dev/null; }
+record_verified() {
+  mkdir -p "$WORK_ROOT"
+  git -C "$VERIFY_DIR" rev-parse HEAD >>"$VERIFIED_LIST"
+}
+
+# The commit to check changes since: $1 or its first parent, whichever passed
+# before. The parent covers an integration tip, whose last commit is the build
+# stamp merged in after the verify.
+verified_since() {
+  local ref="${1:-}" sha
+  [ -n "$ref" ] || return 0
+  for sha in "$(git rev-parse -q --verify "$ref^{commit}" || true)" \
+    "$(git rev-parse -q --verify "$ref^1" 2>/dev/null || true)"; do
+    [ -n "$sha" ] && is_verified "$sha" && {
+      echo "$sha"
+      return 0
+    }
+  done
+  return 0
+}
+
+# $1 is the integration this run started from, if any.
 verify_integration() {
+  local since head
   if [ "$verify" -eq 0 ]; then
     say "Skipping build and tests (--no-verify)"
     return 0
   fi
   section "🧪" "Verify integration"
-  run_verify "$INTEGRATE_DIR" && return 0
+  since="$(verified_since "${1:-}")"
+  head="$(worktree_head)"
+  open_verify_dir "$head"
+  if run_verify "$VERIFY_DIR" "$since"; then
+    record_verified
+    return 0
+  fi
   if [ "$use_agent" -eq 1 ] &&
-    fix_with_agent "$INTEGRATE_DIR" "the integration build" "$(integration_fix_context)" \
+    fix_with_agent "$VERIFY_DIR" "the integration build" "$(integration_fix_context)" \
       "6. In your final message, name the patch branch that should carry the fix,
    so the owner can move it there." &&
-    run_verify "$INTEGRATE_DIR"; then
+    run_verify "$VERIFY_DIR" "$since"; then
+    git -C "$INTEGRATE_DIR" checkout -q --detach "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
+    record_verified
     warn "the fix lives only in $INTEGRATION_REF — move it to the patch branch it belongs to, or the next rebuild needs it again"
     return 0
   fi
-  stop_on_verify_failure
+  stop_on_verify_failure "$head"
 }
 
 run_verify() {
-  local dir="$1" head
+  local dir="$1" since="${2:-}" head
   head="$(git -C "$dir" rev-parse HEAD)"
-  say "Building, linting and testing $(short "$head") — log in $VERIFY_LOG"
+  say "Building, linting and testing $(short "$head")${since:+, changes since $(short "$since")} — log in $VERIFY_LOG"
   mkdir -p "$WORK_ROOT"
-  if "$VERIFY_CMD" "$dir" "$BASE" >"$VERIFY_LOG" 2>&1; then
+  if "$VERIFY_CMD" "$dir" "$BASE" ${since:+"$since"} >"$VERIFY_LOG" 2>&1; then
     say "build, lint and tests pass"
     return 0
   fi
@@ -710,8 +767,8 @@ fix_with_agent() {
 
 $context
 
-The full output is in $VERIFY_LOG; it was produced by:
-  $VERIFY_CMD $dir $BASE
+The full output is in $VERIFY_LOG; it was produced by fork/verify.sh, and
+each step's heading there is the command it ran, from $dir.
 Dependencies are already installed.
 
 Do this and nothing else:
@@ -720,9 +777,8 @@ Do this and nothing else:
 2. Fix it so the upstream change and the intent of every patch both survive.
    Re-express the patch on upstream's new code. Never revert an upstream
    change, and never delete, skip or loosen a test or a lint rule to make it pass.
-3. Re-run the step that failed (npm run build:server, npm run typecheck,
-   npm run lint, or node_modules/.bin/vitest run <file> in the package) until
-   it passes.
+3. Re-run the step that failed, with the command in its heading, until it
+   passes.
 4. Discard build churn (git checkout -- package-lock.json and generated
    files you did not mean to change), then commit only your fix:
    git add <files> && git commit -m 'Fix <what> after <upstream change>'
@@ -753,8 +809,12 @@ branch_files() {
 }
 
 stop_on_verify_failure() {
+  local head="$1" attempt
   trap - EXIT
   git -C "$INTEGRATE_DIR" checkout -q -- . 2>/dev/null || true
+  git -C "$VERIFY_DIR" checkout -q -- . 2>/dev/null || true
+  attempt="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
+  [ "$attempt" = "$head" ] || say "the agent's unfinished attempt is at $(short "$attempt"): git log $(short "$head")..$attempt"
   cat >&2 <<MSG
 
 The merged integration does not build or pass its tests; nothing was stamped
@@ -998,7 +1058,7 @@ cmd_rebase() {
   if [ "$(worktree_head)" = "$before" ] && git merge-base --is-ancestor "$TOOLING_REF" "$before"; then
     say "$INTEGRATION_REF already has $BASE, $TOOLING_REF and every listed branch"
   else
-    verify_integration
+    verify_integration "$before"
     stamp
   fi
   finish "$before"
@@ -1057,7 +1117,7 @@ cmd_add() {
   fi
   open_worktree "$before" "$ADD_REF"
   merge_branch "$ADD_REF"
-  verify_integration
+  verify_integration "$before"
   if [ "$listed" -eq 1 ]; then
     stamp
   else
@@ -1098,7 +1158,7 @@ cmd_rebuild() {
     merge_ref "$ref" "Merge $ref into $INTEGRATION_REF" \
       "merge of $ref into $INTEGRATION_REF" "$(sides_branch "$ref")"
   done
-  verify_integration
+  verify_integration "$old"
   stamp
   finish "$base"
   # What the rebuild changed where the patches live. Upstream's own edits to
@@ -1199,46 +1259,31 @@ catch_up_branch() {
 # Every branch rebase-branches handles is built, linted and tested on its own
 # before it is pushed, so a patch that upstream broke is fixed on the branch —
 # where its PR sees the fix and every rebuild gets it — rather than in the
-# integration. A tip that passed is recorded and not verified again, so a
-# re-run after a failure only verifies what is left. The checkout keeps its
-# node_modules from branch to branch; everything else untracked is cleaned.
+# integration. A tip that passed is not verified again, so a re-run after a
+# failure only verifies what is left.
 
-VERIFY_DIR="$WORK_ROOT/verify-branch"
-VERIFIED_LIST="$WORK_ROOT/verified-branches"
-
-open_verify_dir() {
-  local sha="$1"
-  if ! git -C "$VERIFY_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-    rm -rf "$VERIFY_DIR"
-    git worktree prune
-    mkdir -p "$WORK_ROOT"
-    git worktree add --detach "$VERIFY_DIR" "$sha" >/dev/null
-    return 0
-  fi
-  git -C "$VERIFY_DIR" checkout -q -f --detach "$sha"
-  git -C "$VERIFY_DIR" clean -q -fdx -e node_modules
-}
-
+# $1 is the branch, $2 its tip before the rebase.
 verify_branch() {
-  local branch="$1" sha
+  local branch="$1" since sha
   [ "$verify" -eq 1 ] || return 0
   sha="$(git rev-parse "$branch")"
-  if grep -qxF -- "$sha" "$VERIFIED_LIST" 2>/dev/null; then
+  if is_verified "$sha"; then
     say "verify $branch: $(short "$sha") passed before"
     return 0
   fi
   section "🧪" "Verify $branch"
+  since="$(verified_since "${2:-}")"
   open_verify_dir "$sha"
-  if ! run_verify "$VERIFY_DIR"; then
+  if ! run_verify "$VERIFY_DIR" "$since"; then
     if [ "$use_agent" -eq 0 ] ||
       ! fix_with_agent "$VERIFY_DIR" "$branch" "$(branch_fix_context "$branch")" ||
-      ! run_verify "$VERIFY_DIR"; then
+      ! run_verify "$VERIFY_DIR" "$since"; then
       stop_on_branch_failure "$branch"
     fi
     move_branch "$branch" "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
     say "$branch now carries the fix"
   fi
-  git rev-parse "$branch" >>"$VERIFIED_LIST"
+  record_verified
 }
 
 branch_fix_context() {
@@ -1272,7 +1317,7 @@ Paseo agent try, or with --no-verify to skip the step."
 }
 
 rebase_patch_branches() {
-  local ref local_branch i
+  local ref local_branch old i
   for ref in "$TOOLING_REF" ${REFS[@]+"${REFS[@]}"}; do
     if is_external_ref "$ref"; then
       say "$(branch_entry "$ref"): author-owned — merging fetched tip without rebasing or pushing"
@@ -1285,12 +1330,13 @@ rebase_patch_branches() {
     }
     [ "$local_branch" = "$TOOLING_REF" ] || catch_up_branch "$local_branch"
     assert_patch_branch "$local_branch"
+    old="$(git rev-parse "$local_branch")"
     if git merge-base --is-ancestor "$BASE" "$local_branch"; then
       say "rebase $local_branch: already on $BASE"
     else
       rebase_branch "$local_branch"
     fi
-    verify_branch "$local_branch"
+    verify_branch "$local_branch" "$old"
     publish_branch "$local_branch"
   done
   # Rebased local branches are now ahead of their remote refs; merge those.

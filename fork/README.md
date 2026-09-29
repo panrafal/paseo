@@ -233,39 +233,59 @@ back in the same shape.
 
 A clean merge or rebase can still break the build: upstream renames an export
 or adds a required argument, and a patch still uses the old shape.
-`fork/verify.sh` catches it: `npm install`, `npm run build:server`,
-`npm run typecheck`, `npm run lint`, and vitest on the test files the tree
-changes relative to upstream plus the test beside each source file it
-changes. Browser and e2e tests are skipped, and the full suite never runs —
-it is too heavy for the devbox. Every step runs even after one
-fails, so the log in `~/.paseo-fork/verify.log` lists all failures.
+`fork/verify.sh` catches it. It checks only what the fork can have broken:
+the workspaces the tree changes relative to upstream, plus the workspaces
+that depend on them. Upstream's own code is upstream CI's job. For those
+workspaces it builds the workspace dependencies they read from `dist/`, runs
+each one's typecheck, runs `npm run lint` over the whole repo (oxlint takes
+seconds), and runs vitest on the test files the tree changes plus the test
+beside each source file it changes. Browser and e2e tests are skipped, and the
+full suite never runs; it is too heavy for the devbox. A change outside the
+workspaces that they all read (`package-lock.json`, the root `package.json`,
+a root `tsconfig`) puts every workspace in scope. Every step runs even after
+one fails, so the log in `~/.paseo-fork/verify.log` lists all failures, and
+its step headings are the commands to re-run.
+
+Every verify runs in `~/.paseo-fork/verify`, a checkout that keeps
+`node_modules` and build outputs between runs. `npm install` is skipped while
+every `package.json`, the lockfile and `patches/` match the last install
+there, and a library build is skipped while the library, its workspace
+dependencies and the root files match its last build. Branches rebased onto
+the same upstream share their library builds, so after the first one each
+branch costs its typecheck, lint and tests.
+
+A commit that passes is recorded in `~/.paseo-fork/verified`. When the tree
+being verified comes from a recorded commit (a branch's tip before its
+rebase, or the integration the run started from), only workspaces that
+changed since that commit, or that depend on one that did, are checked. A routine
+`rebase` that brings in upstream changes to the server only does not
+typecheck the app again. `fork/verify-scope.mjs` decides the scope, and the
+first lines of the log say why.
 
 `rebase-branches` runs it on each branch after rebasing it and before pushing
-it, in `~/.paseo-fork/verify-branch`, a checkout that keeps `node_modules`
-between branches. A branch fixed there carries the fix into its PR and into
-every later rebuild, so the integration's own check rarely has anything left
-to find. A tip that passed is recorded in `~/.paseo-fork/verified-branches`
-and skipped next time, so a re-run after a failure verifies only what is
-left. Expect the first run to take a few minutes per branch. With `--agent`,
-a failure goes to the same agent as conflicts, which commits its fix on top
-of the branch; the run verifies again and moves the branch to it. Without
-`--agent`, or when the fix still fails, the run stops before pushing that
-branch or rebuilding. Fix the branch, commit, and re-run. When upstream
-itself fails, the agent stops without committing; run with `--no-verify`
-until upstream is fixed.
+it. A branch fixed there carries the fix into its PR and into every later
+rebuild, so the integration's own check rarely has anything left to find. A
+tip that passed before is skipped, so a re-run after a failure verifies only
+what is left. With `--agent`, a failure goes to the same agent as conflicts,
+which commits its fix on top of the branch; the run verifies again and moves
+the branch to it. Without `--agent`, or when the fix still fails, the run
+stops before pushing that branch or rebuilding. Fix the branch, commit, and
+re-run. When upstream itself fails, the agent stops without committing; run
+with `--no-verify` until upstream is fixed.
 
-`rebase`, `add` and `rebuild` (and so `rebase-branches`) run it again in the
-scratch worktree after the merges and before the build number is stamped.
-With `--agent`, a failure is handed to the same agent as conflicts, with the
-log and the files each patch branch changes. It commits its fix into the
-integration, and the run verifies again. The fix lives only in
+`rebase`, `add` and `rebuild` (and so `rebase-branches`) run it again on the
+merged integration before the build number is stamped. With `--agent`, a
+failure is handed to the same agent as conflicts, with the log and the files
+each patch branch changes. It commits its fix in the verify checkout, the run
+verifies again and moves the integration to it. The fix lives only in
 `fork-integration`, so the run warns you to move it to the patch branch that
 owns it; the next `rebuild` needs it again otherwise.
 
 Without `--agent`, or when the fix still fails, the run stops with nothing
-stamped or published and the worktree left in place. Fix the patch branch and
-re-run, or commit a fix in the worktree and re-run the same command: it
-continues from your commit and verifies again. `--no-verify` skips the step.
+stamped or published and the scratch worktree left in place. Fix the patch
+branch and re-run, or commit a fix in the scratch worktree and re-run the
+same command: it continues from your commit and verifies again.
+`--no-verify` skips the step.
 
 ### Tests
 
@@ -277,6 +297,7 @@ failures of a branch or the integration with and without the agent
 (`fork/verify.sh` is stubbed), and the saved base
 used by `fork/new-branch.sh`. Nothing touches this repository or
 `~/.paseo-fork`. Run it after changing `fork/integrate.sh`.
+`node --test fork/verify-scope.test.mjs` covers the scope rules the same way.
 
 ## Versions
 
