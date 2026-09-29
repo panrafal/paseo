@@ -551,7 +551,15 @@ scenario_rebase_branches() {
   assert_fails "conflicting rebase stops" run rebase-branches
   assert_log "stopped on a conflict"
   assert_eq "feat-b untouched" "$(at feat-b)" "$tip_b"
-  assert_fails "no rebase worktree left" test -e "$FORK_WORK_ROOT/rebase"
+  assert_fails "no saved worktree" test -e "$FORK_WORK_ROOT/saved"
+  assert "no rebase left in the slots" no_rebase_in_slots
+}
+
+no_rebase_in_slots() {
+  local slot
+  for slot in "$FORK_WORK_ROOT"/verify*/; do
+    [ ! -d "$(git -C "$slot" rev-parse --git-path rebase-merge)" ] || return 1
+  done
 }
 
 scenario_rebase_agent() {
@@ -571,15 +579,31 @@ scenario_rebase_agent() {
   cat >"$F/bin/paseo" <<'AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
-[ "$1" = run ]
+cmd="$1"
 shift
-while [ "$#" -gt 1 ]; do
-  if [ "$1" = --cwd ]; then dir="$2"; fi
+if [ "$cmd" = send ]; then
   shift 2
-done
+  echo "send $1" >>"$FORK_WORK_ROOT/calls"
+  shift
+  dir="$(cat "$FORK_WORK_ROOT/agent-dir")"
+else
+  [ "$cmd" = run ]
+  while [ "$#" -gt 1 ]; do
+    if [ "$1" = --cwd ]; then dir="$2"; fi
+    shift 2
+  done
+  echo run >>"$FORK_WORK_ROOT/calls"
+  echo "$dir" >"$FORK_WORK_ROOT/agent-dir"
+fi
 printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
-echo call >>"$FORK_WORK_ROOT/calls"
+echo '{"agentId": "agent-1", "status": "completed"}'
+exec >&2
 cd "$dir"
+if [ "$cmd" = send ]; then
+  git rm -q broken*.txt
+  git commit -q -m "fork: fix after upstream change"
+  exit 0
+fi
 if [ "${TEST_AGENT_MODE:-}" = abort ]; then
   git rebase --abort
   exit 0
@@ -594,6 +618,7 @@ done
 case "${TEST_AGENT_MODE:-}" in
   dirty) echo uncommitted >leftover.txt ;;
   failed) exit 1 ;;
+  breaks) echo x >broken-agent.txt && git add broken-agent.txt && git commit -q -m "patch: breaks the build" ;;
 esac
 AGENT
   chmod +x "$F/bin/paseo"
@@ -604,26 +629,37 @@ AGENT
     assert_fails "$mode agent result refused" run rebase-branches --agent --push
     assert_eq "$mode branch unchanged" "$(at feat-a)" "$tip"
     assert_eq "$mode branch not pushed" "$(at origin/feat-a)" "$tip"
-    assert "$mode worktree preserved" test -d "$FORK_WORK_ROOT/rebase"
+    assert "$mode worktree preserved" test -d "$FORK_WORK_ROOT/saved/feat-a"
     assert_log "Worktree preserved"
     assert_fails "$mode saved worktree protected on retry" run rebase-branches --agent --push
     assert_log "saved rebase worktree"
-    git -C "$FORK_WORK_ROOT/rebase" rebase --abort >/dev/null 2>&1 || true
-    git -C "$R" worktree remove --force "$FORK_WORK_ROOT/rebase"
+    git -C "$FORK_WORK_ROOT/saved/feat-a" rebase --abort >/dev/null 2>&1 || true
+    git -C "$R" worktree remove --force "$FORK_WORK_ROOT/saved/feat-a"
     git -C "$R" rerere clear
     rm -rf "$R/.git/rr-cache"
   done
   unset TEST_AGENT_MODE
   rm -f "$FORK_WORK_ROOT/calls" "$FORK_WORK_ROOT/conflicts"
   assert "one agent finishes multi-conflict rebase" run rebase-branches --agent --push
-  assert_eq "one agent call" "$(wc -l <"$FORK_WORK_ROOT/calls" | tr -d ' ')" 1
+  assert_eq "one agent call" "$(cat "$FORK_WORK_ROOT/calls")" run
   assert_eq "two conflicting commits resolved" "$(wc -l <"$FORK_WORK_ROOT/conflicts" | tr -d ' ')" 2
   assert "agent instructed to continue" grep -q 'git rebase --continue' "$FORK_WORK_ROOT/prompt"
-  assert "agent instructed to validate final result" grep -q 'on the final result' "$FORK_WORK_ROOT/prompt"
+  assert "agent told the result is verified" grep -q 'Do not build' "$FORK_WORK_ROOT/prompt"
+  assert "agent resolved in a slot" grep -qx "$FORK_WORK_ROOT/verify\(-[0-9]*\)\?" "$FORK_WORK_ROOT/agent-dir"
   assert "branch based on upstream" git -C "$R" merge-base --is-ancestor upstream/main feat-a
   assert_eq "both patch commits kept" "$(git -C "$R" rev-list --count upstream/main..feat-a)" 2
   assert_eq "resolved content published" "$(git -C "$R" show origin/feat-a:a.txt)" 'upstream + patch two'
-  assert_fails "completed worktree removed" test -e "$FORK_WORK_ROOT/rebase"
+  assert_fails "nothing saved" test -e "$FORK_WORK_ROOT/saved/feat-a"
+  # A resolution that does not build goes back to the agent that made it.
+  upstream_commit a.txt $'upstream again\n' "upstream: another conflicting change"
+  rm -f "$FORK_WORK_ROOT/calls"
+  export TEST_AGENT_MODE=breaks
+  assert "resolution fixed by the same agent" run rebase-branches --agent --push
+  assert_eq "run, then send to it" "$(tr '\n' ' ' <"$FORK_WORK_ROOT/calls")" "run send agent-1 "
+  assert "fix prompt sent" grep -q 'fixing a failed build' "$FORK_WORK_ROOT/prompt"
+  assert_log "feat-a now carries the fix"
+  assert_fails "fix is published" git -C "$R" cat-file -e origin/feat-a:broken-agent.txt
+  unset TEST_AGENT_MODE
   export PATH="$original_path"
 }
 
@@ -671,6 +707,8 @@ while [ "$#" -gt 1 ]; do
   shift 2
 done
 printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
+echo '{"agentId": "agent-1", "status": "completed"}'
+exec >&2
 [ "${TEST_AGENT_MODE:-}" != giveup ] || exit 0
 cd "$dir"
 git rm -q broken*.txt
@@ -717,7 +755,9 @@ scenario_verify_branches() {
   assert_log "feat-b does not build"
   assert_log "TS2554"
   assert_eq "fork-base, feat-a and feat-b verified" "$(verify_calls)" 3
-  assert_eq "verified in the verify checkout" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | sort -u)" "$FORK_WORK_ROOT/verify"
+  assert_eq "each verified in its own slot" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | sort -u | tr '\n' ' ')" \
+    "$FORK_WORK_ROOT/verify $FORK_WORK_ROOT/verify-2 $FORK_WORK_ROOT/verify-3 "
+  assert_log "1 of 3 branches failed"
   assert_eq "feat-b not pushed" "$(at origin/feat-b)" "$tip_b"
   assert_eq "feat-a pushed" "$(at origin/feat-a)" "$(at feat-a)"
   assert_eq "main untouched" "$(at origin/main)" "$old_main"
@@ -749,6 +789,8 @@ while [ "$#" -gt 1 ]; do
   shift 2
 done
 printf '%s\n' "$1" >"$FORK_WORK_ROOT/prompt"
+echo '{"agentId": "agent-1", "status": "completed"}'
+exec >&2
 [ "${TEST_AGENT_MODE:-}" != giveup ] || exit 0
 cd "$dir"
 git rm -q broken*.txt
@@ -777,6 +819,43 @@ AGENT
   upstream_commit c4.txt 'c4' "upstream: add c4"
   assert "rebase-branches again" run rebase-branches --push
   assert "feat-a checked since its old tip" grep -q " $old_a\$" "$FORK_WORK_ROOT/verify-calls"
+}
+
+scenario_parallel() {
+  fixture parallel
+  patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
+  patch_branch feat-b b.txt 'b'
+  patch_branch feat-c c.txt 'c'
+  list_branch origin/feat-a
+  list_branch origin/feat-b
+  list_branch origin/feat-c
+  run rebuild --push --no-verify
+  # Records how many verifies run at once.
+  cat >"$F/verify" <<'VERIFY'
+#!/usr/bin/env bash
+echo "$1 $2 ${3:-}" >>"$FORK_WORK_ROOT/verify-calls"
+mkdir -p "$FORK_WORK_ROOT/running"
+touch "$FORK_WORK_ROOT/running/$$"
+ls "$FORK_WORK_ROOT/running" | wc -l | tr -d ' ' >>"$FORK_WORK_ROOT/overlap"
+sleep 1
+rm "$FORK_WORK_ROOT/running/$$"
+VERIFY
+  upstream_commit d.txt 'd' "upstream: add d"
+  assert "four branches, two verifies at a time" run_jobs 4 2 rebase-branches --push
+  assert_eq "verifies overlap, two at most" "$(sort -n "$FORK_WORK_ROOT/overlap" | tail -n1)" 2
+  assert_eq "four slots used" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | head -n4 | sort -u | wc -l | tr -d ' ')" 4
+  rm -f "$FORK_WORK_ROOT/overlap" "$FORK_WORK_ROOT/verify-calls"
+  upstream_commit e.txt 'e' "upstream: add e"
+  assert "one at a time" run_jobs 1 2 rebase-branches --push
+  assert_eq "never overlap" "$(sort -u "$FORK_WORK_ROOT/overlap")" 1
+  assert_eq "one slot used" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | sort -u)" "$FORK_WORK_ROOT/verify"
+}
+
+# run with FORK_JOBS=$1 and FORK_VERIFY_JOBS=$2.
+run_jobs() {
+  local jobs="$1" verify_jobs="$2"
+  shift 2
+  FORK_JOBS="$jobs" FORK_VERIFY_JOBS="$verify_jobs" run "$@"
 }
 
 scenario_seed() {
@@ -992,7 +1071,7 @@ run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; 
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebase_agent verify verify_branches rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
+all=(rebase_agent verify verify_branches parallel rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"

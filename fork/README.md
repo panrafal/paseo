@@ -123,7 +123,16 @@ nobody made on a branch.
 `fork/integrate.sh rebase-branches` rebases `fork-base` and every listed
 branch we own that has a local branch of the same name onto `upstream/main`,
 verifies each one on its own, force-pushes them, then rebuilds — see
-[Build and test failures](#build-and-test-failures). A local branch that is
+[Build and test failures](#build-and-test-failures). Each branch is a job
+that rebases, verifies and pushes it, `FORK_JOBS` (4) at a time, in a slot of
+its own: `~/.paseo-fork/verify`, `verify-2`, `verify-3`, … Every slot keeps
+its own `node_modules`, so the first run pays one `npm install` per slot. Only
+`FORK_VERIFY_JOBS` (2) build and test at once; four at once, next to agents
+doing the same, freezes the devbox. The terminal gets a line per branch as it
+finishes; the rest goes to `~/.paseo-fork/rebase-branches/<branch>.log` (`/` becomes `__`), next
+to the branch's `<branch>.verify.log`. A failed branch does not stop the
+others: every branch that passes is pushed, and the run then stops before the
+rebuild and lists the ones that failed. A local branch that is
 behind its published copy is fast-forwarded first; one that has diverged is rebased as it is, with
 a warning, and the push drops what only the published copy had. A checkout
 sitting on one of those branches is reset like one on `main`. Do this when
@@ -206,16 +215,19 @@ A merge that conflicts is handed to a Paseo agent with `--agent`, told which
 listed branches touch each conflicted file so it can read a patch's intent
 from the patch's own commits, and told never to drop an upstream change to
 make a patch apply nor a patch's feature because its lines no longer fit. The
-default is Codex `gpt-5.6-luna` with `max` thinking and `auto-review` mode.
+default is Codex `gpt-5.6-luna` with `xhigh` thinking and `auto-review` mode.
 Override `FORK_AGENT_PROVIDER`, `FORK_AGENT_MODEL`, `FORK_AGENT_THINKING`, or
 `FORK_AGENT_MODE` before running if needed.
 
 For `rebase-branches --agent`, one agent takes over at the first conflicting
-commit and continues the rebase through all remaining commits. It runs typecheck
-and lint on the final result. The script checks that the rebase finished on
-upstream with a clean worktree before updating and pushing the branch. An
-unfinished or failed agent run preserves the rebase worktree; recover it or
-explicitly remove it before retrying. Retrying refuses to overwrite that work.
+commit and continues the rebase through all remaining commits. It works in the
+branch's slot, so it has `node_modules`. It does not build or test: the script
+checks that the rebase finished on upstream with a clean worktree, verifies
+the branch, and sends a failure back to the same agent, which already knows
+the branch. An unfinished or failed agent run moves the slot to
+`~/.paseo-fork/saved/<branch>`, and the next job in that slot starts a fresh
+checkout. Recover the saved one or remove it with `git worktree remove
+--force` before retrying that branch; retrying refuses to overwrite it.
 
 For integration merges, without `--agent` or when the agent gives up, the run
 stops and leaves the scratch worktree in place. Resolve there, commit, and re-run the same
@@ -243,11 +255,12 @@ beside each source file it changes. Browser and e2e tests are skipped, and the
 full suite never runs; it is too heavy for the devbox. A change outside the
 workspaces that they all read (`package-lock.json`, the root `package.json`,
 a root `tsconfig`) puts every workspace in scope. Every step runs even after
-one fails, so the log in `~/.paseo-fork/verify.log` lists all failures, and
+one fails, so the log (`~/.paseo-fork/verify.log` for the integration) lists all failures, and
 its step headings are the commands to re-run.
 
-Every verify runs in `~/.paseo-fork/verify`, a checkout that keeps
-`node_modules` and build outputs between runs. `npm install` is skipped while
+Every verify runs in a checkout that keeps `node_modules` and build outputs
+between runs: `~/.paseo-fork/verify` for the integration, and the job's slot
+for a branch in `rebase-branches`. `npm install` is skipped while
 every `package.json`, the lockfile and `patches/` match the last install
 there, and a library build is skipped while the library, its workspace
 dependencies and the root files match its last build. Branches rebased onto
@@ -266,11 +279,11 @@ first lines of the log say why.
 it. A branch fixed there carries the fix into its PR and into every later
 rebuild, so the integration's own check rarely has anything left to find. A
 tip that passed before is skipped, so a re-run after a failure verifies only
-what is left. With `--agent`, a failure goes to the same agent as conflicts,
-which commits its fix on top of the branch; the run verifies again and moves
-the branch to it. Without `--agent`, or when the fix still fails, the run
-stops before pushing that branch or rebuilding. Fix the branch, commit, and
-re-run. When upstream itself fails, the agent stops without committing; run
+what is left. With `--agent`, a failure goes to the agent that resolved the
+branch's conflicts, or to a new one, which commits its fix on top of the
+branch; the run verifies again and moves the branch to it. Without `--agent`,
+or when the fix still fails, that branch is not pushed and the run stops
+before rebuilding. Fix the branch, commit, and re-run. When upstream itself fails, the agent stops without committing; run
 with `--no-verify` until upstream is fixed.
 
 `rebase`, `add` and `rebuild` (and so `rebase-branches`) run it again on the
