@@ -27,7 +27,7 @@ import type { UsageReportEntry, UsageView } from "./types";
 // an explicit refresh passes `forceRefresh` and reaches the source's API.
 const REPORTS_STALE_TIME_MS = 60_000;
 
-function usageReportsQueryKey(serverId: string) {
+export function usageReportsQueryKey(serverId: string) {
   return ["usage", "reports", serverId] as const;
 }
 

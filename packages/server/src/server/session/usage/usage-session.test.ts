@@ -1,5 +1,5 @@
 import pino from "pino";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { AgentSession } from "../../agent/agent-sdk-types.js";
 import type { SessionOutboundMessage } from "../../messages.js";
 import { UsageSession } from "./usage-session.js";
@@ -99,4 +99,72 @@ test("unknown agent returns agent_not_found", async () => {
     agentId: "missing",
   });
   expect(emitted[0]).toMatchObject({ type: "rpc_error", payload: { code: "agent_not_found" } });
+});
+
+test("forwards banked reset redemption and correlates the outcome", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const consumeCodexBankedReset = vi.fn(async () => "nothing_to_reset" as const);
+  const usage = new UsageSession({
+    emit: (message) => emitted.push(message),
+    listAgents: () => [],
+    getAgent: () => null,
+    runtime: {
+      listUsageReports: async () => [],
+      resolveUsageReference: async () => null,
+      listLegacyUsage: async () => ({ fetchedAt: "", providers: [] }),
+      consumeCodexBankedReset,
+    },
+    logger: pino({ level: "silent" }),
+  });
+  await usage.handleCodexBankedResetConsumeRequest({
+    type: "provider.codex.consume_banked_reset.request",
+    requestId: "request-1",
+    creditId: "reset-1",
+    idempotencyKey: "attempt-1",
+  });
+  expect(consumeCodexBankedReset).toHaveBeenCalledWith({
+    creditId: "reset-1",
+    idempotencyKey: "attempt-1",
+  });
+  expect(emitted).toEqual([
+    {
+      type: "provider.codex.consume_banked_reset.response",
+      payload: { requestId: "request-1", outcome: "nothing_to_reset" },
+    },
+  ]);
+});
+
+test("returns a correlated error when banked reset redemption fails", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const usage = new UsageSession({
+    emit: (message) => emitted.push(message),
+    listAgents: () => [],
+    getAgent: () => null,
+    runtime: {
+      listUsageReports: async () => [],
+      resolveUsageReference: async () => null,
+      listLegacyUsage: async () => ({ fetchedAt: "", providers: [] }),
+      consumeCodexBankedReset: async () => {
+        throw new Error("Request timed out");
+      },
+    },
+    logger: pino({ level: "silent" }),
+  });
+  await usage.handleCodexBankedResetConsumeRequest({
+    type: "provider.codex.consume_banked_reset.request",
+    requestId: "request-1",
+    creditId: "reset-1",
+    idempotencyKey: "attempt-1",
+  });
+  expect(emitted).toEqual([
+    {
+      type: "rpc_error",
+      payload: {
+        requestId: "request-1",
+        requestType: "provider.codex.consume_banked_reset.request",
+        error: "Could not use banked reset: Request timed out",
+        code: "codex_banked_reset_failed",
+      },
+    },
+  ]);
 });

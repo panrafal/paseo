@@ -1440,6 +1440,37 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(todos.items[0]?.text, "Task 1");
   });
 
+  it("renders Cursor updateTodos as todo_list and suppresses the tool call badge", () => {
+    const state = hydrateStreamState([
+      {
+        event: canonicalToolTimeline({
+          provider: "cursor",
+          callId: "todo-1",
+          name: "other",
+          status: "completed",
+          input: {
+            _toolName: "updateTodos",
+            todos: [
+              { id: "a", content: "Inspect provider", status: 1 },
+              { id: "b", content: "Ship fix", status: 0 },
+            ],
+          },
+        }),
+        timestamp: new Date("2025-01-01T11:00:00Z"),
+      },
+    ]);
+
+    const tools = state.filter(isAgentToolCallItem);
+    const todos = state.find(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+
+    assert.strictEqual(tools.length, 0);
+    assert.ok(todos);
+    assert.strictEqual(todos.items[0]?.text, "Inspect provider");
+    assert.strictEqual(todos.items[0]?.status, "in_progress");
+  });
+
   it.each(["TaskCreate", "TaskUpdate", "TaskList"])(
     "suppresses Claude %s bookkeeping tool calls",
     (name) => {

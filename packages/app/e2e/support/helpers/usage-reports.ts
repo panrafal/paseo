@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { UsageReportEntry } from "@getpaseo/protocol/messages";
+import type { CodexBankedResetOutcome, UsageReportEntry } from "@getpaseo/protocol/messages";
 import { daemonWsRoutePattern } from "./daemon-port";
 
 export interface UsageReportsFixture {
@@ -19,6 +19,12 @@ interface UsageReportsFixtureOptions {
   agentReportIds?: Array<string | null>;
   /** Advertise `features.usageSources`. False simulates a host from before usage sources. */
   usageSources?: boolean;
+  /** Advertise and handle the Codex banked-reset action. */
+  supportsBankedResets?: boolean;
+  consume?: (request: {
+    creditId: string;
+    idempotencyKey: string;
+  }) => Promise<{ outcome: CodexBankedResetOutcome } | { error: string }>;
 }
 
 type UsageListResponse = UsageReportEntry[] | { error: string };
@@ -42,7 +48,11 @@ function getSessionMessage(message: WebSocketMessage): Record<string, unknown> |
   return envelope.message as Record<string, unknown>;
 }
 
-function withUsageSourcesFeature(message: WebSocketMessage, enabled: boolean): string | null {
+function withUsageSourcesFeature(
+  message: WebSocketMessage,
+  enabled: boolean,
+  bankedResets: boolean,
+): string | null {
   const envelope = parseJson(message) as {
     type?: unknown;
     message?: { type?: unknown; payload?: Record<string, unknown> };
@@ -61,7 +71,10 @@ function withUsageSourcesFeature(message: WebSocketMessage, enabled: boolean): s
     ...envelope,
     message: {
       ...envelope.message,
-      payload: { ...payload, features: { ...features, usageSources: enabled } },
+      payload: {
+        ...payload,
+        features: { ...features, usageSources: enabled, codexBankedResets: bankedResets },
+      },
     },
   });
 }
@@ -90,6 +103,44 @@ function createCounter() {
   };
 }
 
+async function handleBankedResetRequest(
+  request: Record<string, unknown> | null,
+  requestId: unknown,
+  consume: UsageReportsFixtureOptions["consume"],
+  send: (message: string) => void,
+): Promise<boolean> {
+  if (request?.type !== "provider.codex.consume_banked_reset.request") return false;
+  if (
+    typeof requestId !== "string" ||
+    typeof request.creditId !== "string" ||
+    typeof request.idempotencyKey !== "string" ||
+    !consume
+  ) {
+    throw new Error("Unexpected banked reset request");
+  }
+  const result = await consume({
+    creditId: request.creditId,
+    idempotencyKey: request.idempotencyKey,
+  });
+  const response =
+    "error" in result
+      ? {
+          type: "rpc_error",
+          payload: {
+            requestId,
+            requestType: request.type,
+            error: result.error,
+            code: "codex_banked_reset_failed",
+          },
+        }
+      : {
+          type: "provider.codex.consume_banked_reset.response",
+          payload: { requestId, outcome: result.outcome },
+        };
+  send(JSON.stringify({ type: "session", message: response }));
+  return true;
+}
+
 export async function installUsageReportsFixture(
   page: Page,
   options: UsageReportsFixtureOptions,
@@ -99,13 +150,20 @@ export async function installUsageReportsFixture(
   const listCounter = createCounter();
   const agentCounter = createCounter();
   const usageSources = options.usageSources ?? true;
+  const supportsBankedResets = options.supportsBankedResets ?? true;
 
   await page.routeWebSocket(daemonWsRoutePattern(), (ws) => {
     const server = ws.connectToServer();
 
-    ws.onMessage((message) => {
+    ws.onMessage(async (message) => {
       const request = getSessionMessage(message);
       const requestId = request?.requestId;
+      if (
+        await handleBankedResetRequest(request, requestId, options.consume, (response) =>
+          ws.send(response),
+        )
+      )
+        return;
       if (request?.type === "usage.list_reports.request" && typeof requestId === "string") {
         listRequests.push({
           forceRefresh: request.forceRefresh === true,
@@ -164,7 +222,9 @@ export async function installUsageReportsFixture(
 
     server.onMessage((message) => {
       const serverInfo =
-        typeof message === "string" ? withUsageSourcesFeature(message, usageSources) : null;
+        typeof message === "string"
+          ? withUsageSourcesFeature(message, usageSources, supportsBankedResets)
+          : null;
       ws.send(serverInfo ?? message);
     });
   });

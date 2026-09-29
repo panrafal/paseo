@@ -34,6 +34,8 @@ import { asUint8Array, decodeBinaryFrame } from "@getpaseo/protocol/binary-frame
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
+import { defaultPortForProtocol, parseHostAuthority, stripIpv6Brackets } from "./host-patterns.js";
+import { isOriginAllowed } from "./origins.js";
 import {
   Session,
   type SessionLifecycleIntent,
@@ -901,7 +903,7 @@ export class VoiceAssistantWebSocketServer {
     }
     const sameOrigin = isWebSocketSameOrigin(origin, requestHost);
 
-    if (!origin || allowedOrigins.has("*") || allowedOrigins.has(origin) || sameOrigin) {
+    if (!origin || sameOrigin || isOriginAllowed(origin, allowedOrigins)) {
       callback(true);
     } else {
       this.incrementRuntimeCounter("originRejected");
@@ -1788,7 +1790,12 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(directorySync): added in v0.3.x, remove gate after 2027-02-12.
         directorySync: true,
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
-        ...(this.workspaceLabelService ? { workspaceLabels: true } : {}),
+        ...(this.workspaceLabelService
+          ? { workspaceLabels: true, workspaceLabelCreation: true }
+          : {}),
+        ...(this.workspaceLabelService && this.scheduleService
+          ? { scheduleWorkspaceLabels: true }
+          : {}),
         // COMPAT(workspaceSetupRun): added in v0.7.3, remove gate after 2027-09-02.
         workspaceSetupRun: true,
         // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
@@ -1867,6 +1874,8 @@ export class VoiceAssistantWebSocketServer {
         workspaceFileEditing: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: true,
+        // COMPAT(codexBankedResets): added in v0.7.3, remove after 2027-03-06.
+        codexBankedResets: this.pluginRuntime?.supportsCodexBankedResets?.() ?? false,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.
@@ -2845,60 +2854,6 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
   };
 }
 
-interface HostAuthority {
-  hostname: string;
-  port: string | null;
-}
-
-function stripIpv6Brackets(hostname: string): string {
-  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-}
-
-function parseHostAuthority(host: string): HostAuthority | null {
-  const trimmed = host.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.startsWith("[")) {
-    const end = trimmed.indexOf("]");
-    if (end === -1) {
-      return null;
-    }
-    const hostname = stripIpv6Brackets(trimmed.slice(0, end + 1)).toLowerCase();
-    const rest = trimmed.slice(end + 1);
-    if (!rest) {
-      return { hostname, port: null };
-    }
-    if (!rest.startsWith(":")) {
-      return null;
-    }
-    const port = rest.slice(1);
-    return port ? { hostname, port } : null;
-  }
-
-  const firstColon = trimmed.indexOf(":");
-  if (firstColon === -1) {
-    return { hostname: trimmed.toLowerCase(), port: null };
-  }
-  if (trimmed.indexOf(":", firstColon + 1) !== -1) {
-    return { hostname: trimmed.toLowerCase(), port: null };
-  }
-  const hostname = trimmed.slice(0, firstColon).toLowerCase();
-  const port = trimmed.slice(firstColon + 1);
-  return hostname && port ? { hostname, port } : null;
-}
-
-function defaultPortForOriginProtocol(protocol: string): string | null {
-  if (protocol === "http:") {
-    return "80";
-  }
-  if (protocol === "https:") {
-    return "443";
-  }
-  return null;
-}
-
 function isLoopbackAlias(hostname: string): boolean {
   const normalized = stripIpv6Brackets(hostname).toLowerCase();
   if (normalized === "localhost" || normalized.endsWith(".localhost")) {
@@ -2928,7 +2883,7 @@ export function isWebSocketSameOrigin(
   } catch {
     return false;
   }
-  const originPort = originUrl.port || defaultPortForOriginProtocol(originUrl.protocol);
+  const originPort = originUrl.port || defaultPortForProtocol(originUrl.protocol);
   if (!originPort) {
     return false;
   }
@@ -2937,7 +2892,7 @@ export function isWebSocketSameOrigin(
   if (!requestAuthority) {
     return false;
   }
-  const requestPort = requestAuthority.port || defaultPortForOriginProtocol(originUrl.protocol);
+  const requestPort = requestAuthority.port || defaultPortForProtocol(originUrl.protocol);
   if (originPort !== requestPort) {
     return false;
   }

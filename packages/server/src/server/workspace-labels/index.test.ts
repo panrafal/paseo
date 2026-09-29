@@ -45,6 +45,23 @@ describe("workspace labels", () => {
     await rm(paseoHome, { recursive: true, force: true });
   });
 
+  test("creates catalog labels without assignments and preserves existing definitions on retry", async () => {
+    const changes: unknown[] = [];
+    const subscription = await labels.subscribe({ onChange: (change) => changes.push(change) });
+    const workspaces = await registry.list();
+    const label = { name: "Needs review", color: "sky" };
+    expect(await labels.create({ name: "  Needs   review ", color: "sky" })).toEqual(label);
+    expect(await labels.create({ name: "needs REVIEW", color: "red" })).toEqual(label);
+    expect(changes).toEqual([expect.objectContaining({ kind: "upsert", label })]);
+    expect(await registry.list()).toEqual(workspaces);
+    await expect(labels.create({ name: "   ", color: "sky" })).rejects.toThrow(
+      "Label name cannot be empty",
+    );
+    const restarted = createWorkspaceLabelService({ paseoHome, workspaceRegistry: registry });
+    expect(await restarted.resolveNames(["NEEDS REVIEW"])).toEqual([label.name]);
+    subscription.unsubscribe();
+  });
+
   test("normalizes identity, preserves the target definition, persists assignments, and stays silent on no-op", async () => {
     const updates: unknown[] = [];
     const initial = await labels.subscribe({ onChange: (change) => updates.push(change) });

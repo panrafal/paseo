@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { UsageSourceRegistry } from "./index.js";
 
 function source(input: {
@@ -190,6 +190,37 @@ test("concurrent requests for the same ID share one vendor fetch", async () => {
   const [one, two] = await Promise.all([first, second]);
   expect(one[0]).toBe(two[0]);
   expect(fetches).toBe(1);
+});
+
+test("invalidating a source prevents an in-flight read from restoring stale usage", async () => {
+  let releaseOld!: (report: unknown) => void;
+  const oldRead = new Promise<unknown>((resolve) => {
+    releaseOld = resolve;
+  });
+  let fetches = 0;
+  const registry = new UsageSourceRegistry();
+  registry.register(
+    source({
+      id: "codex",
+      fetch: async () => {
+        fetches += 1;
+        return fetches === 1 ? oldRead : { status: "available", windows: [] };
+      },
+    }),
+  );
+  await registry.resolveReference({ source: "codex", input: { account: "one" } });
+  const staleRead = registry.listReports({ reportIds: ["codex:one"], forceRefresh: true });
+  await vi.waitFor(() => expect(fetches).toBe(1));
+  registry.invalidateSource("codex");
+  await registry.listReports({ reportIds: ["codex:one"], forceRefresh: true });
+  releaseOld({
+    status: "available",
+    windows: [{ id: "stale", label: "Stale", usedPct: 100 }],
+  });
+  await staleRead;
+  const current = await registry.listReports({ reportIds: ["codex:one"] });
+  expect(current[0]?.report.windows).toEqual([]);
+  expect(fetches).toBe(2);
 });
 
 test("source failure IDs cannot collide with an account named error", async () => {

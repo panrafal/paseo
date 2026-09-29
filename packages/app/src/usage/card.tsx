@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react-native";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Text, View, type StyleProp, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
@@ -33,10 +33,12 @@ export function UsageCard({
   serverId,
   entry,
   compact = false,
+  children,
 }: {
   serverId: string;
   entry: UsageReportEntry;
   compact?: boolean;
+  children?: ReactNode;
 }) {
   const isCompact = useIsCompactFormFactor();
   const { refresh, refreshState } = useReportRefresh(serverId, entry.id);
@@ -116,6 +118,17 @@ export function UsageCard({
           ))}
         </View>
       ) : null}
+
+      {usage.bankedResets ? (
+        <View style={styles.details}>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Banked resets</Text>
+            <Text style={styles.detailValue}>{usage.bankedResets.availableCount} available</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {children}
 
       {footer || showsFreshnessInline ? (
         <View style={styles.footerRow}>

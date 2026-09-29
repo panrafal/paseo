@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { DaemonClient, type DaemonTransport } from "@getpaseo/client/internal/daemon-client";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import { AGENT_TIMELINE_ERROR_CWD_MISSING } from "@getpaseo/protocol/messages";
 import type { ProjectedTimelineForwardFetchPlan } from "./timeline-sync-plan";
 import {
   consumeForcedTimelineTailReplacement,
@@ -41,7 +42,8 @@ interface TimelineFetch {
   agentId: string;
   request: ProjectedTimelineForwardFetchPlan;
   respond(input: { hasNewer: boolean; seq?: number }): void;
-  fail(message: string): void;
+  /** `code` mirrors the daemon's `errorCode`; omit it for an unclassified failure. */
+  fail(message: string, code?: string): void;
 }
 
 test("split panes catch up together before hidden open chats start fetching", async () => {
@@ -177,7 +179,8 @@ class TimelineWorld {
             hasNewer,
             endCursor: { epoch: `epoch-${agentId}`, seq },
           }),
-        fail: (message) => result.reject(new Error(message)),
+        fail: (message, code) =>
+          result.reject(code ? Object.assign(new Error(message), { code }) : new Error(message)),
       });
       this.releaseFetchWaiters();
       return result.promise;
@@ -267,7 +270,8 @@ class TimelineWorld {
       request,
       respond: ({ hasNewer, seq = 1 }) =>
         result.resolve({ hasNewer, endCursor: { epoch: `epoch-${agentId}`, seq } }),
-      fail: (message) => result.reject(new Error(message)),
+      fail: (message, code) =>
+        result.reject(code ? Object.assign(new Error(message), { code }) : new Error(message)),
     });
     this.releaseFetchWaiters();
     return result.promise;
@@ -291,6 +295,10 @@ class TimelineWorld {
 
   expectNoPendingFetch(): void {
     expect(this.fetches).toEqual([]);
+  }
+
+  expectNoScheduledRetry(): void {
+    expect(this.scheduled.map((entry) => entry.delayMs)).toEqual([]);
   }
 
   nextError(): Promise<string> {
@@ -816,6 +824,45 @@ test("a failed catch-up retries with exponential backoff", async () => {
   const third = await world.nextFetch("agent-a");
   third.respond({ hasNewer: false });
   await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("ready"));
+});
+
+test("a catch-up that failed because the working directory is gone never retries", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  (await world.nextMembership()).succeed();
+
+  const failed = await world.nextFetch("agent-a");
+  failed.fail("Working directory does not exist: /gone", AGENT_TIMELINE_ERROR_CWD_MISSING);
+
+  expect(await world.nextError()).toBe("Working directory does not exist: /gone");
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error"));
+  world.expectNoScheduledRetry();
+  world.expectNoPendingFetch();
+  world.expectNoPendingMembership();
+});
+
+test("an unclassified failure still backs off even after a terminal one", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a", "agent-b"]);
+  (await world.nextMembership()).succeed();
+
+  const terminal = await world.nextFetch("agent-a");
+  terminal.fail("Working directory does not exist: /gone", AGENT_TIMELINE_ERROR_CWD_MISSING);
+
+  const retryable = await world.nextFetch("agent-b");
+  retryable.fail("timeline unavailable");
+
+  const retryAgentB = await world.nextRetry();
+  world.expectNoScheduledRetry();
+  retryAgentB();
+
+  const retried = await world.nextFetch("agent-b");
+  expect(retried.agentId).toBe("agent-b");
+  retried.respond({ hasNewer: false });
+  await vi.waitFor(() => expect(world.sync.getAgentTimelineStatus("agent-b")).toBe("ready"));
+  expect(world.sync.getAgentTimelineStatus("agent-a")).toBe("error");
 });
 
 test("manual retries can immediately re-attempt a failed catch-up", async () => {

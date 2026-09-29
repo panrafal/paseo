@@ -1,5 +1,9 @@
 import type pino from "pino";
-import type { ProviderUsage, UsageReportEntry } from "@getpaseo/protocol/messages";
+import type {
+  CodexBankedResetOutcome,
+  ProviderUsage,
+  UsageReportEntry,
+} from "@getpaseo/protocol/messages";
 import type { AgentSession, UsageReference } from "../../agent/agent-sdk-types.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 
@@ -18,7 +22,14 @@ export interface UsageSessionOptions {
       references: UsageReference[];
     }): Promise<UsageReportEntry[]>;
     resolveUsageReference(reference: UsageReference): Promise<string | null>;
-    listLegacyUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }>;
+    listLegacyUsage(options?: { forceRefresh?: boolean }): Promise<{
+      fetchedAt: string;
+      providers: ProviderUsage[];
+    }>;
+    consumeCodexBankedReset?(input: {
+      creditId: string;
+      idempotencyKey: string;
+    }): Promise<CodexBankedResetOutcome>;
   };
   logger: pino.Logger;
 }
@@ -86,7 +97,7 @@ export class UsageSession {
   ): Promise<void> {
     try {
       if (!this.options.runtime) throw new Error("Plugin runtime is unavailable");
-      const usage = await this.options.runtime.listLegacyUsage();
+      const usage = await this.options.runtime.listLegacyUsage({ forceRefresh: msg.forceRefresh });
       this.options.emit({
         type: "provider.usage.list.response",
         payload: {
@@ -105,6 +116,35 @@ export class UsageSession {
           requestType: msg.type,
           error: `Failed to list provider usage: ${err.message}`,
           code: "provider_usage_list_failed",
+        },
+      });
+    }
+  }
+
+  async handleCodexBankedResetConsumeRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider.codex.consume_banked_reset.request" }>,
+  ): Promise<void> {
+    try {
+      const runtime = this.options.runtime;
+      if (!runtime?.consumeCodexBankedReset)
+        throw new Error("Codex banked resets are unavailable on this host.");
+      const outcome = await runtime.consumeCodexBankedReset({
+        creditId: msg.creditId,
+        idempotencyKey: msg.idempotencyKey,
+      });
+      this.options.emit({
+        type: "provider.codex.consume_banked_reset.response",
+        payload: { requestId: msg.requestId, outcome },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.options.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Could not use banked reset: ${message}`,
+          code: "codex_banked_reset_failed",
         },
       });
     }

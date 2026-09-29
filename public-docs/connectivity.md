@@ -59,6 +59,8 @@ Relay is disabled until you enable it.
 2. Select **Enable relay**.
 3. Scan the QR code with Paseo on your phone, or copy the pairing link and paste it into the phone app.
 
+With [device authentication](/docs/configuration#device-authentication) on, the QR code and link pair one device and expire after 5 minutes. Open the page again to pair another.
+
 ### Enable relay from the CLI
 
 Run:
@@ -67,7 +69,7 @@ Run:
 paseo daemon pair
 ```
 
-Confirm when prompted. Paseo prints a QR code and pairing link. Scan the QR code with Paseo on your phone, or choose **Paste pairing link** in the phone app.
+Confirm when prompted. Paseo prints a QR code and pairing link. Scan the QR code with Paseo on your phone, or choose **Paste pairing link** in the phone app. With device authentication on, the link pairs one device and expires after 5 minutes; run the command again for another.
 
 ## Tailscale
 
