@@ -38,6 +38,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 dir="$(cd "$1" && pwd)" base="$2" since="${3:-}"
 cd "$dir"
 trap 'git checkout -q -- . 2>/dev/null || true' EXIT
+# Fixer agents run this too, and their sandbox has a read-only /tmp, where
+# vitest writes. node_modules is ignored by git and kept between runs.
+export TMPDIR="$dir/node_modules/.tmp"
+mkdir -p "$TMPDIR"
 
 step() { section "🧪" "$*"; }
 failures=()
