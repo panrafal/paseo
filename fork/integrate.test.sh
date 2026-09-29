@@ -77,10 +77,10 @@ fixture() {
   git -C "$R" push -q -u origin fork-base 2>/dev/null
   export FORK_WORK_ROOT="$F/work"
   # Stands in for fork/verify.sh: the tree "fails to build" while it holds a
-  # broken*.txt. Every call is logged as "<dir> <base>".
+  # broken*.txt. Every call is logged as "<dir> <base> <since>".
   cat >"$F/verify" <<'VERIFY'
 #!/usr/bin/env bash
-echo "$1 $2" >>"$FORK_WORK_ROOT/verify-calls"
+echo "$1 $2 ${3:-}" >>"$FORK_WORK_ROOT/verify-calls"
 if compgen -G "$1/broken*.txt" >/dev/null; then
   echo "error TS2554: Expected 2 arguments, but got 1."
   exit 1
@@ -691,6 +691,13 @@ AGENT
   assert_fails "agent fix is in main" git -C "$R" cat-file -e main:broken2.txt
   assert_eq "pushed" "$(at origin/main)" "$(at main)"
   export PATH="$original_path"
+  # The next verify checks only what changed since the last one that passed:
+  # the integration before its build stamp.
+  local verified
+  verified="$(at fork-integration^1)"
+  upstream_commit d.txt 'd' "upstream: add d"
+  assert "rebase verifies" run rebase --push
+  assert_eq "since the last verified integration" "$(tail -n1 "$FORK_WORK_ROOT/verify-calls" | cut -d' ' -f3)" "$verified"
 }
 
 scenario_verify_branches() {
@@ -710,7 +717,7 @@ scenario_verify_branches() {
   assert_log "feat-b does not build"
   assert_log "TS2554"
   assert_eq "fork-base, feat-a and feat-b verified" "$(verify_calls)" 3
-  assert_eq "verified in the branch checkout" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | sort -u)" "$FORK_WORK_ROOT/verify-branch"
+  assert_eq "verified in the verify checkout" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | sort -u)" "$FORK_WORK_ROOT/verify"
   assert_eq "feat-b not pushed" "$(at origin/feat-b)" "$tip_b"
   assert_eq "feat-a pushed" "$(at origin/feat-a)" "$(at feat-a)"
   assert_eq "main untouched" "$(at origin/main)" "$old_main"
@@ -764,6 +771,12 @@ AGENT
   assert "feat-c on upstream" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-c
   assert_fails "fix is in main" git -C "$R" cat-file -e main:broken-c.txt
   export PATH="$original_path"
+  # A branch that passed before its rebase is checked for what changed since.
+  local old_a
+  old_a="$(at feat-a)"
+  upstream_commit c4.txt 'c4' "upstream: add c4"
+  assert "rebase-branches again" run rebase-branches --push
+  assert "feat-a checked since its old tip" grep -q " $old_a\$" "$FORK_WORK_ROOT/verify-calls"
 }
 
 scenario_seed() {
