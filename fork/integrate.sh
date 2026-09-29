@@ -437,13 +437,18 @@ ask_agent() {
   local dir="$1" title="$2" prompt="$3" id out status=0
   command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
   check_stopped
+  # Run from a Paseo terminal, the agent joins that terminal's workspace
+  # (PASEO_WORKSPACE_ID) and starts in its directory whatever --cwd says, so
+  # it is told where to work.
+  prompt="Work in $dir. Your shell may start in another directory: cd to $dir
+first and run every command there.
+
+$prompt"
   if [ -n "$JOB_AGENT" ]; then
     id="$JOB_AGENT"
     paseo send --no-wait "$id" "$prompt" >/dev/null || return 1
   else
-    # A Paseo terminal exports PASEO_WORKSPACE_ID, and paseo run then starts
-    # the agent in that workspace's directory whatever --cwd says.
-    id="$(env -u PASEO_WORKSPACE_ID paseo run \
+    id="$(paseo run \
       --background --quiet \
       --cwd "$dir" \
       --provider "$FORK_AGENT_PROVIDER" \
