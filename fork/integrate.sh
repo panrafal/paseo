@@ -1401,8 +1401,11 @@ git log $BASE..HEAD -- <file>. The files it changes:
 $(git diff --name-only "$BASE...$branch" | sed 's/^/  /')
 
 Your commit becomes part of '$branch' and of its upstream PR, so keep it to
-what the branch needs. If a failure also happens on $BASE without the branch
-(check in a scratch worktree of $BASE, not with git stash), it is upstream's
+what the branch needs. Only when a failure looks unrelated to the branch, check
+whether $BASE fails the same way, before you change anything: in this
+checkout, which has the dependencies, run 'git switch -q --detach $BASE', the
+failing command, then 'git switch -q --detach $(git rev-parse "$branch")'.
+Do not create another worktree or clone. A failure $BASE has too is upstream's
 own: do not fix it; stop without committing and say so.
 CONTEXT
 }
