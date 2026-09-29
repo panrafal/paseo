@@ -911,7 +911,8 @@ VERIFY
   assert "the agent working is stopped" grep -qx "stop agent-1" "$FORK_WORK_ROOT/calls"
   assert_eq "no agent started after the stop" "$(grep -c '^run' "$FORK_WORK_ROOT/calls")" 1
   assert_fails "the build is killed" kill -0 "$(cat "$FORK_WORK_ROOT/slow.pid")"
-  assert_eq "agent started outside the caller's workspace" "$(cat "$FORK_WORK_ROOT/agent-workspace")" none
+  assert_eq "agent joins the caller's workspace" "$(cat "$FORK_WORK_ROOT/agent-workspace")" wks-caller
+  assert "agent told where to work" grep -q "^Work in $FORK_WORK_ROOT/verify" "$FORK_WORK_ROOT/prompt"
   assert_fails "feat-b not pushed" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-b
 }
 
