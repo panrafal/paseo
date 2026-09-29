@@ -16,12 +16,13 @@
 #   fork/integrate.sh add <branch>      list <branch> in fork/branches and merge it in
 #   fork/integrate.sh rebuild           rebuild from upstream/main + fork-base + fork/branches
 #   fork/integrate.sh rebase-branches   rebase fork-base and our patch branches onto
-#                                       upstream/main, verify each one, then rebuild
+#                                       upstream/main, verify each one, then rebuild;
+#                                       FORK_JOBS branches at a time
 #
 # Flags:
 #   --push       publish results, including fork-upstream on update/rebase
 #   --agent      hand conflicts and build or test failures to a Paseo agent
-#                (Codex Luna Max by default)
+#                (Codex Luna, xhigh thinking, by default)
 #   --no-fetch   use the refs already fetched
 #   --no-verify  skip the build, lint and tests (fork/verify.sh) of each rebased
 #                branch and of the merged integration
@@ -56,7 +57,7 @@ for arg in "$@"; do
     --no-fetch) fetch=0 ;;
     --no-verify) verify=0 ;;
     -h | --help)
-      sed -n '3,29p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*) die "unknown flag: $arg" ;;
@@ -85,7 +86,10 @@ VERIFY_CMD="${FORK_VERIFY_CMD:-$HERE/verify.sh}"
 VERIFY_LOG="$WORK_ROOT/verify.log"
 VERIFY_DIR="$WORK_ROOT/verify"         # checkout every verify runs in (keeps node_modules)
 VERIFIED_LIST="$WORK_ROOT/verified"    # commits that passed, one sha per line
-REBASE_DIR="$WORK_ROOT/rebase"   # scratch worktree for rebasing one patch branch
+JOB_DIR="$WORK_ROOT/rebase-branches"   # rebase-branches' per-branch logs and verify locks
+SAVED_DIR="$WORK_ROOT/saved"           # checkouts of rebases an agent did not finish
+JOB=0                                  # 1 inside a rebase-branches job
+JOB_AGENT=""                           # the agent that job already started
 
 # ------------------------------------------------------------- helpers ----
 
@@ -418,6 +422,45 @@ attribution() {
   done < <(unmerged "$dir")
 }
 
+# Give the prompt in $3 to a Paseo agent working in $1, titled after $2, and
+# wait for it to finish its turn. Inside a rebase-branches job the agent that
+# resolved the branch's conflicts gets the next prompt too, so a build failure
+# goes to the agent that already knows the branch. Returns non-zero unless the
+# agent finished.
+ask_agent() {
+  local dir="$1" title="$2" prompt="$3" out status=0 limit=()
+  command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
+  if [ -n "$JOB_AGENT" ]; then
+    say "Handing it back to agent $JOB_AGENT"
+    # paseo send has no --wait-timeout.
+    ! command -v timeout >/dev/null 2>&1 || limit=(timeout "$FORK_AGENT_TIMEOUT")
+    out="$(${limit[@]+"${limit[@]}"} paseo send --format json "$JOB_AGENT" "$prompt")" || status=$?
+  else
+    say "Handing it to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING)"
+    out="$(paseo run \
+      --format json \
+      --cwd "$dir" \
+      --provider "$FORK_AGENT_PROVIDER" \
+      --model "$FORK_AGENT_MODEL" \
+      --thinking "$FORK_AGENT_THINKING" \
+      --mode "$FORK_AGENT_MODE" \
+      --wait-timeout "$FORK_AGENT_TIMEOUT" \
+      --title "fork integrate: $title" \
+      --label fork-integrate=1 \
+      "$prompt")" || status=$?
+  fi
+  [ -z "$out" ] || printf '%s\n' "$out"
+  [ "$status" -eq 0 ] || return 1
+  [ "$JOB" -eq 0 ] || JOB_AGENT="$(json_field agentId <<<"$out")"
+  [ "$(json_field status <<<"$out")" = completed ]
+}
+
+json_field() {
+  node -e 'let d = {}
+try { d = JSON.parse(require("node:fs").readFileSync(0, "utf8")) } catch {}
+process.stdout.write(String(d[process.argv[1]] ?? ""))' "$1"
+}
+
 # Hand a stopped merge or rebase to a Paseo agent. Returns non-zero if the
 # agent did not finish the job.
 resolve_with_agent() {
@@ -428,29 +471,17 @@ resolve_with_agent() {
    'GIT_EDITOR=true git rebase --continue'. Repeat for every later conflict.
    Use 'git rebase --skip' only when the entire commit is already implemented
    upstream. Do not abort or restart the rebase, or change its todo list.
-5. After the rebase finishes, run 'npm run typecheck' and 'npm run lint' once
-   on the final result if conflicts touched source files. Fix regressions and
-   commit those fixes. Leave a clean worktree with no rebase in progress.
+5. Leave a clean worktree with no rebase in progress. Do not build, typecheck
+   or test: the result is verified next, and a failure comes back to you.
 6. Do not push or update any branch ref, and do not touch another worktree."
   else
-    steps="4. Run 'npm run typecheck' and 'npm run lint' if the conflicts touched source
-   files, and fix what you broke.
+    steps="4. Do not build, typecheck or test: this worktree has no dependencies
+   installed, and the integration is verified after the last merge.
 5. 'git add -A' and 'git commit --no-edit'. Do not push, do not amend history,
    do not touch any other branch or worktree."
   fi
-  command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
   section "🤖" "Resolve $what"
-  say "Handing the conflict to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING)"
-  paseo run \
-    --cwd "$dir" \
-    --provider "$FORK_AGENT_PROVIDER" \
-    --model "$FORK_AGENT_MODEL" \
-    --thinking "$FORK_AGENT_THINKING" \
-    --mode "$FORK_AGENT_MODE" \
-    --wait-timeout "$FORK_AGENT_TIMEOUT" \
-    --title "fork integrate: resolve $what" \
-    --label fork-integrate=1 \
-    "You are resolving a git conflict in a throwaway worktree at $dir.
+  ask_agent "$dir" "resolve $what" "You are resolving a git conflict in a throwaway worktree at $dir.
 
 Context: this fork keeps an integration branch, '$INTEGRATION_REF', that is
 '$BASE' (upstream) plus a series of personal patch branches. The step that
@@ -663,6 +694,8 @@ open_verify_dir() {
     git worktree add --detach "$VERIFY_DIR" "$sha" >/dev/null
     return 0
   fi
+  # A run killed mid-rebase leaves one behind.
+  ! rebase_in_progress "$VERIFY_DIR" || git -C "$VERIFY_DIR" rebase --abort >/dev/null 2>&1 || true
   git -C "$VERIFY_DIR" checkout -q -f --detach "$sha"
   git -C "$VERIFY_DIR" clean -q -fdx -e node_modules -e dist -e build
 }
@@ -720,12 +753,15 @@ verify_integration() {
 run_verify() {
   local dir="$1" since="${2:-}" head
   head="$(git -C "$dir" rev-parse HEAD)"
+  [ "$JOB" -eq 0 ] || take_verify_lock
   say "Building, linting and testing $(short "$head")${since:+, changes since $(short "$since")} — log in $VERIFY_LOG"
   mkdir -p "$WORK_ROOT"
   if "$VERIFY_CMD" "$dir" "$BASE" ${since:+"$since"} >"$VERIFY_LOG" 2>&1; then
+    release_verify_lock
     say "build, lint and tests pass"
     return 0
   fi
+  release_verify_lock
   warn "build, lint or tests failed at $(short "$head"):"
   tail -n 30 "$VERIFY_LOG" | sed 's/^/    /' >&2
   return 1
@@ -751,19 +787,8 @@ CONTEXT
 fix_with_agent() {
   local dir="$1" what="$2" context="$3" last_step="${4:-}" before agent_status=0
   before="$(git -C "$dir" rev-parse HEAD)"
-  command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
   section "🤖" "Fix $what"
-  say "Handing the failure to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING)"
-  paseo run \
-    --cwd "$dir" \
-    --provider "$FORK_AGENT_PROVIDER" \
-    --model "$FORK_AGENT_MODEL" \
-    --thinking "$FORK_AGENT_THINKING" \
-    --mode "$FORK_AGENT_MODE" \
-    --wait-timeout "$FORK_AGENT_TIMEOUT" \
-    --title "fork integrate: fix $what" \
-    --label fork-integrate=1 \
-    "You are fixing a failed build, lint or test run in a throwaway worktree at $dir.
+  ask_agent "$dir" "fix $what" "You are fixing a failed build, lint or test run in a throwaway worktree at $dir.
 
 $context
 
@@ -1196,47 +1221,63 @@ rebase_position() {
 }
 
 abandon_rebase() {
-  git -C "$REBASE_DIR" rebase --abort >/dev/null 2>&1 || true
-  git worktree remove --force "$REBASE_DIR" >/dev/null 2>&1 || true
+  git -C "$VERIFY_DIR" rebase --abort >/dev/null 2>&1 || true
 }
 
-# A rebase can stop once per commit, so keep resolving until it is done.
+# Where the checkout of a rebase an agent did not finish is kept.
+saved_dir_of() { echo "$SAVED_DIR/${1//\//__}"; }
+
+# Move the job's checkout aside, rebase and node_modules included, so the next
+# job in its slot does not reset it. That slot starts a fresh checkout.
+save_checkout() {
+  local branch="$1" saved
+  saved="$(saved_dir_of "$branch")"
+  mkdir -p "$SAVED_DIR"
+  git worktree move "$VERIFY_DIR" "$saved"
+  echo "$saved"
+}
+
+# Rebase in the job's checkout, which keeps its node_modules, so an agent that
+# resolves a conflict there can build and test. A rebase can stop once per
+# commit, so keep resolving until it is done.
 rebase_branch() {
-  local branch="$1" position stopped_at sha
-  [ ! -e "$REBASE_DIR" ] || die "saved rebase worktree at $REBASE_DIR — recover it or explicitly remove it before retrying"
-  git worktree prune
-  git worktree add --detach "$REBASE_DIR" "$branch" >/dev/null
-  git -C "$REBASE_DIR" rebase "$BASE" >/dev/null 2>&1 || true
-  while rebase_in_progress "$REBASE_DIR"; do
-    position="$(rebase_position "$REBASE_DIR")"
-    stopped_at="$(git -C "$REBASE_DIR" rev-parse HEAD)"
-    if [ -n "$(unmerged "$REBASE_DIR")" ]; then
+  local branch="$1" position stopped_at sha saved
+  saved="$(saved_dir_of "$branch")"
+  [ ! -e "$saved" ] || die "saved rebase worktree at $saved — recover it or explicitly remove it before retrying:
+  git worktree remove --force '$saved'"
+  open_verify_dir "$branch"
+  git -C "$VERIFY_DIR" rebase "$BASE" >/dev/null 2>&1 || true
+  while rebase_in_progress "$VERIFY_DIR"; do
+    position="$(rebase_position "$VERIFY_DIR")"
+    stopped_at="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
+    if [ -n "$(unmerged "$VERIFY_DIR")" ]; then
       if [ "$use_agent" -eq 0 ]; then
         abandon_rebase
         die "rebase of $branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
       fi
-      if ! resolve_with_agent "$REBASE_DIR" "rebase of $branch onto $BASE" "$(sides_rebase)" rebase; then
-        die "agent did not finish rebase of $branch onto $BASE. Worktree preserved at $REBASE_DIR; recover it before retrying."
+      progress "$branch: rebase conflict — handed to an agent"
+      if ! resolve_with_agent "$VERIFY_DIR" "rebase of $branch onto $BASE" "$(sides_rebase)" rebase; then
+        saved="$(save_checkout "$branch")"
+        die "agent did not finish rebase of $branch onto $BASE. Worktree preserved at $saved; recover it before retrying."
       fi
       break
     fi
     # Resolved by rerere. A resolution that leaves nothing to
     # commit means upstream already has this change: the commit is dropped.
-    if [ "$(git -C "$REBASE_DIR" rev-parse HEAD)" = "$stopped_at" ] &&
-      git -C "$REBASE_DIR" diff --quiet HEAD --; then
-      GIT_EDITOR=true git -C "$REBASE_DIR" rebase --skip >/dev/null 2>&1 || true
+    if [ "$(git -C "$VERIFY_DIR" rev-parse HEAD)" = "$stopped_at" ] &&
+      git -C "$VERIFY_DIR" diff --quiet HEAD --; then
+      GIT_EDITOR=true git -C "$VERIFY_DIR" rebase --skip >/dev/null 2>&1 || true
     else
-      GIT_EDITOR=true git -C "$REBASE_DIR" rebase --continue >/dev/null 2>&1 || true
+      GIT_EDITOR=true git -C "$VERIFY_DIR" rebase --continue >/dev/null 2>&1 || true
     fi
-    if rebase_in_progress "$REBASE_DIR" && [ "$(rebase_position "$REBASE_DIR")" = "$position" ]; then
+    if rebase_in_progress "$VERIFY_DIR" && [ "$(rebase_position "$VERIFY_DIR")" = "$position" ]; then
       abandon_rebase
       die "rebase of $branch onto $BASE is not making progress. Rebase it by hand."
     fi
   done
-  sha="$(git -C "$REBASE_DIR" rev-parse HEAD)"
-  git worktree remove --force "$REBASE_DIR" >/dev/null 2>&1 || true
+  sha="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
   move_branch "$branch" "$sha"
-  say "rebased $branch onto $BASE"
+  progress "$branch: rebased onto $BASE"
 }
 
 # A local patch branch that is strictly behind its published copy — pushed
@@ -1268,20 +1309,21 @@ verify_branch() {
   [ "$verify" -eq 1 ] || return 0
   sha="$(git rev-parse "$branch")"
   if is_verified "$sha"; then
-    say "verify $branch: $(short "$sha") passed before"
+    progress "verify $branch: $(short "$sha") passed before"
     return 0
   fi
   section "🧪" "Verify $branch"
   since="$(verified_since "${2:-}")"
   open_verify_dir "$sha"
   if ! run_verify "$VERIFY_DIR" "$since"; then
+    [ "$use_agent" -eq 0 ] || progress "$branch: does not build — handed to an agent"
     if [ "$use_agent" -eq 0 ] ||
       ! fix_with_agent "$VERIFY_DIR" "$branch" "$(branch_fix_context "$branch")" ||
       ! run_verify "$VERIFY_DIR" "$since"; then
       stop_on_branch_failure "$branch"
     fi
     move_branch "$branch" "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
-    say "$branch now carries the fix"
+    progress "$branch now carries the fix"
   fi
   record_verified
 }
@@ -1309,15 +1351,119 @@ stop_on_branch_failure() {
   attempt="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
   git -C "$VERIFY_DIR" checkout -q -- . 2>/dev/null || true
   [ "$attempt" = "$(git rev-parse "$branch")" ] || say "the agent's unfinished attempt is at $(short "$attempt"): git log $branch..$attempt"
-  die "$branch does not build, lint or pass its tests on $BASE, so it was not pushed and the integration was not rebuilt.
-The output is in $VERIFY_LOG.
-Fix the branch, commit, and re-run the same command: $branch is verified again,
-and branches that already passed are not. Or re-run with --agent to let a
-Paseo agent try, or with --no-verify to skip the step."
+  die "$branch does not build, lint or pass its tests on $BASE, so it was not pushed.
+The output is in $VERIFY_LOG."
+}
+
+# Each branch is rebased, verified and pushed by its own job, FORK_JOBS at a
+# time, in its own slot: a persistent checkout that keeps node_modules and
+# build outputs like the verify checkout, which is slot 1. At most
+# FORK_VERIFY_JOBS of them build and test at once; the rest are rebasing or
+# waiting on an agent. A job that fails does not stop the others. The
+# integration is rebuilt only when every job passed.
+
+slot_dir() {
+  if [ "$1" -eq 1 ]; then echo "$WORK_ROOT/verify"; else echo "$WORK_ROOT/verify-$1"; fi
+}
+job_log() { echo "$JOB_DIR/${1//\//__}.log"; }
+
+# One line to the terminal the run started from, and the same in the job's log.
+progress() {
+  say "$*"
+  [ "$JOB" -eq 0 ] || say "$*" >&3
+}
+
+VERIFY_LOCK=""
+take_verify_lock() {
+  local i
+  while :; do
+    for ((i = 1; i <= FORK_VERIFY_JOBS; i++)); do
+      if mkdir "$JOB_DIR/verify-lock-$i" 2>/dev/null; then
+        VERIFY_LOCK="$JOB_DIR/verify-lock-$i"
+        return 0
+      fi
+    done
+    sleep 2
+  done
+}
+release_verify_lock() {
+  [ -z "$VERIFY_LOCK" ] || rmdir "$VERIFY_LOCK" 2>/dev/null || true
+  VERIFY_LOCK=""
+}
+
+# $1 is the branch, $2 its slot, $3 its tip before the rebase. Runs in a
+# subshell with stdout and stderr in the job's log; fd 3 is the terminal.
+branch_job() {
+  local branch="$1"
+  JOB=1 JOB_AGENT=""
+  VERIFY_DIR="$(slot_dir "$2")"
+  VERIFY_LOG="$JOB_DIR/${branch//\//__}.verify.log"
+  trap release_verify_lock EXIT
+  if git merge-base --is-ancestor "$BASE" "$branch"; then
+    say "rebase $branch: already on $BASE"
+  else
+    rebase_branch "$branch"
+  fi
+  verify_branch "$branch" "$3"
+  publish_branch "$branch"
+}
+
+# $@ is "<branch> <tip before the rebase>" per job.
+run_branch_jobs() {
+  local -A branch_of=() slot_of=() started=()
+  local free=() failed=() job branch old slot pid status now
+  for ((slot = FORK_JOBS; slot >= 1; slot--)); do free+=("$slot"); done
+  rm -rf "$JOB_DIR"
+  mkdir -p "$JOB_DIR"
+  git worktree prune
+  trap 'stop_branch_jobs ${!branch_of[@]+"${!branch_of[@]}"}; exit 130' INT TERM
+  say "$# branches, $FORK_JOBS at a time — logs in $JOB_DIR"
+  for job in "$@" ""; do
+    # Wait for a free slot, and after the last job for all of them.
+    while { [ -n "$job" ] && [ "${#free[@]}" -eq 0 ]; } || { [ -z "$job" ] && [ "${#branch_of[@]}" -gt 0 ]; }; do
+      status=0
+      wait -n -p pid || status=$?
+      branch="${branch_of[$pid]}"
+      now="$(date +%s)"
+      if [ "$status" -eq 0 ]; then
+        say "✓ $branch ($(((now - started[$pid] + 59) / 60)) min)"
+      else
+        failed+=("$branch")
+        warn "✗ $branch failed — $(job_log "$branch"):"
+        tail -n 30 "$(job_log "$branch")" | sed 's/^/    /' >&2
+      fi
+      free+=("${slot_of[$pid]}")
+      unset "branch_of[$pid]" "slot_of[$pid]" "started[$pid]"
+    done
+    [ -n "$job" ] || break
+    read -r branch old <<<"$job"
+    slot="${free[-1]}"
+    unset 'free[-1]'
+    (branch_job "$branch" "$slot" "$old") 3>&1 >"$(job_log "$branch")" 2>&1 &
+    branch_of[$!]="$branch" slot_of[$!]="$slot" started[$!]="$(date +%s)"
+  done
+  trap - INT TERM
+  [ "${#failed[@]}" -eq 0 ] && return 0
+  die "${#failed[@]} of $# branches failed, so the integration was not rebuilt: ${failed[*]}
+The branches that passed were pushed. Fix the others and re-run the same
+command: a branch that passed is not verified again. Or re-run with --agent to
+let a Paseo agent try, or with --no-verify to skip the build and tests."
+}
+
+# Background jobs of a script ignore SIGINT, and the agents and builds they
+# start would outlive the run.
+stop_branch_jobs() {
+  local pid
+  for pid in "$@"; do kill_tree "$pid"; done
+}
+kill_tree() {
+  local child
+  for child in $(pgrep -P "$1" 2>/dev/null || true); do kill_tree "$child"; done
+  kill "$1" 2>/dev/null || true
 }
 
 rebase_patch_branches() {
-  local ref local_branch old i
+  local ref local_branch i jobs=()
   for ref in "$TOOLING_REF" ${REFS[@]+"${REFS[@]}"}; do
     if is_external_ref "$ref"; then
       say "$(branch_entry "$ref"): author-owned — merging fetched tip without rebasing or pushing"
@@ -1330,15 +1476,9 @@ rebase_patch_branches() {
     }
     [ "$local_branch" = "$TOOLING_REF" ] || catch_up_branch "$local_branch"
     assert_patch_branch "$local_branch"
-    old="$(git rev-parse "$local_branch")"
-    if git merge-base --is-ancestor "$BASE" "$local_branch"; then
-      say "rebase $local_branch: already on $BASE"
-    else
-      rebase_branch "$local_branch"
-    fi
-    verify_branch "$local_branch" "$old"
-    publish_branch "$local_branch"
+    jobs+=("$local_branch $(git rev-parse "$local_branch")")
   done
+  [ "${#jobs[@]}" -eq 0 ] || run_branch_jobs "${jobs[@]}"
   # Rebased local branches are now ahead of their remote refs; merge those.
   [ "${#REFS[@]}" -eq 0 ] || for i in "${!REFS[@]}"; do
     is_external_ref "${REFS[$i]}" && continue
@@ -1357,6 +1497,7 @@ cmd_rebase_branches() {
   mapfile -t locals < <(local_patch_branches)
   assert_movable "$TOOLING_REF" "$INTEGRATION_REF" "$TARGET" ${locals[@]+"${locals[@]}"}
   validate_refs
+  [ "$use_agent" -eq 0 ] || command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
   rebase_patch_branches
   cmd_rebuild
 }
