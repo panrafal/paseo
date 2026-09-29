@@ -58,9 +58,15 @@ FORK_DAEMON_PACKAGES=(highlight relay protocol client plugin server cli)
 # Agent used by `--agent` conflict resolution.
 FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-codex}"
 FORK_AGENT_MODEL="${FORK_AGENT_MODEL:-gpt-5.6-luna}"
-FORK_AGENT_THINKING="${FORK_AGENT_THINKING:-max}"
+FORK_AGENT_THINKING="${FORK_AGENT_THINKING:-xhigh}"
 FORK_AGENT_MODE="${FORK_AGENT_MODE:-auto-review}"
 FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
+
+# rebase-branches works on this many branches at once, each in its own
+# checkout with its own node_modules. Only FORK_VERIFY_JOBS of them build and
+# test at a time; the rest rebase or wait on an agent.
+FORK_JOBS="${FORK_JOBS:-4}"
+FORK_VERIFY_JOBS="${FORK_VERIFY_JOBS:-2}"
 
 # Where this directory is, resolved from config.sh itself so the secret helper
 # below finds fork/.env.fork no matter which directory a script is run from.
