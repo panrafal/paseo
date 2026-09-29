@@ -468,7 +468,8 @@ resolve_with_agent() {
   if [ "$operation" = rebase ]; then
     steps="4. Own the remaining rebase through completion. For each stopped commit,
    read 'git rebase --show-current-patch', resolve and 'git add -A', then run
-   'GIT_EDITOR=true git rebase --continue'. Repeat for every later conflict.
+   'GIT_EDITOR=true git -c core.hooksPath=/dev/null rebase --continue'. Repeat
+   for every later conflict.
    Use 'git rebase --skip' only when the entire commit is already implemented
    upstream. Do not abort or restart the rebase, or change its todo list.
 5. Leave a clean worktree with no rebase in progress. Do not build, typecheck
@@ -477,8 +478,8 @@ resolve_with_agent() {
   else
     steps="4. Do not build, typecheck or test: this worktree has no dependencies
    installed, and the integration is verified after the last merge.
-5. 'git add -A' and 'git commit --no-edit'. Do not push, do not amend history,
-   do not touch any other branch or worktree."
+5. 'git add -A' and 'git -c core.hooksPath=/dev/null commit --no-edit'. Do not
+   push, do not amend history, do not touch any other branch or worktree."
   fi
   section "🤖" "Resolve $what"
   ask_agent "$dir" "resolve $what" "You are resolving a git conflict in a throwaway worktree at $dir.
@@ -513,7 +514,7 @@ owner can make, stop, leave the worktree in place, and explain why." || agent_st
 
   [ -z "$(unmerged "$dir")" ] || return 1
   if git -C "$dir" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1; then
-    git -C "$dir" commit --no-edit >/dev/null
+    git -C "$dir" -c core.hooksPath=/dev/null commit --no-edit >/dev/null
   fi
   return 0
 }
@@ -806,7 +807,8 @@ Do this and nothing else:
    passes.
 4. Discard build churn (git checkout -- package-lock.json and generated
    files you did not mean to change), then commit only your fix:
-   git add <files> && git commit -m 'Fix <what> after <upstream change>'
+   git add <files> && git -c core.hooksPath=/dev/null commit -m 'Fix <what> after <upstream change>'
+   Hooks are off because you already ran the checks they run.
 5. Do not push, do not amend or rewrite history, do not touch any other
    branch or worktree.
 $last_step
@@ -1268,7 +1270,7 @@ rebase_branch() {
       git -C "$VERIFY_DIR" diff --quiet HEAD --; then
       GIT_EDITOR=true git -C "$VERIFY_DIR" rebase --skip >/dev/null 2>&1 || true
     else
-      GIT_EDITOR=true git -C "$VERIFY_DIR" rebase --continue >/dev/null 2>&1 || true
+      GIT_EDITOR=true git -C "$VERIFY_DIR" -c core.hooksPath=/dev/null rebase --continue >/dev/null 2>&1 || true
     fi
     if rebase_in_progress "$VERIFY_DIR" && [ "$(rebase_position "$VERIFY_DIR")" = "$position" ]; then
       abandon_rebase

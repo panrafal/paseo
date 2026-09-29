@@ -217,7 +217,9 @@ from the patch's own commits, and told never to drop an upstream change to
 make a patch apply nor a patch's feature because its lines no longer fit. The
 default is Codex `gpt-5.6-luna` with `xhigh` thinking and `auto-review` mode.
 Override `FORK_AGENT_PROVIDER`, `FORK_AGENT_MODEL`, `FORK_AGENT_THINKING`, or
-`FORK_AGENT_MODE` before running if needed.
+`FORK_AGENT_MODE` before running if needed. Agents commit with git hooks off
+(`-c core.hooksPath=/dev/null`): the hooks run the same checks that a fixer
+has just run and `fork/verify.sh` runs next.
 
 For `rebase-branches --agent`, one agent takes over at the first conflicting
 commit and continues the rebase through all remaining commits. It works in the
