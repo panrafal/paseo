@@ -89,7 +89,9 @@ VERIFIED_LIST="$WORK_ROOT/verified"    # commits that passed, one sha per line
 JOB_DIR="$WORK_ROOT/rebase-branches"   # rebase-branches' per-branch logs and verify locks
 SAVED_DIR="$WORK_ROOT/saved"           # checkouts of rebases an agent did not finish
 JOB=0                                  # 1 inside a rebase-branches job
+JOB_BRANCH=""                          # the branch that job works on
 JOB_AGENT=""                           # the agent that job already started
+AGENT_LIST="$WORK_ROOT/agents"         # agents this run started, to stop on Ctrl-C
 
 # ------------------------------------------------------------- helpers ----
 
@@ -427,32 +429,60 @@ attribution() {
 # resolved the branch's conflicts gets the next prompt too, so a build failure
 # goes to the agent that already knows the branch. Returns non-zero unless the
 # agent finished.
+#
+# The agent is started in the background and waited for separately, so its id
+# is known while it works: a stopped run stops it (stop_agents) instead of
+# leaving it editing a checkout the next run resets.
 ask_agent() {
-  local dir="$1" title="$2" prompt="$3" out status=0 limit=()
+  local dir="$1" title="$2" prompt="$3" id out status=0
   command -v paseo >/dev/null 2>&1 || die "--agent needs the paseo CLI on PATH"
+  check_stopped
   if [ -n "$JOB_AGENT" ]; then
-    say "Handing it back to agent $JOB_AGENT"
-    # paseo send has no --wait-timeout.
-    ! command -v timeout >/dev/null 2>&1 || limit=(timeout "$FORK_AGENT_TIMEOUT")
-    out="$(${limit[@]+"${limit[@]}"} paseo send --format json "$JOB_AGENT" "$prompt")" || status=$?
+    id="$JOB_AGENT"
+    paseo send --no-wait "$id" "$prompt" >/dev/null || return 1
   else
-    say "Handing it to $FORK_AGENT_PROVIDER/$FORK_AGENT_MODEL ($FORK_AGENT_MODE, thinking $FORK_AGENT_THINKING)"
-    out="$(paseo run \
-      --format json \
+    # A Paseo terminal exports PASEO_WORKSPACE_ID, and paseo run then starts
+    # the agent in that workspace's directory whatever --cwd says.
+    id="$(env -u PASEO_WORKSPACE_ID paseo run \
+      --background --quiet \
       --cwd "$dir" \
       --provider "$FORK_AGENT_PROVIDER" \
       --model "$FORK_AGENT_MODEL" \
       --thinking "$FORK_AGENT_THINKING" \
       --mode "$FORK_AGENT_MODE" \
-      --wait-timeout "$FORK_AGENT_TIMEOUT" \
       --title "fork integrate: $title" \
       --label fork-integrate=1 \
-      "$prompt")" || status=$?
+      "$prompt")" || return 1
+    [ -n "$id" ] || return 1
   fi
+  echo "$id" >>"$AGENT_LIST"
+  progress "${JOB_BRANCH:+$JOB_BRANCH: }agent $id ($FORK_AGENT_MODEL, $FORK_AGENT_THINKING) is on it — watch: paseo logs -f $id"
+  [ "$JOB" -eq 1 ] || trap 'stop_agents; exit 130' INT TERM
+  out="$(paseo wait --timeout "$FORK_AGENT_TIMEOUT" --format json "$id")" || status=$?
+  [ "$JOB" -eq 1 ] || trap - INT TERM
   [ -z "$out" ] || printf '%s\n' "$out"
-  [ "$status" -eq 0 ] || return 1
-  [ "$JOB" -eq 0 ] || JOB_AGENT="$(json_field agentId <<<"$out")"
-  [ "$(json_field status <<<"$out")" = completed ]
+  [ "$JOB" -eq 0 ] || JOB_AGENT="$id"
+  [ "$status" -eq 0 ] && [ "$(json_field status <<<"$out")" = idle ] && return 0
+  # Timed out or stuck on a permission: it must not keep editing the checkout.
+  paseo stop "$id" >/dev/null 2>&1 || true
+  return 1
+}
+
+# Interrupt every agent this run started. One that already finished ignores it.
+stop_agents() {
+  local id
+  [ -f "$AGENT_LIST" ] || return 0
+  sort -u "$AGENT_LIST" | while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    paseo stop "$id" >/dev/null 2>&1 && say "stopped agent $id" || true
+  done
+  rm -f "$AGENT_LIST"
+}
+
+# After Ctrl-C a job can still see a build fail because the interrupt killed
+# it; it must not start an agent or push on that.
+check_stopped() {
+  [ ! -e "$JOB_DIR/stopped" ] || [ "$JOB" -eq 0 ] || die "stopped"
 }
 
 json_field() {
@@ -1257,7 +1287,7 @@ rebase_branch() {
         abandon_rebase
         die "rebase of $branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
       fi
-      progress "$branch: rebase conflict — handed to an agent"
+      progress "$branch: rebase conflict"
       if ! resolve_with_agent "$VERIFY_DIR" "rebase of $branch onto $BASE" "$(sides_rebase)" rebase; then
         saved="$(save_checkout "$branch")"
         die "agent did not finish rebase of $branch onto $BASE. Worktree preserved at $saved; recover it before retrying."
@@ -1318,7 +1348,7 @@ verify_branch() {
   since="$(verified_since "${2:-}")"
   open_verify_dir "$sha"
   if ! run_verify "$VERIFY_DIR" "$since"; then
-    [ "$use_agent" -eq 0 ] || progress "$branch: does not build — handed to an agent"
+    progress "$branch: does not build — $VERIFY_LOG"
     if [ "$use_agent" -eq 0 ] ||
       ! fix_with_agent "$VERIFY_DIR" "$branch" "$(branch_fix_context "$branch")" ||
       ! run_verify "$VERIFY_DIR" "$since"; then
@@ -1397,16 +1427,19 @@ release_verify_lock() {
 # subshell with stdout and stderr in the job's log; fd 3 is the terminal.
 branch_job() {
   local branch="$1"
-  JOB=1 JOB_AGENT=""
+  JOB=1 JOB_AGENT="" JOB_BRANCH="$1"
   VERIFY_DIR="$(slot_dir "$2")"
   VERIFY_LOG="$JOB_DIR/${branch//\//__}.verify.log"
   trap release_verify_lock EXIT
+  # Background subshells ignore SIGINT unless they trap it.
+  trap 'exit 130' INT
   if git merge-base --is-ancestor "$BASE" "$branch"; then
     say "rebase $branch: already on $BASE"
   else
     rebase_branch "$branch"
   fi
   verify_branch "$branch" "$3"
+  check_stopped
   publish_branch "$branch"
 }
 
@@ -1417,8 +1450,9 @@ run_branch_jobs() {
   for ((slot = FORK_JOBS; slot >= 1; slot--)); do free+=("$slot"); done
   rm -rf "$JOB_DIR"
   mkdir -p "$JOB_DIR"
+  rm -f "$AGENT_LIST"
   git worktree prune
-  trap 'stop_branch_jobs ${!branch_of[@]+"${!branch_of[@]}"}; exit 130' INT TERM
+  trap 'stop_branch_jobs "${!branch_of[@]}"; exit 130' INT TERM
   say "$# branches, $FORK_JOBS at a time — logs in $JOB_DIR"
   for job in "$@" ""; do
     # Wait for a free slot, and after the last job for all of them.
@@ -1443,6 +1477,7 @@ run_branch_jobs() {
     unset 'free[-1]'
     (branch_job "$branch" "$slot" "$old") 3>&1 >"$(job_log "$branch")" 2>&1 &
     branch_of[$!]="$branch" slot_of[$!]="$slot" started[$!]="$(date +%s)"
+    say "▶ $branch in $(slot_dir "$slot") — tail -f $(job_log "$branch")"
   done
   trap - INT TERM
   [ "${#failed[@]}" -eq 0 ] && return 0
@@ -1452,16 +1487,24 @@ command: a branch that passed is not verified again. Or re-run with --agent to
 let a Paseo agent try, or with --no-verify to skip the build and tests."
 }
 
-# Background jobs of a script ignore SIGINT, and the agents and builds they
-# start would outlive the run.
+# Ctrl-C reaches the builds a job runs as well as the job itself. A job that
+# saw its build die first would take it for a failure and start an agent, so
+# the stop marker goes up before anything is killed, each job is frozen
+# before its children are, and the agents are stopped last, once no job is
+# left to start another.
 stop_branch_jobs() {
   local pid
+  say "stopping — the branches not pushed yet stay as they were"
+  touch "$JOB_DIR/stopped"
   for pid in "$@"; do kill_tree "$pid"; done
+  stop_agents
 }
 kill_tree() {
   local child
+  kill -STOP "$1" 2>/dev/null || return 0
   for child in $(pgrep -P "$1" 2>/dev/null || true); do kill_tree "$child"; done
-  kill "$1" 2>/dev/null || true
+  kill -TERM "$1" 2>/dev/null || true
+  kill -CONT "$1" 2>/dev/null || true
 }
 
 rebase_patch_branches() {
@@ -1533,6 +1576,7 @@ if [ "$cmd" = add ]; then
   add_ref="$(branch_ref "$branch_arg")"
   is_listed "$add_ref" || fetch_external_ref "$add_ref"
 fi
+rm -f "$AGENT_LIST"
 section "🧭" "Run $cmd"
 say "Base: $BASE ($(git log -1 --format='%h %s' "$BASE"))"
 
