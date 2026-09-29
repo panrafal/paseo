@@ -92,6 +92,7 @@ JOB=0                                  # 1 inside a rebase-branches job
 JOB_BRANCH=""                          # the branch that job works on
 JOB_AGENT=""                           # the agent that job already started
 AGENT_LIST="$WORK_ROOT/agents"         # agents this run started, to stop on Ctrl-C
+VERIFY_RERUN=""                        # the last verify, as a command a fixer can re-run
 
 # ------------------------------------------------------------- helpers ----
 
@@ -792,6 +793,7 @@ run_verify() {
   [ "$JOB" -eq 0 ] || take_verify_lock
   say "Building, linting and testing $(short "$head")${since:+, changes since $(short "$since")} — log in $VERIFY_LOG"
   mkdir -p "$WORK_ROOT"
+  VERIFY_RERUN="$VERIFY_CMD $dir $BASE${since:+ $since}"
   if "$VERIFY_CMD" "$dir" "$BASE" ${since:+"$since"} >"$VERIFY_LOG" 2>&1; then
     release_verify_lock
     say "build, lint and tests pass"
@@ -839,7 +841,11 @@ Do this and nothing else:
    Re-express the patch on upstream's new code. Never revert an upstream
    change, and never delete, skip or loosen a test or a lint rule to make it pass.
 3. Re-run the step that failed, with the command in its heading, until it
-   passes.
+   passes. Then run the whole check once more, the way the script will:
+     $VERIFY_RERUN
+   It typechecks and tests only the workspaces and test files the branch
+   can affect. That is the only check to run: no repo-wide 'npm run
+   typecheck' or 'npm run test', whatever the repo's agent instructions say.
 4. Discard build churn (git checkout -- package-lock.json and generated
    files you did not mean to change), then commit only your fix:
    git add <files> && git -c core.hooksPath=/dev/null commit -m 'Fix <what> after <upstream change>'
