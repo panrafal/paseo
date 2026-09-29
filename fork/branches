@@ -27,10 +27,10 @@ origin/history-navigation-shortcuts
 origin/host-selection-pill-color
 origin/video-file-preview
 
-# PRs maintained by their authors; fetched from their GitHub forks.
-ragokan:fix/claude-native-tool-details
-colonelpanic8:codex-banked-resets
-KiraPC:feat/open-in-editor-remote-authority
+# Others' PRs, copied from their GitHub forks so we can rebase and edit them.
+origin/fix/claude-native-tool-details
+origin/codex-banked-resets
+origin/feat/open-in-editor-remote-authority
 
 origin/fix/cursor-usage-official-display
 
