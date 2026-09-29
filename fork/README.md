@@ -426,12 +426,12 @@ logs and build links. The script resets `main` to `origin/main` here and on the
 devbox — a `main` checkout with uncommitted changes stops it — so every
 target comes from the same commit, then runs all four at once:
 
-| Target    | Built                                     | Installed                                                                                                                                                                                                               |
-| --------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `daemon`  | on the devbox, over ssh                   | once no agent on the devbox is running, `npm install -g` there, `systemctl restart paseo`, then the healthcheck; the daemon tarballs are then uploaded to the `fork-v<version>` release for capitally-devhub's devflows |
-| `desktop` | by GitHub Actions, from a tag pushed here | After every job finishes, Terminal runs `fork/update-macos.sh`; once no local agent is running, it installs and relaunches the Mac app                                                                                  |
-| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                                                                                                                                        |
-| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                                                                                                                                       |
+| Target    | Built                                     | Installed                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `daemon`  | on the devbox, over ssh                   | once no agent on the devbox is running, `npm install -g` there, `systemctl restart paseo`, then a daemon check (unit active, `/api/health` 200) that fails the job; `devbox-healthcheck`'s FAIL lines are reported but do not. Once installed, the client tarballs are uploaded to the `fork-v<version>` release, even when a check failed, so capitally-devhub's devflows can follow the daemon the box runs |
+| `desktop` | by GitHub Actions, from a tag pushed here | After every job finishes, Terminal runs `fork/update-macos.sh`; once no local agent is running, it installs and relaunches the Mac app                                                                                                                                                                                                                                                                        |
+| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                                                                                                                                                                                                                                                                                                                              |
+| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                                                                                                                                                                                                                                                                                                                             |
 
 One target failing does not stop the others. Each target's output goes to
 `~/.paseo-fork/deploy/<target>.log`, and the summary at the end says what was
@@ -485,13 +485,17 @@ the laptop:
 ```bash
 ssh devbox-admin "sudo npm install -g --prefix /usr --allow-scripts=esbuild,node-pty \
   /home/paseo/.paseo-fork/dist/getpaseo-{highlight,relay,protocol,client,plugin,server,cli}-0.7.2-panrafal.2.tgz \
-  && sudo systemctl restart paseo && sleep 8 && sudo devbox-healthcheck"
+  && sudo systemctl restart paseo && sleep 8 \
+  && systemctl is-active --quiet paseo && curl -fsS -m 8 -o /dev/null http://127.0.0.1:6767/api/health"
+ssh devbox-admin "sudo devbox-healthcheck"   # reported only
 ```
 
 The package order is dependency-first — npm has to see a package on disk
 before the one that requires it. `systemctl restart` returns as soon as the
 unit is started, not when the daemon is serving, which is what the pause
-before the healthcheck is for. `--allow-scripts` is needed because npm blocks
+before the check is for. The box healthcheck also fails on things the install
+neither caused nor fixes (queue backlogs, a skipped maintenance window), so
+the deploy only reports it. `--allow-scripts` is needed because npm blocks
 install scripts by default; without it esbuild and node-pty install
 unconfigured. `~/.paseo-fork` is under a home the admin account cannot read,
 so the tarballs are read by `sudo`.
