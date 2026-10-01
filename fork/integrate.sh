@@ -794,15 +794,25 @@ run_verify() {
   say "Building, linting and testing $(short "$head")${since:+, changes since $(short "$since")} — log in $VERIFY_LOG"
   mkdir -p "$WORK_ROOT"
   VERIFY_RERUN="$VERIFY_CMD $dir $BASE${since:+ $since}"
-  if "$VERIFY_CMD" "$dir" "$BASE" ${since:+"$since"} >"$VERIFY_LOG" 2>&1; then
+  if verify_into_log "$dir" "$since"; then
     release_verify_lock
     say "build, lint and tests pass"
     return 0
   fi
   release_verify_lock
-  warn "build, lint or tests failed at $(short "$head"):"
-  tail -n 30 "$VERIFY_LOG" | sed 's/^/    /' >&2
+  warn "build, lint or tests failed at $(short "$head")"
+  [ "$JOB" -eq 1 ] || tail -n 30 "$VERIFY_LOG" | sed 's/^/    /' >&2
   return 1
+}
+
+# A job's stdout is already its log, so its build output goes there, in order
+# with the rebase and agent lines around it.
+verify_into_log() {
+  if [ "$JOB" -eq 1 ]; then
+    "$VERIFY_CMD" "$1" "$BASE" ${2:+"$2"} 2>&1
+  else
+    "$VERIFY_CMD" "$1" "$BASE" ${2:+"$2"} >"$VERIFY_LOG" 2>&1
+  fi
 }
 
 integration_fix_context() {
@@ -830,8 +840,8 @@ fix_with_agent() {
 
 $context
 
-The full output is in $VERIFY_LOG; it was produced by fork/verify.sh, and
-each step's heading there is the command it ran, from $dir.
+The full output is at the end of $VERIFY_LOG; it was produced by
+fork/verify.sh, and each step's heading there is the command it ran, from $dir.
 Dependencies are already installed.
 
 Do this and nothing else:
@@ -1463,12 +1473,7 @@ take_verify_lock() {
 }
 release_verify_lock() {
   [ -z "$VERIFY_LOCK" ] || rmdir "$VERIFY_LOCK" 2>/dev/null || true
-  progress_warn() {
-  warn "$*"
-  [ "$JOB" -eq 0 ] || warn "$*" 2>&3
-}
-
-VERIFY_LOCK=""
+  VERIFY_LOCK=""
 }
 
 # $1 is the branch, $2 its slot, $3 its tip before the rebase. Runs in a
@@ -1477,7 +1482,7 @@ branch_job() {
   local branch="$1"
   JOB=1 JOB_AGENT="" JOB_BRANCH="$1"
   VERIFY_DIR="$(slot_dir "$2")"
-  VERIFY_LOG="$JOB_DIR/${branch//\//__}.verify.log"
+  VERIFY_LOG="$(job_log "$branch")"
   trap release_verify_lock EXIT
   # Background subshells ignore SIGINT unless they trap it.
   trap 'exit 130' INT
