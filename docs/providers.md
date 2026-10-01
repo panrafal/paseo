@@ -195,6 +195,12 @@ Create a built-in source under `plugins/<name>-usage-source/` with the same mani
 
 ### Credentials are read only
 
+Kimi Code usage follows the CLI-managed credential file at `KIMI_CODE_HOME` or `~/.kimi-code/credentials/kimi-code.json`; do not probe the legacy `~/.kimi` path as the primary source for current Kimi Code installs.
+
+Cursor usage reads the desktop `state.vscdb` token first, then `cursor-agent`'s `~/.config/cursor/auth.json`. Headless hosts only have the CLI file.
+
+Kilo usage reads the CLI's OAuth token from `~/.local/share/kilo/auth.json` (`kilo.access`) and calls `GET https://api.kilo.ai/api/profile/balance`. Kilo's gateway has no limit/window endpoint yet, so this reports a single USD balance rather than a percentage window.
+
 A source reads provider credentials without writing them. On 401 or 403 it returns `unavailable` and leaves refresh to the provider CLI. Redeeming a refresh token here would invalidate the CLI's copy; rewriting a parsed credential file could drop fields the source does not model.
 
 Cursor usage checks `CURSOR_ACCESS_TOKEN` and `CURSOR_TOKEN` before the desktop `state.vscdb` token and `cursor-agent`'s `~/.config/cursor/auth.json`.

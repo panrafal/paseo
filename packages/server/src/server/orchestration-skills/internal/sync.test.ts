@@ -10,6 +10,7 @@ interface Sandbox {
   agentsDir: string;
   claudeDir: string;
   codexDir: string;
+  kiloDir: string;
 }
 
 async function makeSandbox(): Promise<Sandbox> {
@@ -18,8 +19,9 @@ async function makeSandbox(): Promise<Sandbox> {
   const agentsDir = path.join(root, "home", ".agents", "skills");
   const claudeDir = path.join(root, "home", ".claude", "skills");
   const codexDir = path.join(root, "home", ".codex", "skills");
+  const kiloDir = path.join(root, "home", ".kilo", "skills");
   await fs.mkdir(sourceDir, { recursive: true });
-  return { root, sourceDir, agentsDir, claudeDir, codexDir };
+  return { root, sourceDir, agentsDir, claudeDir, codexDir, kiloDir };
 }
 
 async function writeBundleSkill(
@@ -60,6 +62,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
 
@@ -93,6 +96,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo-committee"],
     });
 
@@ -133,6 +137,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
 
@@ -151,6 +156,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
 
@@ -162,6 +168,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
 
@@ -183,6 +190,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
 
@@ -216,6 +224,7 @@ describe("syncSkills", () => {
           agentsDir: sandbox.agentsDir,
           claudeDir: sandbox.claudeDir,
           codexDir: sandbox.codexDir,
+          kiloDir: sandbox.kiloDir,
           skillNames: ["paseo"],
         }),
       ).rejects.toThrow("Cannot sync through symbolic link");
@@ -239,6 +248,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
     expect(first.changedFiles).toBeGreaterThan(0);
@@ -248,6 +258,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
     expect(second.changedFiles).toBe(0);
@@ -263,6 +274,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo", "paseo-removed"],
       onSkillError: (name, error) => errors.push({ name, error }),
     });
@@ -286,6 +298,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo", "paseo-deprecated"],
     });
 
@@ -301,6 +314,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
       onSkillError: (skillName) => errors.push(skillName),
     });
@@ -321,6 +335,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
       onSkillError: (skillName) => errors.push(skillName),
     });
@@ -348,6 +363,7 @@ describe("removeSkill", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
     });
 
@@ -355,6 +371,7 @@ describe("removeSkill", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
     });
 
     await expect(fs.access(path.join(sandbox.agentsDir, "paseo"))).rejects.toThrow();
@@ -368,6 +385,7 @@ describe("removeSkill", () => {
         agentsDir: sandbox.agentsDir,
         claudeDir: sandbox.claudeDir,
         codexDir: sandbox.codexDir,
+        kiloDir: sandbox.kiloDir,
       }),
     ).resolves.toBeUndefined();
   });
