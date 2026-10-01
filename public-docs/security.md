@@ -36,6 +36,7 @@ Relay is off on new installations. When you pair a device from `paseo`, `paseo d
 3. Your phone sends a handshake message with its own public key. The daemon will not accept any commands until this handshake completes.
 4. Each side combines its Curve25519 key with the peer public key, then uses the resulting NaCl
    `box` channel for XSalsa20-Poly1305 protected payloads.
+5. With [device authentication](/docs/configuration#device-authentication) on, your phone then proves inside that channel that it was paired: the first time with the one-time token from the link, afterwards with a device credential the daemon issued. The daemon attaches nothing until this check passes.
 
 The relay sees only: IP addresses, timing, message sizes, and session IDs. It cannot read message contents, forge messages, or derive encryption keys from observing the handshake.
 
@@ -50,7 +51,17 @@ The daemon requires a valid cryptographic handshake before processing any comman
 
 ### Trust model
 
-The QR code or pairing link is the trust anchor. It contains the daemon's public key, which is required to establish the encrypted connection. Treat it like a password, don't share it publicly.
+By default, the pairing link or QR code is a standing secret. Anyone who has it can connect, so treat it like a password. Turn on [device authentication](/docs/configuration#device-authentication) to make links one-time.
+
+With device authentication on, a pairing link or QR code pairs one device and stops working after 5 minutes. Once your device has paired, the link is worthless to anyone who finds it. Until then, whoever uses it first gets access, so don't share it.
+
+Setting, changing, or removing the daemon password signs out every paired device. To remove a single device:
+
+```bash
+paseo daemon devices                   # list paired devices
+paseo daemon devices revoke <id>       # disconnect that device within 15 seconds
+paseo daemon devices revoke --all
+```
 
 ## Direct connections
 
