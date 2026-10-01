@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { DesktopNavigationTarget } from "./desktop-navigation.js";
 import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js";
 import type { DesktopWindowChromeMode } from "./window/chrome.js";
 
@@ -36,12 +37,9 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     ipcRenderer.invoke("paseo:invoke", command, args),
   getPendingOpenProject: () =>
     ipcRenderer.invoke("paseo:get-pending-open-project") as Promise<string | null>,
-  agentNavigation: {
+  navigation: {
     ready: () =>
-      ipcRenderer.invoke("paseo:agent-navigation:ready") as Promise<{
-        serverId: string;
-        agentId: string;
-      } | null>,
+      ipcRenderer.invoke("paseo:navigation:ready") as Promise<DesktopNavigationTarget | null>,
   },
   events: {
     on: (event: string, handler: EventHandler): Promise<() => void> => {
