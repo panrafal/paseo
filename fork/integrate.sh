@@ -238,7 +238,7 @@ publish_branch() {
     say "$branch differs from $FORK_REMOTE/$branch — push it with: git push --force-with-lease $FORK_REMOTE $branch"
     return 0
   fi
-  git push --force-with-lease="$branch:$remote_sha" "$FORK_REMOTE" "$branch:$branch"
+  push_retrying --force-with-lease="$branch:$remote_sha" "$FORK_REMOTE" "$branch:$branch"
   say "pushed $branch to $FORK_REMOTE"
 }
 
@@ -1039,6 +1039,20 @@ stray_main_commits() {
   git log --format=%s "$TARGET" "${not[@]}" | grep -vc '^fork: build ' || true
 }
 
+# git push "$@", retried after FORK_PUSH_RETRY_DELAY and three times that.
+# GitHub sometimes rejects a push with a bare "(failed)" and no reason, while
+# other pushes to the repo are in flight; the same push goes through on a
+# re-run. A rejected lease fails every attempt, so a retry never overwrites.
+push_retrying() {
+  local delay
+  for delay in "$FORK_PUSH_RETRY_DELAY" "$((FORK_PUSH_RETRY_DELAY * 3))" ""; do
+    git push "$@" && return 0
+    [ -n "$delay" ] || return 1
+    progress "🔁" "push rejected — retrying in ${delay}s"
+    sleep "$delay"
+  done
+}
+
 push_all() {
   local refs=("$TOOLING_REF:$TOOLING_REF" "$INTEGRATION_REF:$INTEGRATION_REF" "$TARGET:$TARGET")
   if [ "$refresh_upstream" -eq 1 ]; then
@@ -1046,7 +1060,7 @@ push_all() {
   fi
   if [ "$push" -eq 1 ]; then
     say "Pushing ${refs[*]} to $FORK_REMOTE"
-    git push --atomic --force-with-lease "$FORK_REMOTE" "${refs[@]}"
+    push_retrying --atomic --force-with-lease "$FORK_REMOTE" "${refs[@]}"
   else
     echo
     echo "Not pushed. To publish:"
