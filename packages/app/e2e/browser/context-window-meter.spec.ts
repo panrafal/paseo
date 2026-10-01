@@ -1,7 +1,12 @@
 import type { Locator } from "@playwright/test";
-import { expect, test } from "../support/fixtures";
+import { expect, test, type Page } from "../support/fixtures";
+import { openCommandCenter } from "../support/helpers/command-center";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
+import { getServerId } from "../support/helpers/server-id";
+import { buildSettingsHostSectionRoute } from "../../src/utils/host-routes";
+
+const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 // Where the progress arc is painted, as its centroid relative to the ring's centre in pixels.
 // Reads the rendered pixels, so any rotation that does not reach the screen counts as none.
@@ -46,6 +51,19 @@ async function progressArcCentroid(meter: Locator): Promise<{ x: number; y: numb
   );
 }
 
+async function openMockAgent(page: Page) {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  const session = await seedMockAgentWorkspace({
+    repoPrefix: "context-window-meter-usage-",
+    title: "Context window meter usage e2e",
+    initialPrompt: "emit 1 coalesced agent stream update for context window meter usage.",
+  });
+  await openAgentRoute(page, session);
+  await expectComposerVisible(page);
+  await expect(page.getByTestId("context-window-meter")).toBeVisible({ timeout: 30_000 });
+  return session;
+}
+
 test.describe("context window meter", () => {
   test("draws usage clockwise from twelve o'clock", async ({ page }) => {
     test.setTimeout(180_000);
@@ -64,6 +82,109 @@ test.describe("context window meter", () => {
       const centroid = await progressArcCentroid(meter);
       expect(centroid.x).toBeGreaterThan(1);
       expect(centroid.y).toBeLessThan(-1);
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  test.describe("touch input", () => {
+    test.use({ hasTouch: true });
+
+    test("single and long touches stay put; the second tap can finish after the inter-tap delay", async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      const session = await openMockAgent(page);
+      try {
+        const agentUrl = page.url();
+        const meter = page.getByTestId("context-window-meter");
+        await meter.tap();
+        await expect(page.getByText("Context window", { exact: true })).toBeVisible();
+        await page.waitForTimeout(500);
+        await expect(page).toHaveURL(agentUrl);
+
+        const bounds = await meter.boundingBox();
+        if (!bounds) throw new Error("Context meter has no bounds");
+        const cdp = await page.context().newCDPSession(page);
+        const touchPoints = [{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }];
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+        await page.waitForTimeout(600);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await expect(page).toHaveURL(agentUrl);
+        await page.waitForTimeout(350);
+
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await page.waitForTimeout(100);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+        await page.waitForTimeout(300);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+        await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+      } finally {
+        await session.cleanup();
+      }
+    });
+  });
+
+  test("compact single taps show the tooltip and only double taps open host usage", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const session = await openMockAgent(page);
+    const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+    try {
+      const agentUrl = page.url();
+      const meter = page.getByTestId("context-window-meter");
+      await meter.click();
+      await expect(page.getByText("Context window", { exact: true })).toBeVisible();
+      await expect(page).toHaveURL(agentUrl);
+
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(500);
+      await expect(page.getByText("Context window", { exact: true })).toBeHidden();
+      await meter.click({ delay: 600 });
+      await expect(page).toHaveURL(agentUrl);
+
+      await meter.dblclick({ delay: 80 });
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+      await expect(page.getByText("Context window", { exact: true })).toBeHidden();
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  test("desktop navigation requires a double click and Usage follows the current host route", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const session = await openMockAgent(page);
+    const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const agentUrl = page.url();
+      const meter = page.getByTestId("context-window-meter");
+      await meter.click();
+      await page.waitForTimeout(500);
+      await expect(page).toHaveURL(agentUrl);
+      await meter.click({ delay: 600 });
+      await expect(page).toHaveURL(agentUrl);
+      await meter.dblclick({ delay: 80 });
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+
+      await openAgentRoute(page, session);
+      const panel = await openCommandCenter(page);
+      await panel.getByTestId("command-center-input").fill("Usage");
+      await expect(panel.getByText("Usage", { exact: true })).toBeVisible();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+      await expect(panel).toBeHidden();
+
+      await page.goto("/new?serverId=stale-host");
+      const newWorkspacePanel = await openCommandCenter(page);
+      await newWorkspacePanel.getByTestId("command-center-input").fill("Usage");
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
     } finally {
       await session.cleanup();
     }

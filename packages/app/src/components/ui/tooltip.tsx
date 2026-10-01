@@ -231,6 +231,7 @@ export function Tooltip({
   delayDuration = 0,
   enabledOnDesktop = true,
   enabledOnMobile = false,
+  openOnPress,
   children,
 }: PropsWithChildren<{
   open?: boolean;
@@ -239,6 +240,7 @@ export function Tooltip({
   delayDuration?: number;
   enabledOnDesktop?: boolean;
   enabledOnMobile?: boolean;
+  openOnPress?: boolean;
 }>): ReactElement {
   const triggerRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useControllableOpenState({
@@ -248,8 +250,8 @@ export function Tooltip({
   });
 
   const isCompact = useIsCompactFormFactor();
-  const opensOnPress = isNative || isCompact;
-  const enabled = opensOnPress ? enabledOnMobile : enabledOnDesktop;
+  const opensOnPress = openOnPress ?? (isNative || isCompact);
+  const enabled = isNative || isCompact ? enabledOnMobile : enabledOnDesktop;
 
   const value = useMemo<TooltipContextValue>(
     () => ({
