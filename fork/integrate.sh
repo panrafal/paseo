@@ -90,6 +90,7 @@ JOB_DIR="$WORK_ROOT/rebase-branches"   # rebase-branches' per-branch logs and ve
 SAVED_DIR="$WORK_ROOT/saved"           # checkouts of rebases an agent did not finish
 JOB=0                                  # 1 inside a rebase-branches job
 JOB_BRANCH=""                          # the branch that job works on
+JOB_TAG=""                             # that branch's place in the run, like 4/33
 JOB_AGENT=""                           # the agent that job already started
 AGENT_LIST="$WORK_ROOT/agents"         # agents this run started, to stop on Ctrl-C
 VERIFY_RERUN=""                        # the last verify, as a command a fixer can re-run
@@ -462,7 +463,7 @@ $prompt"
     [ -n "$id" ] || return 1
   fi
   echo "$id" >>"$AGENT_LIST"
-  progress "${JOB_BRANCH:+$JOB_BRANCH: }agent $id ($FORK_AGENT_MODEL, $FORK_AGENT_THINKING) is on it — watch: paseo logs -f $id"
+  progress "🤖" "agent $id ($FORK_AGENT_MODEL, $FORK_AGENT_THINKING) is on it — watch: paseo logs -f $id"
   [ "$JOB" -eq 1 ] || trap 'stop_agents; exit 130' INT TERM
   out="$(paseo wait --timeout "$FORK_AGENT_TIMEOUT" --format json "$id")" || status=$?
   [ "$JOB" -eq 1 ] || trap - INT TERM
@@ -1283,7 +1284,7 @@ drop_saved() {
   saved="$(saved_dir_of "$branch")"
   [ -e "$saved" ] || return 0
   sha="$(git -C "$saved" rev-parse -q --verify HEAD 2>/dev/null || true)"
-  progress_warn "dropping the unfinished rebase of $branch kept at $saved${sha:+ (its HEAD was $(short "$sha"))}"
+  progress "🧹" "dropping the unfinished rebase kept at $saved${sha:+ (its HEAD was $(short "$sha"))}"
   git -C "$saved" rebase --abort >/dev/null 2>&1 || true
   git worktree remove --force "$saved" >/dev/null 2>&1 || rm -rf "$saved"
   git worktree prune
@@ -1331,7 +1332,7 @@ rebase_branch() {
         abandon_rebase "$branch"
         die "rebase of $branch onto $BASE stopped on a conflict. Rebase it by hand, or re-run with --agent."
       fi
-      progress "$branch: rebase conflict"
+      progress "🧩" "rebase conflict"
       if ! resolve_with_agent "$VERIFY_DIR" "rebase of $branch onto $BASE" "$(sides_rebase)" rebase; then
         saved="$(save_checkout "$branch")"
         die "agent did not finish rebase of $branch onto $BASE. Its worktree is kept at $saved until the next run, which starts the rebase over."
@@ -1354,7 +1355,7 @@ rebase_branch() {
   sha="$(git -C "$VERIFY_DIR" rev-parse HEAD)"
   drop_rebase_branch "$branch"
   move_branch "$branch" "$sha"
-  progress "$branch: rebased onto $BASE"
+  progress "🔀" "rebased onto $BASE"
 }
 
 # A local patch branch that is strictly behind its published copy — pushed
@@ -1386,21 +1387,22 @@ verify_branch() {
   [ "$verify" -eq 1 ] || return 0
   sha="$(git rev-parse "$branch")"
   if is_verified "$sha"; then
-    progress "verify $branch: $(short "$sha") passed before"
+    progress "💾" "$(short "$sha") passed before, not verified again"
     return 0
   fi
   section "🧪" "Verify $branch"
   since="$(verified_since "${2:-}")"
   open_verify_dir "$sha"
+  progress "🧪" "building and testing"
   if ! run_verify "$VERIFY_DIR" "$since"; then
-    progress "$branch: does not build — $VERIFY_LOG"
+    progress "🚨" "does not build"
     if [ "$use_agent" -eq 0 ] ||
       ! fix_with_agent "$VERIFY_DIR" "$branch" "$(branch_fix_context "$branch")" ||
       ! run_verify "$VERIFY_DIR" "$since"; then
       stop_on_branch_failure "$branch"
     fi
     move_branch "$branch" "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
-    progress "$branch now carries the fix"
+    progress "🩹" "the fix is committed on the branch"
   fi
   record_verified
 }
@@ -1447,16 +1449,17 @@ slot_dir() {
 }
 job_log() { echo "$JOB_DIR/${1//\//__}.log"; }
 
-# One line to the terminal the run started from, and the same in the job's log.
+# One line to the terminal the run started from, tagged with the job's branch,
+# and the same in the job's log. $1 is an emoji, the rest the message.
 progress() {
-  say "$*"
-  [ "$JOB" -eq 0 ] || say "$*" >&3
+  local icon="$1"
+  shift
+  say "$icon $*"
+  [ "$JOB" -eq 0 ] || job_line "$icon" "$JOB_TAG" "$JOB_BRANCH" "$*" >&3
 }
 
-progress_warn() {
-  warn "$*"
-  [ "$JOB" -eq 0 ] || warn "$*" 2>&3
-}
+# $1 emoji, $2 place in the run, $3 branch, $4 message.
+job_line() { printf '%s \033[1m[%s] %s\033[0m %s\n' "$1" "$2" "$3" "$4"; }
 
 VERIFY_LOCK=""
 take_verify_lock() {
@@ -1476,11 +1479,12 @@ release_verify_lock() {
   VERIFY_LOCK=""
 }
 
-# $1 is the branch, $2 its slot, $3 its tip before the rebase. Runs in a
+# $1 is the branch, $2 its slot, $3 its tip before the rebase, $4 its place
+# in the run, like 4/33. Runs in a
 # subshell with stdout and stderr in the job's log; fd 3 is the terminal.
 branch_job() {
   local branch="$1"
-  JOB=1 JOB_AGENT="" JOB_BRANCH="$1"
+  JOB=1 JOB_AGENT="" JOB_BRANCH="$1" JOB_TAG="$4"
   VERIFY_DIR="$(slot_dir "$2")"
   VERIFY_LOG="$(job_log "$branch")"
   trap release_verify_lock EXIT
@@ -1498,15 +1502,16 @@ branch_job() {
 
 # $@ is "<branch> <tip before the rebase>" per job.
 run_branch_jobs() {
-  local -A branch_of=() slot_of=() started=()
-  local free=() failed=() job branch old slot pid status now
+  local -A branch_of=() slot_of=() started=() tag_of=()
+  local free=() failed=() job branch old slot pid status now done=0 n=0
   for ((slot = FORK_JOBS; slot >= 1; slot--)); do free+=("$slot"); done
   rm -rf "$JOB_DIR"
   mkdir -p "$JOB_DIR"
   rm -f "$AGENT_LIST"
   git worktree prune
   trap 'stop_branch_jobs "${!branch_of[@]}"; exit 130' INT TERM
-  say "$# branches, $FORK_JOBS at a time — logs in $JOB_DIR"
+  section "🔁" "Rebase, verify and push $# branches, $FORK_JOBS at a time"
+  say "logs in $JOB_DIR"
   for job in "$@" ""; do
     # Wait for a free slot, and after the last job for all of them.
     while { [ -n "$job" ] && [ "${#free[@]}" -eq 0 ]; } || { [ -z "$job" ] && [ "${#branch_of[@]}" -gt 0 ]; }; do
@@ -1514,23 +1519,29 @@ run_branch_jobs() {
       wait -n -p pid || status=$?
       branch="${branch_of[$pid]}"
       now="$(date +%s)"
+      done=$((done + 1))
+      echo
       if [ "$status" -eq 0 ]; then
-        say "✓ $branch ($(((now - started[$pid] + 59) / 60)) min)"
+        job_line "✅" "${tag_of[$pid]}" "$branch" "done in $(((now - started[$pid] + 59) / 60)) min — $done of $# finished"
       else
         failed+=("$branch")
-        warn "✗ $branch failed — $(job_log "$branch"):"
+        job_line "❌" "${tag_of[$pid]}" "$branch" "failed — $done of $# finished" >&2
+        printf '   %s\n' "$(job_log "$branch")" >&2
         tail -n 30 "$(job_log "$branch")" | sed 's/^/    /' >&2
       fi
+      echo
       free+=("${slot_of[$pid]}")
-      unset "branch_of[$pid]" "slot_of[$pid]" "started[$pid]"
+      unset "branch_of[$pid]" "slot_of[$pid]" "started[$pid]" "tag_of[$pid]"
     done
     [ -n "$job" ] || break
     read -r branch old <<<"$job"
     slot="${free[-1]}"
     unset 'free[-1]'
-    (branch_job "$branch" "$slot" "$old") 3>&1 >"$(job_log "$branch")" 2>&1 &
-    branch_of[$!]="$branch" slot_of[$!]="$slot" started[$!]="$(date +%s)"
-    say "▶ $branch in $(slot_dir "$slot") — tail -f $(job_log "$branch")"
+    n=$((n + 1))
+    (branch_job "$branch" "$slot" "$old" "$n/$#") 3>&1 >"$(job_log "$branch")" 2>&1 &
+    branch_of[$!]="$branch" slot_of[$!]="$slot" started[$!]="$(date +%s)" tag_of[$!]="$n/$#"
+    job_line "🚀" "$n/$#" "$branch" "started in $(slot_dir "$slot")"
+    printf '   tail -f %s\n' "$(job_log "$branch")"
   done
   trap - INT TERM
   [ "${#failed[@]}" -eq 0 ] && return 0
