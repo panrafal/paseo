@@ -1049,6 +1049,7 @@ export const ja: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "選択したラベルの一部は存在しません。削除して続行してください。",
     title: "ラベル",
     unlabelled: "ラベルなし",
     create: "ラベルを作成",
