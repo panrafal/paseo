@@ -574,6 +574,11 @@ sending a message. Use `paseo://h/<server-id>/agent/<agent-id>`, or run
 `paseo agent open <agent-id>`. The CLI reads the local daemon's server ID by
 default; pass `--server <server-id>` when targeting another server.
 
+Use `paseo://new?q=<encoded-prompt>` to open New workspace with a prompt.
+`https://paseo.sh/new?q=<encoded-prompt>` forwards to the same app link. The
+existing `/new` query parameters can be combined with either form. The desktop
+app opens both link types in its focused window.
+
 ## Agent state
 
 Agent data lives at:
