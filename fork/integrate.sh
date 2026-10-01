@@ -91,6 +91,7 @@ SAVED_DIR="$WORK_ROOT/saved"           # checkouts of rebases an agent did not f
 JOB=0                                  # 1 inside a rebase-branches job
 JOB_BRANCH=""                          # the branch that job works on
 JOB_TAG=""                             # that branch's place in the run, like 4/33
+SQUASH_MARKER="Squashed commits:"      # heads the list in a squashed branch's message
 JOB_AGENT=""                           # the agent that job already started
 AGENT_LIST="$WORK_ROOT/agents"         # agents this run started, to stop on Ctrl-C
 VERIFY_RERUN=""                        # the last verify, as a command a fixer can re-run
@@ -1407,6 +1408,38 @@ verify_branch() {
   record_verified
 }
 
+# A verified patch branch becomes one commit on $BASE, so the next rebase
+# replays one commit instead of the branch's whole history, and conflicts once.
+# The tree is the one that passed, so the new tip counts as verified too.
+# fork-base keeps its history.
+squash_branch() {
+  local branch="$1" base count sha
+  [ "$branch" != "$TOOLING_REF" ] || return 0
+  base="$(git merge-base "$BASE" "$branch")"
+  count="$(git rev-list --count "$base..$branch")"
+  [ "$count" -gt 1 ] || return 0
+  sha="$(squash_message "$base" "$branch" | git commit-tree "$branch^{tree}" -p "$base")"
+  mkdir -p "$WORK_ROOT"
+  echo "$sha" >>"$VERIFIED_LIST"
+  move_branch "$branch" "$sha"
+  progress "🗜️" "squashed $count commits into one"
+}
+
+# The oldest commit's subject, then every commit's subject. A commit that is
+# itself a squash contributes the list it carries, so the list stays flat.
+squash_message() {
+  local base="$1" branch="$2" sha
+  git log -1 --format=%s "$(git rev-list --reverse "$base..$branch" | head -n 1)"
+  printf '\n%s\n' "$SQUASH_MARKER"
+  for sha in $(git rev-list --reverse --no-merges "$base..$branch"); do
+    if git log -1 --format=%b "$sha" | grep -qxF "$SQUASH_MARKER"; then
+      git log -1 --format=%b "$sha" | sed -n "/^$SQUASH_MARKER\$/,\$p" | grep '^- '
+    else
+      git log -1 --format='- %s' "$sha"
+    fi
+  done
+}
+
 branch_fix_context() {
   local branch="$1"
   cat <<CONTEXT
@@ -1496,6 +1529,7 @@ branch_job() {
     rebase_branch "$branch"
   fi
   verify_branch "$branch" "$3"
+  [ "$verify" -eq 0 ] || squash_branch "$branch"
   check_stopped
   publish_branch "$branch"
 }
