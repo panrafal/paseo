@@ -197,6 +197,8 @@ Create a built-in source under `plugins/<name>-usage-source/` with the same mani
 
 A source reads provider credentials without writing them. On 401 or 403 it returns `unavailable` and leaves refresh to the provider CLI. Redeeming a refresh token here would invalidate the CLI's copy; rewriting a parsed credential file could drop fields the source does not model.
 
+Account actions such as Codex banked resets use capability-gated controls. Confirm the selected reset, reuse its idempotency key on retry, and never automatically retry the POST. A timeout can arrive after the credit was spent, so invalidate pre-redemption usage reads even on failure. Keep reset-detail failures separate from quota-window availability, and honor the backend's per-credit plan eligibility.
+
 ---
 
 ## ACP Provider Checklist
