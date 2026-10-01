@@ -72,6 +72,10 @@ FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
 FORK_JOBS="${FORK_JOBS:-6}"
 FORK_VERIFY_JOBS="${FORK_VERIFY_JOBS:-4}"
 
+# Seconds before retrying a rejected push, and three times that before the
+# last try.
+FORK_PUSH_RETRY_DELAY="${FORK_PUSH_RETRY_DELAY:-5}"
+
 # Where this directory is, resolved from config.sh itself so the secret helper
 # below finds fork/.env.fork no matter which directory a script is run from.
 FORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
