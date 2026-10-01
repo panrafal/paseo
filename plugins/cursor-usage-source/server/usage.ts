@@ -5,11 +5,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import {
+  balanceToneFromRemaining,
   toneFromUsedPct,
   usedPctOf,
   unavailableUsage,
-  type UsageReport,
+  windowFromUsedPct,
   type UsageBalance,
+  type UsageDetail,
+  type UsageReport,
+  type UsageWindow,
 } from "@getpaseo/plugin/server/usage";
 
 const ApiNumberSchema = z.coerce.number().finite();
@@ -49,18 +53,68 @@ const CursorBillingCycleTimestampSchema = z.preprocess(
   z.union([z.string(), z.number()]).nullable(),
 );
 
+const SINGLE_POOL_PLAN_NAMES = new Set(["start", "express"]);
+
+// Request-based included usage is 500 requests per seat, at $0.04 each.
+const INCLUDED_REQUESTS_PER_SEAT = 500;
+const CENTS_PER_INCLUDED_REQUEST = 4;
+const FREE_OWNER_ROLES = new Set(["FREE_OWNER", "TEAM_ROLE_FREE_OWNER"]);
+
+const CursorPlanUsageSchema = z.object({
+  totalSpend: ApiNullableNumberSchema,
+  includedSpend: ApiNullableNumberSchema,
+  bonusSpend: ApiNullableNumberSchema,
+  remaining: ApiNullableNumberSchema,
+  limit: ApiNullableNumberSchema,
+  autoPercentUsed: ApiNullableNumberSchema,
+  apiPercentUsed: ApiNullableNumberSchema,
+  totalPercentUsed: ApiNullableNumberSchema,
+});
+
+const CursorSpendLimitUsageSchema = z.object({
+  totalSpend: ApiNullableNumberSchema,
+  pooledLimit: ApiNullableNumberSchema,
+  pooledUsed: ApiNullableNumberSchema,
+  pooledRemaining: ApiNullableNumberSchema,
+  individualLimit: ApiNullableNumberSchema,
+  individualUsed: ApiNullableNumberSchema,
+  individualRemaining: ApiNullableNumberSchema,
+  limitType: z.string().nullish(),
+});
+
 const CursorUsageResponseSchema = z.object({
-  planUsage: z
-    .object({
-      totalSpend: ApiNullableNumberSchema,
-      includedSpend: ApiNullableNumberSchema,
-      bonusSpend: ApiNullableNumberSchema,
-      remaining: ApiNullableNumberSchema,
-      limit: ApiNullableNumberSchema,
-    })
-    .nullish(),
+  planUsage: CursorPlanUsageSchema.nullish(),
+  spendLimitUsage: CursorSpendLimitUsageSchema.nullish(),
   billingCycleStart: CursorBillingCycleTimestampSchema,
   billingCycleEnd: CursorBillingCycleTimestampSchema,
+  autoModelSelectedDisplayMessage: z.string().nullish(),
+  namedModelSelectedDisplayMessage: z.string().nullish(),
+});
+
+const CursorPlanInfoResponseSchema = z.object({
+  planInfo: z
+    .object({
+      planName: z.string().optional(),
+    })
+    .nullish(),
+});
+
+const CursorHardLimitResponseSchema = z.object({
+  noUsageBasedAllowed: z.boolean().optional(),
+  hardLimit: z.union([z.number(), z.string()]).optional(),
+});
+
+const CursorTeamSchema = z.object({
+  id: ApiNullableNumberSchema,
+  name: z.string().optional(),
+  role: z.string().optional(),
+  requestQuotaPerSeat: ApiNullableNumberSchema,
+  selfServeTieredPricingEnabled: z.boolean().optional(),
+  pricingStrategy: z.string().optional(),
+});
+
+const CursorTeamsResponseSchema = z.object({
+  teams: z.array(CursorTeamSchema).nullish(),
 });
 
 const CursorAuthStatusSchema = z.object({
@@ -68,6 +122,14 @@ const CursorAuthStatusSchema = z.object({
 });
 
 type CursorUsageResponse = z.infer<typeof CursorUsageResponseSchema>;
+type CursorHardLimitResponse = z.infer<typeof CursorHardLimitResponseSchema>;
+type CursorTeam = z.infer<typeof CursorTeamSchema>;
+type CursorTeamWithId = CursorTeam & { id: number };
+type CursorSpendLimitUsage = NonNullable<CursorUsageResponse["spendLimitUsage"]>;
+
+// Spending page `rz.UNLIMITED_CAP`: a hardLimit at or above this is "Unlimited".
+const CURSOR_UNLIMITED_HARD_LIMIT = 100_000_000;
+const ON_DEMAND_LABEL = "On-Demand Spending";
 
 function parseCursorBillingCycleTimestamp(
   value: CursorUsageResponse["billingCycleStart"],
@@ -88,6 +150,297 @@ function parseCursorBillingCycleTimestamp(
 
 function centsToDollars(value: number | null): number | null {
   return value === null ? null : value / 100;
+}
+
+function parsePercentFromMessage(message: string | null | undefined): number | null {
+  if (!message) return null;
+  const match = message.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (!match?.[1]) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function isSinglePoolPlan(planName: string | null): boolean {
+  const name = planName?.trim().toLowerCase();
+  return name != null && SINGLE_POOL_PLAN_NAMES.has(name);
+}
+
+function isFreeOwnerRole(role: string | undefined): boolean {
+  return role != null && FREE_OWNER_ROLES.has(role);
+}
+
+function isCurrentTokenTeam(team: CursorTeam | null): boolean {
+  return team != null && team.selfServeTieredPricingEnabled === true && !isFreeOwnerRole(team.role);
+}
+
+// Token-priced teams without the current per-seat pools use a dollar included
+// meter. Everything else on a team is the older request-based included quota.
+function isRequestBasedTeam(team: CursorTeam | null): boolean {
+  if (team == null || isCurrentTokenTeam(team)) return false;
+  return team.pricingStrategy !== "tokens";
+}
+
+function usableTeam(team: CursorTeam | null): CursorTeamWithId | null {
+  if (team == null || team.id == null) return null;
+  return { ...team, id: team.id };
+}
+
+function requestCountFromSpendCents(cents: number): number {
+  return Math.ceil(cents / CENTS_PER_INCLUDED_REQUEST);
+}
+
+function percentWindow(input: {
+  id: string;
+  label: string;
+  utilizationPct: number;
+  resetsAt: string | null;
+}): UsageWindow {
+  return windowFromUsedPct({
+    id: input.id,
+    label: input.label,
+    utilizationPct: input.utilizationPct,
+    resetsAt: input.resetsAt,
+    tone: toneFromUsedPct(input.utilizationPct),
+  });
+}
+
+function monthlyUsageWindow(utilizationPct: number, resetsAt: string | null): UsageWindow {
+  return percentWindow({
+    id: "monthly_usage",
+    label: "Monthly usage",
+    utilizationPct,
+    resetsAt,
+  });
+}
+
+function poolPercent(input: {
+  value: number | null;
+  message: string | null | undefined;
+  numeric: boolean;
+  fillMissingZeros: boolean;
+}): number | null {
+  if (input.fillMissingZeros) return input.value ?? 0;
+  if (input.numeric) return input.value;
+  return parsePercentFromMessage(input.message);
+}
+
+function modelPoolWindows(input: {
+  resp: CursorUsageResponse;
+  planName: string | null;
+  resetsAt: string | null;
+  fillMissingZeros?: boolean;
+}): UsageWindow[] {
+  const { resp, planName, resetsAt, fillMissingZeros = false } = input;
+  const planUsage = resp.planUsage;
+  const totalPct = planUsage?.totalPercentUsed ?? null;
+
+  if (isSinglePoolPlan(planName) && totalPct != null) {
+    return [monthlyUsageWindow(totalPct, resetsAt)];
+  }
+
+  const numeric =
+    fillMissingZeros || planUsage?.autoPercentUsed != null || planUsage?.apiPercentUsed != null;
+  const windows: UsageWindow[] = [];
+  for (const pool of [
+    {
+      id: "cursor_models",
+      label: "Cursor Models",
+      value: planUsage?.autoPercentUsed ?? null,
+      message: resp.autoModelSelectedDisplayMessage,
+    },
+    {
+      id: "other_models",
+      label: "Other Models",
+      value: planUsage?.apiPercentUsed ?? null,
+      message: resp.namedModelSelectedDisplayMessage,
+    },
+  ]) {
+    const pct = poolPercent({
+      value: pool.value,
+      message: pool.message,
+      numeric,
+      fillMissingZeros,
+    });
+    if (pct == null) continue;
+    windows.push(
+      percentWindow({
+        id: pool.id,
+        label: pool.label,
+        utilizationPct: pct,
+        resetsAt,
+      }),
+    );
+  }
+  if (windows.length > 0) return windows;
+  if (totalPct != null) return [monthlyUsageWindow(totalPct, resetsAt)];
+  return [];
+}
+
+function usdBalance(input: {
+  id: string;
+  label: string;
+  usedCents: number | null;
+  remainingCents: number | null;
+  limitCents: number | null;
+  resetsAt: string | null;
+}): UsageBalance | null {
+  const used = centsToDollars(input.usedCents);
+  const remaining = centsToDollars(input.remainingCents);
+  const limit = centsToDollars(input.limitCents);
+  if (used == null && remaining == null && limit == null) return null;
+
+  const usedPct = usedPctOf(used, limit);
+  return {
+    id: input.id,
+    label: input.label,
+    used,
+    remaining,
+    limit,
+    unit: "usd",
+    resetsAt: input.resetsAt,
+    tone: usedPct != null ? toneFromUsedPct(usedPct) : balanceToneFromRemaining(remaining),
+  };
+}
+
+function appendUsdBalance(balances: UsageBalance[], input: Parameters<typeof usdBalance>[0]): void {
+  const balance = usdBalance(input);
+  if (balance) balances.push(balance);
+}
+
+function dollarBalances(input: {
+  resp: CursorUsageResponse;
+  resetsAt: string | null;
+}): UsageBalance[] {
+  const { resp, resetsAt } = input;
+  const balances: UsageBalance[] = [];
+  if (resp.planUsage) {
+    appendUsdBalance(balances, {
+      id: "included_usage",
+      label: "Your included usage",
+      usedCents: resp.planUsage.totalSpend,
+      remainingCents: resp.planUsage.remaining,
+      limitCents: resp.planUsage.limit,
+      resetsAt,
+    });
+  } else if (resp.spendLimitUsage?.individualUsed != null) {
+    appendUsdBalance(balances, {
+      id: "monthly_usage_usd",
+      label: "Your monthly usage",
+      usedCents: resp.spendLimitUsage.individualUsed,
+      remainingCents: resp.spendLimitUsage.individualRemaining ?? null,
+      limitCents: resp.spendLimitUsage.individualLimit ?? null,
+      resetsAt,
+    });
+  }
+
+  return balances;
+}
+
+function includedRequestBalance(input: {
+  team: CursorTeam;
+  resp: CursorUsageResponse;
+  resetsAt: string | null;
+}): UsageBalance | null {
+  const quota = input.team.requestQuotaPerSeat;
+  const limit = quota != null && quota > 0 ? INCLUDED_REQUESTS_PER_SEAT * quota : null;
+  const planUsedCents =
+    input.resp.planUsage?.includedSpend ?? input.resp.planUsage?.totalSpend ?? null;
+  const used =
+    planUsedCents != null && planUsedCents > 0 ? requestCountFromSpendCents(planUsedCents) : 0;
+  if (limit == null && (planUsedCents == null || planUsedCents <= 0)) return null;
+
+  const capped = limit != null ? Math.min(used, limit) : used;
+  const remaining = limit != null ? Math.max(0, limit - capped) : null;
+  const usedPct = usedPctOf(capped, limit);
+  return {
+    id: "included_requests",
+    label: "Included-Request Usage",
+    used: capped,
+    remaining,
+    limit,
+    unit: "requests",
+    resetsAt: input.resetsAt,
+    tone: usedPct != null ? toneFromUsedPct(usedPct) : balanceToneFromRemaining(remaining),
+  };
+}
+
+function includedBalances(input: {
+  team: CursorTeamWithId | null;
+  resp: CursorUsageResponse;
+  windows: UsageWindow[];
+  billingCycleEnd: string | null;
+}): UsageBalance[] {
+  if (input.windows.length > 0) return [];
+  if (input.team && isRequestBasedTeam(input.team)) {
+    const request = includedRequestBalance({
+      team: input.team,
+      resp: input.resp,
+      resetsAt: input.billingCycleEnd,
+    });
+    return request ? [request] : [];
+  }
+  return dollarBalances({ resp: input.resp, resetsAt: input.billingCycleEnd });
+}
+
+function numericHardLimitDollars(hardLimit: CursorHardLimitResponse["hardLimit"]): number | null {
+  if (typeof hardLimit === "number" && Number.isFinite(hardLimit)) return hardLimit;
+  if (typeof hardLimit === "string") {
+    const value = Number(hardLimit);
+    return Number.isFinite(value) ? value : null;
+  }
+  return null;
+}
+
+function isOnDemandDisabled(hardLimit: CursorHardLimitResponse | null): boolean {
+  return hardLimit?.noUsageBasedAllowed === true || hardLimit?.hardLimit === "no-usage-based";
+}
+
+function onDemandLimitCents(
+  limitDollars: number | null,
+  spend: CursorSpendLimitUsage | null | undefined,
+): number | null {
+  if (limitDollars != null && limitDollars >= CURSOR_UNLIMITED_HARD_LIMIT) return null;
+  if (limitDollars != null && limitDollars > 0) return limitDollars * 100;
+  const spendLimitCents = spend?.individualLimit;
+  return spendLimitCents != null && spendLimitCents > 0 ? spendLimitCents : null;
+}
+
+// cursor.com/dashboard/spending On-Demand cell (`DK`):
+// noUsageBasedAllowed / hardLimit === "no-usage-based" → "Disabled"
+// unlimited → "$used"; fixed → "$used / $limit" (used is cents, limit is dollars).
+function onDemandUsage(input: {
+  hardLimit: CursorHardLimitResponse | null;
+  spend: CursorSpendLimitUsage | null | undefined;
+  resetsAt: string | null;
+}): { balances: UsageBalance[]; details: UsageDetail[] } {
+  const { hardLimit, spend, resetsAt } = input;
+  if (isOnDemandDisabled(hardLimit)) {
+    return {
+      balances: [],
+      details: [{ id: "on_demand", label: ON_DEMAND_LABEL, value: "Disabled" }],
+    };
+  }
+
+  const limitDollars = numericHardLimitDollars(hardLimit?.hardLimit);
+  const unlimited = limitDollars != null && limitDollars >= CURSOR_UNLIMITED_HARD_LIMIT;
+  const limitCents = onDemandLimitCents(limitDollars, spend);
+  const enabled =
+    limitCents != null ||
+    unlimited ||
+    spend?.individualUsed != null ||
+    hardLimit?.noUsageBasedAllowed === false;
+  if (!enabled) return { balances: [], details: [] };
+
+  const balances: UsageBalance[] = [];
+  appendUsdBalance(balances, {
+    id: "on_demand",
+    label: ON_DEMAND_LABEL,
+    usedCents: spend?.individualUsed ?? 0,
+    remainingCents: limitCents == null ? null : (spend?.individualRemaining ?? null),
+    limitCents,
+    resetsAt,
+  });
+  return { balances, details: [] };
 }
 
 function readItemTableValue(db: CursorStateDatabase, key: string): string | null {
@@ -184,9 +537,11 @@ export async function fetchUsage(
 
   if (!token) return unavailableUsage();
 
-  const res = await fetchApi(
-    "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
-    {
+  async function cursorDashboardRequest(
+    method: string,
+    body: Record<string, unknown> = {},
+  ): Promise<Response> {
+    return fetchApi(`https://api2.cursor.sh/aiserver.v1.DashboardService/${method}`, {
       signal: AbortSignal.timeout(15_000),
       method: "POST",
       headers: {
@@ -194,39 +549,66 @@ export async function fetchUsage(
         "Content-Type": "application/json",
         "Connect-Protocol-Version": "1",
       },
-      body: JSON.stringify({}),
-    },
-  );
-
-  if (!res.ok) {
-    return unavailableUsage();
-  }
-
-  const resp = CursorUsageResponseSchema.parse(await res.json());
-  const billingCycleEnd = parseCursorBillingCycleTimestamp(resp.billingCycleEnd);
-  const balances: UsageBalance[] = [];
-  if (resp.planUsage) {
-    const totalSpend = centsToDollars(resp.planUsage.totalSpend);
-    const remaining = centsToDollars(resp.planUsage.remaining);
-    const limit = centsToDollars(resp.planUsage.limit);
-    balances.push({
-      id: "plan_usage",
-      label: "Plan usage",
-      used: totalSpend,
-      remaining,
-      limit,
-      unit: "usd",
-      resetsAt: billingCycleEnd,
-      tone: toneFromUsedPct(usedPctOf(totalSpend, limit)),
+      body: JSON.stringify(body),
     });
   }
 
+  async function fetchOptionalDashboard<T>(
+    method: string,
+    schema: z.ZodType<T>,
+  ): Promise<T | null> {
+    try {
+      const res = await cursorDashboardRequest(method);
+      if (!res.ok) return null;
+      const parsed = schema.safeParse(await res.json());
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const teams = await fetchOptionalDashboard("GetTeams", CursorTeamsResponseSchema);
+  const team = usableTeam(teams?.teams?.[0] ?? null);
+
+  async function fetchCurrentPeriodUsage(): Promise<CursorUsageResponse | null> {
+    const res = await cursorDashboardRequest(
+      "GetCurrentPeriodUsage",
+      team?.id == null ? {} : { teamId: team.id },
+    );
+    if (!res.ok) return null;
+    return CursorUsageResponseSchema.parse(await res.json());
+  }
+
+  const [resp, planInfo, hardLimit] = await Promise.all([
+    fetchCurrentPeriodUsage(),
+    fetchOptionalDashboard("GetPlanInfo", CursorPlanInfoResponseSchema),
+    fetchOptionalDashboard("GetHardLimit", CursorHardLimitResponseSchema),
+  ]);
+  if (!resp) return unavailableUsage();
+
+  const planName = planInfo?.planInfo?.planName?.trim() || null;
+  const billingCycleEnd = parseCursorBillingCycleTimestamp(resp.billingCycleEnd);
+  const windows = modelPoolWindows({
+    resp,
+    planName,
+    resetsAt: billingCycleEnd,
+    fillMissingZeros: isCurrentTokenTeam(team),
+  });
+  // Start/Express hides the On-Demand section (`!b && !B` in `DK`).
+  const onDemand = isSinglePoolPlan(planName)
+    ? { balances: [], details: [] }
+    : onDemandUsage({
+        hardLimit,
+        spend: resp.spendLimitUsage,
+        resetsAt: billingCycleEnd,
+      });
+
   return {
     status: "available",
-    planLabel: undefined,
-    windows: [],
-    balances,
-    details: [],
+    planLabel: planName ?? undefined,
+    windows,
+    balances: [...includedBalances({ team, resp, windows, billingCycleEnd }), ...onDemand.balances],
+    details: onDemand.details,
   };
 }
 
