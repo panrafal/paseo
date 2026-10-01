@@ -194,6 +194,8 @@ contract, account and window identity, provider-derived period names, login fall
 read-only credential rules. Usage adapters own the interpretation of provider fields; the app
 renders their names and resolves pins without provider-specific duration guesses.
 
+Cursor usage checks `CURSOR_ACCESS_TOKEN` and `CURSOR_TOKEN` before the desktop `state.vscdb` token and `cursor-agent`'s `~/.config/cursor/auth.json`.
+
 ---
 
 ## ACP Provider Checklist
