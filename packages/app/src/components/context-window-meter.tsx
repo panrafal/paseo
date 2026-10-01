@@ -1,10 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative } from "@/constants/platform";
+import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { useHostReportsUsage } from "@/usage";
 import { ContextWindowDetails } from "./context-window-details";
 import { ContextWindowSheet } from "./context-window-sheet";
@@ -23,6 +28,7 @@ interface ContextWindowMeterProps {
 }
 
 const SVG_SIZE = 14;
+const DOUBLE_TAP_DELAY_MS = 300;
 const COMPACT_SVG_SIZE = 12;
 const COMPACT_CENTER = COMPACT_SVG_SIZE / 2;
 const COMPACT_RADIUS = 5;
@@ -108,6 +114,9 @@ export function ContextWindowMeter({
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const isActive = useRetainedPanelActive();
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const tooltipOpen = isActive && isTooltipOpen;
   const { width } = useWindowDimensions();
   // Usage cards need a wider popover; without them it keeps the plain tooltip shape.
   const showsUsage = useHostReportsUsage(serverId);
@@ -117,6 +126,47 @@ export function ContextWindowMeter({
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const openSheet = useCallback(() => setIsSheetOpen(true), []);
   const closeSheet = useCallback(() => setIsSheetOpen(false), []);
+  const handleTooltipOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!isActive) return;
+      setIsTooltipOpen(nextOpen);
+    },
+    [isActive],
+  );
+  const openUsage = useCallback(() => {
+    if (!isActive) return;
+    setIsSheetOpen(false);
+    setIsTooltipOpen(false);
+    router.push(buildSettingsHostSectionRoute(serverId, "usage"));
+  }, [isActive, serverId]);
+  const tapGesture = useMemo(() => {
+    const doubleTap = Gesture.Tap()
+      .enabled(isActive)
+      .numberOfTaps(2)
+      .maxDelay(DOUBLE_TAP_DELAY_MS)
+      .runOnJS(true)
+      .onEnd((_event, success) => {
+        if (success) openUsage();
+      });
+    const singleTap = Gesture.Tap()
+      .enabled(isActive && (isNative || isCompact))
+      .runOnJS(true)
+      .onEnd((_event, success) => {
+        if (!success) return;
+        if (isCompact) {
+          openSheet();
+        } else {
+          handleTooltipOpenChange(true);
+        }
+      });
+    return Gesture.Exclusive(doubleTap, singleTap);
+  }, [handleTooltipOpenChange, isActive, isCompact, openSheet, openUsage]);
+  useEffect(() => {
+    if (!isActive) {
+      setIsTooltipOpen(false);
+      setIsSheetOpen(false);
+    }
+  }, [isActive]);
   const percentage =
     maxTokens !== null && usedTokens !== null ? getUsagePercentage(maxTokens, usedTokens) : null;
   const geometry = getMeterGeometry(showPercentage, glyphSize);
@@ -198,16 +248,18 @@ export function ContextWindowMeter({
   if (isCompact) {
     return (
       <>
-        <Pressable
-          style={containerStyle}
-          testID="context-window-meter"
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-          onPress={openSheet}
-        >
-          {ring}
-          {percentageLabel}
-        </Pressable>
+        <GestureDetector gesture={tapGesture}>
+          <Pressable
+            style={containerStyle}
+            testID="context-window-meter"
+            accessibilityRole="button"
+            accessibilityLabel={accessibilityLabel}
+            onAccessibilityTap={openSheet}
+          >
+            {ring}
+            {percentageLabel}
+          </Pressable>
+        </GestureDetector>
         <ContextWindowSheet open={isSheetOpen} onClose={closeSheet}>
           <ContextWindowDetails
             serverId={serverId}
@@ -225,18 +277,29 @@ export function ContextWindowMeter({
   }
 
   return (
-    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile>
-      <TooltipTrigger asChild triggerRefProp="ref">
-        <Pressable
-          style={containerStyle}
-          testID="context-window-meter"
-          accessibilityRole="image"
-          accessibilityLabel={accessibilityLabel}
-        >
-          {ring}
-          {percentageLabel}
-        </Pressable>
-      </TooltipTrigger>
+    <Tooltip
+      open={tooltipOpen}
+      onOpenChange={handleTooltipOpenChange}
+      delayDuration={0}
+      enabledOnDesktop
+      enabledOnMobile
+      openOnPress={false}
+    >
+      <GestureDetector gesture={tapGesture}>
+        <TooltipTrigger asChild triggerRefProp="ref">
+          <Pressable
+            style={containerStyle}
+            testID="context-window-meter"
+            accessibilityRole="button"
+            accessibilityHint={t("settings.hostSections.usage")}
+            accessibilityLabel={accessibilityLabel}
+            onAccessibilityTap={openUsage}
+          >
+            {ring}
+            {percentageLabel}
+          </Pressable>
+        </TooltipTrigger>
+      </GestureDetector>
       <TooltipContent
         side="top"
         align="center"
