@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   AgentSideConnection,
@@ -3828,8 +3829,10 @@ describe("ACPAgentSession initialization cleanup", () => {
     );
 
     try {
-      await expect(session.initializeResumedSession()).rejects.toThrow("ENOENT");
-      expect(terminator.terminated).toHaveLength(1);
+      await expect(session.initializeResumedSession()).rejects.toThrow(
+        `test-acp working directory does not exist: ${deletedCwd}`,
+      );
+      expect(terminator.terminated).toHaveLength(0);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -3904,6 +3907,91 @@ describe("ACPAgentSession initialization cleanup", () => {
     );
 
     await expect(session.initializeResumedSession()).rejects.toThrow("session/load failed");
+
+    expect(terminator.terminated).toContain(child);
+  });
+});
+
+function createCursorLikeSession(
+  cwd: string,
+  terminator: FakeTerminator,
+  options: { handle?: { provider: string; sessionId: string } } = {},
+): ACPAgentSession {
+  return new ACPAgentSession(
+    { provider: "cursor", cwd },
+    {
+      provider: "cursor",
+      logger: createTestLogger(),
+      // An executable that always resolves, so the launch check passes.
+      defaultCommand: [process.execPath, "acp"],
+      defaultModes: [],
+      capabilities: { supportsStreaming: true, supportsSessionPersistence: true },
+      terminateProcess: terminator.terminate,
+      ...(options.handle ? { handle: options.handle } : {}),
+    },
+  );
+}
+
+function createPipedChildStub(): ChildProcessWithoutNullStreams {
+  const child = new EventEmitter() as ChildProcessWithoutNullStreams;
+  child.stdin = new PassThrough() as unknown as ChildProcessWithoutNullStreams["stdin"];
+  child.stdout = new PassThrough() as unknown as ChildProcessWithoutNullStreams["stdout"];
+  child.stderr = new PassThrough() as unknown as ChildProcessWithoutNullStreams["stderr"];
+  child.kill = vi.fn(() => true) as ChildProcessWithoutNullStreams["kill"];
+  return child;
+}
+
+describe("ACPAgentSession process lifecycle", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test("rejects resuming into a missing working directory without spawning", async () => {
+    const terminator = new FakeTerminator();
+    const spawn = vi.spyOn(spawnUtils, "spawnProcess");
+    const session = createCursorLikeSession(
+      "/tmp/paseo-acp-missing-worktree/sour-wombat",
+      terminator,
+      {
+        handle: { provider: "cursor", sessionId: "session-1" },
+      },
+    );
+
+    await expect(session.initializeResumedSession()).rejects.toThrow(
+      "cursor working directory does not exist: /tmp/paseo-acp-missing-worktree/sour-wombat",
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  test("rejects a failed spawn instead of raising an uncaught 'error' event", async () => {
+    const terminator = new FakeTerminator();
+    const child = createPipedChildStub();
+    vi.spyOn(spawnUtils, "spawnProcess").mockReturnValue(child);
+    const session = createCursorLikeSession(tmpdir(), terminator);
+
+    const initialization = session.initializeNewSession();
+    await vi.waitFor(() => expect(spawnUtils.spawnProcess).toHaveBeenCalledOnce());
+    child.emit("error", new Error("spawn cursor-agent ENOENT"));
+
+    await expect(initialization).rejects.toThrow("spawn cursor-agent ENOENT");
+    expect(terminator.terminated).toContain(child);
+  });
+
+  test("close() terminates the process when session/close never answers", async () => {
+    vi.useFakeTimers();
+    const terminator = new FakeTerminator();
+    const session = createSession({ terminateProcess: terminator.terminate });
+    const internals = asInternals<ACPCloseInternals & { agentCapabilities: unknown }>(session);
+    const child = createTerminalChildStub();
+    internals.child = child;
+    internals.sessionId = "session-1";
+    internals.agentCapabilities = { sessionCapabilities: { close: {} } };
+    internals.connection = { unstable_closeSession: () => new Promise(() => undefined) };
+
+    const close = session.close();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await close;
 
     expect(terminator.terminated).toContain(child);
   });
