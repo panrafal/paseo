@@ -1105,6 +1105,7 @@ export const en = {
     },
   },
   workspaceLabels: {
+    staleSelection: "Some selected labels no longer exist. Remove them to continue.",
     title: "Labels",
     unlabelled: "Unlabelled",
     create: "Create label",
