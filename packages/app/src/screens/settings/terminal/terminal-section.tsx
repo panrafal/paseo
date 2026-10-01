@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { SettingsSection } from "@/components/settings";
 import { FormTextInput } from "@/components/ui/form-field";
+import { Switch } from "@/components/ui/switch";
 import { parseTerminalScrollbackLines, useAppSettings } from "@/hooks/use-settings";
 import { settingsStyles } from "@/styles/settings";
 
@@ -24,6 +25,13 @@ export function TerminalSection() {
       void updateSettings({ terminalScrollbackLines: nextValue });
     }
   }, [scrollbackValue, settings.terminalScrollbackLines, updateSettings]);
+
+  const handleConfirmTerminalCloseChange = useCallback(
+    (confirmTerminalClose: boolean) => {
+      void updateSettings({ confirmTerminalClose });
+    },
+    [updateSettings],
+  );
 
   useEffect(() => {
     setScrollbackValue(String(settings.terminalScrollbackLines));
@@ -52,6 +60,21 @@ export function TerminalSection() {
             selectTextOnFocus
             style={styles.scrollbackInput}
             accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.general.confirmTerminalClose.label")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.general.confirmTerminalClose.description")}
+            </Text>
+          </View>
+          <Switch
+            value={settings.confirmTerminalClose}
+            onValueChange={handleConfirmTerminalCloseChange}
+            accessibilityLabel={t("settings.general.confirmTerminalClose.label")}
           />
         </View>
       </View>
