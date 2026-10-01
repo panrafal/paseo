@@ -75,7 +75,7 @@ fixture() {
   printf '0.7.2 0\n' >"$R/fork/build-number"
   git -C "$R" add -A && git -C "$R" commit -q -m "fork: tooling"
   git -C "$R" push -q -u origin fork-base 2>/dev/null
-  export FORK_WORK_ROOT="$F/work"
+  export FORK_WORK_ROOT="$F/work" FORK_PUSH_RETRY_DELAY=0
   # Stands in for fork/verify.sh: the tree "fails to build" while it holds a
   # broken*.txt. Every call is logged as "<dir> <base> <since>".
   cat >"$F/verify" <<'VERIFY'
@@ -883,6 +883,33 @@ AGENT
   assert "fork-base keeps its history" grep -qx "fork: verified once" <(git -C "$R" log --format=%s upstream/main..fork-base)
 }
 
+# A push the remote rejects is retried; one it keeps rejecting fails the branch.
+scenario_push_retry() {
+  fixture push-retry
+  patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
+  list_branch origin/feat-a
+  run rebuild --push --no-verify
+  # The remote rejects as many pushes of feat-a as $F/rejects holds lines.
+  cat >"$F/origin.git/hooks/pre-receive" <<HOOK
+#!/usr/bin/env bash
+grep -q ' refs/heads/feat-a\$' || exit 0
+[ -s "$F/rejects" ] || exit 0
+sed -i 1d "$F/rejects"
+exit 1
+HOOK
+  chmod +x "$F/origin.git/hooks/pre-receive"
+  upstream_commit c.txt 'c' "upstream: add c"
+  printf 'x\n' >"$F/rejects"
+  assert "one rejection is retried" run rebase-branches --push --no-verify
+  assert_log "feat-a.* push rejected — retrying"
+  assert_eq "feat-a pushed" "$(at origin/feat-a)" "$(at feat-a)"
+  upstream_commit d.txt 'd' "upstream: add d"
+  printf 'x\nx\nx\n' >"$F/rejects"
+  assert_fails "three rejections fail the branch" run rebase-branches --push --no-verify
+  assert_log "feat-a.* failed"
+  rm -f "$F/rejects"
+}
+
 scenario_parallel() {
   fixture parallel
   patch_branch feat-a a.txt $'line 1 (a)\nline 2\nline 3\n'
@@ -1175,7 +1202,7 @@ run_new_branch() { (cd "$R" && "$HERE/new-branch.sh" "$@") >"$F/last.log" 2>&1; 
 
 # ---------------------------------------------------------------- run ----
 
-all=(rebase_agent verify verify_branches parallel stop rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
+all=(rebase_agent verify verify_branches push_retry parallel stop rebuild rebase drift add external conflict conflict_add rebase_branches seed diverged dirty args script_rewrite upstream_mirror new_branch)
 names=("${@:-${all[@]}}")
 for name in "${names[@]}"; do
   name="${name//-/_}"

@@ -142,7 +142,9 @@ when the branch is rebased, hits a conflict, starts or fails its build, hands
 work to an agent (with the `paseo logs -f` command to watch it) and finishes,
 with a count of the branches finished so far. A failed branch does not stop the
 others: every branch that passes is pushed, and the run then stops before the
-rebuild and lists the ones that failed.
+rebuild and lists the ones that failed. A rejected push is retried twice,
+after `FORK_PUSH_RETRY_DELAY` (5) seconds and three times that: GitHub
+sometimes rejects one with a bare `(failed)` while other pushes are in flight.
 
 Ctrl-C stops every job, its builds and the agents it started, and nothing
 starts or pushes after it. Branches already pushed stay pushed; a conflict an
