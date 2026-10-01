@@ -5,6 +5,8 @@ import {
   balanceToneFromRemaining,
   toneFromUsedPct,
   windowFromUsedPct,
+  type CodexBankedResets,
+  type CodexBankedResetOutcome,
   type UsageReport,
   type UsageWindow,
 } from "@getpaseo/plugin/server/usage";
@@ -22,7 +24,26 @@ const authSchema = z.object({
 });
 const number = z.coerce.number().finite();
 const windowSchema = z.object({ used_percent: number.optional(), reset_at: number.optional() });
+const resetCreditsResponseSchema = z.object({
+  available_count: z.number().int().nonnegative(),
+  credits: z.array(
+    z.object({
+      id: z.string().min(1),
+      reset_type: z.string(),
+      is_supported_by_plan: z.boolean().nullish(),
+      status: z.string(),
+      granted_at: z.iso.datetime({ offset: true }),
+      expires_at: z.iso.datetime({ offset: true }).nullish(),
+      title: z.string().nullish(),
+      description: z.string().nullish(),
+    }),
+  ),
+});
+const resetConsumeResponseSchema = z.object({
+  code: z.enum(["reset", "nothing_to_reset", "no_credit", "already_redeemed"]),
+});
 const responseSchema = z.object({
+  rate_limit_reset_credits: z.object({ available_count: z.number().int().nonnegative() }).nullish(),
   plan_type: z.string().optional(),
   email: z.string().optional(),
   rate_limit: z
@@ -31,6 +52,8 @@ const responseSchema = z.object({
   code_review_rate_limit: z.object({ primary_window: windowSchema.nullish() }).nullish(),
   credits: z.object({ balance: number.optional() }).nullish(),
 });
+
+class CodexResetApiError extends Error {}
 
 export async function readAuth(
   _input: CodexUsageInput,
@@ -107,7 +130,7 @@ export async function fetchUsage(
     ),
   ].filter((window): window is UsageWindow => window !== null);
   const balance = usage.credits?.balance;
-  return {
+  const report: UsageReport = {
     status: "available",
     planLabel: usage.plan_type,
     windows,
@@ -125,6 +148,102 @@ export async function fetchUsage(
           ],
     details: [],
   };
+  if (usage.rate_limit_reset_credits) {
+    report.bankedResets = await fetchBankedResets(fetchApi, {
+      token: auth.token,
+      accountId: auth.accountId,
+      availableCount: usage.rate_limit_reset_credits.available_count,
+    });
+  }
+  return report;
+}
+
+export async function consumeBankedReset(
+  input: { creditId: string; idempotencyKey: string },
+  fetchApi: typeof fetch = fetch,
+): Promise<CodexBankedResetOutcome> {
+  const auth = await readAuth({});
+  if (!auth) throw new CodexResetApiError("Sign in to Codex on this host to use a banked reset.");
+  const response = await callResetApi(fetchApi, {
+    token: auth.token,
+    accountId: auth.accountId,
+    body: JSON.stringify({ credit_id: input.creditId, redeem_request_id: input.idempotencyKey }),
+  });
+  return resetConsumeResponseSchema.parse(response).code;
+}
+
+async function fetchBankedResets(
+  fetchApi: typeof fetch,
+  input: { token: string; accountId?: string; availableCount: number },
+): Promise<CodexBankedResets> {
+  try {
+    const response = resetCreditsResponseSchema.parse(
+      await callResetApi(fetchApi, { token: input.token, accountId: input.accountId }),
+    );
+    return {
+      availableCount: response.available_count,
+      credits: response.credits.map((credit) => ({
+        id: credit.id,
+        resetType: credit.reset_type,
+        supportedByPlan: credit.is_supported_by_plan ?? null,
+        status: credit.status,
+        grantedAt: credit.granted_at,
+        expiresAt: credit.expires_at ?? null,
+        title: credit.title ?? null,
+        description: credit.description ?? null,
+      })),
+      error: null,
+    };
+  } catch (error) {
+    if (!(error instanceof CodexResetApiError)) throw error;
+    return {
+      availableCount: input.availableCount,
+      credits: null,
+      error: "Could not load banked reset details. Refresh usage to try again.",
+    };
+  }
+}
+
+async function callResetApi(
+  fetchApi: typeof fetch,
+  input: { token: string; accountId?: string; body?: string },
+): Promise<unknown> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${input.token}`,
+    Accept: "application/json",
+  };
+  if (input.accountId) headers["ChatGPT-Account-Id"] = input.accountId;
+  const consuming = input.body !== undefined;
+  if (consuming) headers["Content-Type"] = "application/json";
+  const response = await fetchApi(
+    `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits${consuming ? "/consume" : ""}`,
+    {
+      method: consuming ? "POST" : "GET",
+      headers,
+      ...(consuming ? { body: input.body } : {}),
+      signal: AbortSignal.timeout(15_000),
+    },
+  ).catch((error: unknown) => {
+    if (
+      (error instanceof DOMException &&
+        (error.name === "TimeoutError" || error.name === "AbortError")) ||
+      (error instanceof TypeError && error.message === "fetch failed")
+    ) {
+      throw new CodexResetApiError("Codex request failed. Refresh usage before retrying.", {
+        cause: error,
+      });
+    }
+    throw error;
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new CodexResetApiError("Sign in to Codex on this host to manage banked resets.");
+  }
+  if (!response.ok) {
+    throw new CodexResetApiError(
+      `Codex banked reset API returned ${response.status}. Refresh usage before retrying.`,
+    );
+  }
+  return response.json();
 }
 
 /** JWT claims are decoded locally; no token or email becomes an account key. */

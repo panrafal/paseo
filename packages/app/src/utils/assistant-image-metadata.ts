@@ -14,7 +14,6 @@ const ASSISTANT_IMAGE_PARSE_CACHE_LIMIT = 500;
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*]\((<[^>]+>|[^)\n]+)\)/g;
 const ASSISTANT_IMAGE_INSET = 8;
-const ASSISTANT_IMAGE_MIN_HEIGHT = 160;
 const ASSISTANT_IMAGE_BLOCK_GAP = 24;
 const ASSISTANT_MESSAGE_BASE_HEIGHT = 96;
 const ASSISTANT_MESSAGE_MIN_HEIGHT = 220;
@@ -189,9 +188,8 @@ export function estimateAssistantMessageHeightFromCache(
     .map((source) => getAssistantImageMetadata({ source }))
     .filter((metadata): metadata is AssistantImageMetadata => metadata !== null)
     .map((metadata) =>
-      Math.max(
-        ASSISTANT_IMAGE_MIN_HEIGHT,
-        Math.round((contentMaxWidth - ASSISTANT_IMAGE_INSET) / metadata.aspectRatio),
+      Math.round(
+        Math.min(contentMaxWidth - ASSISTANT_IMAGE_INSET, metadata.width) / metadata.aspectRatio,
       ),
     );
 

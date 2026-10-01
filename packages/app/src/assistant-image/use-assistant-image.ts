@@ -24,6 +24,7 @@ import { createPreviewAttachmentId, parseImageDataUrl } from "@/attachments/util
 import {
   getAssistantImageMetadata,
   setAssistantImageMetadata,
+  type AssistantImageMetadata,
 } from "@/utils/assistant-image-metadata";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
 import { createAssistantImageAcquisitionCache } from "./acquisition-cache";
@@ -63,16 +64,41 @@ const renderedDimensions: AssistantImageRenderedDimensionsReader = {
   },
 };
 
+interface NaturalWidthState {
+  uri: string;
+  width: number;
+}
+
+function toNaturalWidthState(
+  uri: string,
+  metadata: AssistantImageMetadata | null,
+): NaturalWidthState | null {
+  return metadata ? { uri, width: metadata.width } : null;
+}
+
+function selectNaturalWidth(
+  cachedMetadata: AssistantImageMetadata | null,
+  loaded: NaturalWidthState | null,
+  uri: string | null,
+): number | null {
+  if (cachedMetadata) {
+    return cachedMetadata.width;
+  }
+  return loaded && loaded.uri === uri ? loaded.width : null;
+}
+
 export type AssistantImageResult =
   | {
       status: "loading";
       binding: AssistantImageRenderBinding | null;
       aspectRatio: number | null;
+      naturalWidth: number | null;
     }
   | {
       status: "loaded";
       binding: AssistantImageRenderBinding;
       aspectRatio: number;
+      naturalWidth: number | null;
     }
   | { status: "failed"; message: string };
 
@@ -440,6 +466,7 @@ export function useAssistantImage({
     }
     dispatchLifecycle(event);
   }, []);
+  const [loadedNaturalWidth, setLoadedNaturalWidth] = useState<NaturalWidthState | null>(null);
   const renderedImageRef = useRef<unknown>(null);
   const handleImageRef = useCallback((instance: unknown) => {
     renderedImageRef.current = instance;
@@ -484,6 +511,7 @@ export function useAssistantImage({
       const metadata = dimensions
         ? setAssistantImageMetadata({ source, workspaceRoot, serverId }, dimensions)
         : null;
+      setLoadedNaturalWidth(toNaturalWidthState(uri, metadata));
       const aspectRatio = metadata?.aspectRatio ?? cachedMetadata?.aspectRatio ?? null;
       if (!aspectRatio) {
         dispatch({
@@ -511,6 +539,7 @@ export function useAssistantImage({
   if (acquisitionFailure) {
     return acquisitionFailure;
   }
+  const naturalWidth = selectNaturalWidth(cachedMetadata, loadedNaturalWidth, uri);
   const hasCurrentLifecycleUri = lifecycle.status !== "failed" && lifecycle.uri === uri;
   let binding: AssistantImageRenderBinding | null = null;
   if (hasCurrentLifecycleUri && lifecycle.uri) {
@@ -531,6 +560,7 @@ export function useAssistantImage({
         onError: handleImageError,
       },
       aspectRatio: lifecycle.aspectRatio,
+      naturalWidth,
     };
   }
   if (lifecycle.status === "failed") {
@@ -540,5 +570,6 @@ export function useAssistantImage({
     status: "loading",
     binding,
     aspectRatio: hasCurrentLifecycleUri ? lifecycle.aspectRatio : null,
+    naturalWidth,
   };
 }

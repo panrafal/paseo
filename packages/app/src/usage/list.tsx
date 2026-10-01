@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
+import { CodexBankedResetManagement } from "./banked-resets";
 import { UsageCard } from "./card";
 import type { UsageDisplay } from "./display";
 import type { UsageReportEntry } from "./types";
@@ -19,7 +20,11 @@ export function UsageList({
     <View style={styles.list}>
       {reports.map((entry) => (
         <View key={entry.id} style={settingsStyles.card}>
-          <UsageCard serverId={serverId} entry={entry} display={display} />
+          <UsageCard serverId={serverId} entry={entry} display={display}>
+            {entry.sourceId === "codex" ? (
+              <CodexBankedResetManagement serverId={serverId} resets={entry.report.bankedResets} />
+            ) : null}
+          </UsageCard>
         </View>
       ))}
     </View>

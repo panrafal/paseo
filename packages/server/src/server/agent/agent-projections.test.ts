@@ -407,6 +407,30 @@ describe("toAgentPayload", () => {
     });
   });
 
+  it.each(["running", "initializing"] as const)(
+    "projects a stored-only %s agent as idle because no live process backs it",
+    (lastStatus) => {
+      const record = {
+        ...toStoredAgentRecord(createManagedAgent({ provider: "codex" })),
+        lastStatus,
+      };
+
+      expect(buildStoredAgentPayload(record, ["codex"]).status).toBe("idle");
+    },
+  );
+
+  it.each(["idle", "error", "closed"] as const)(
+    "keeps a stored-only %s status as persisted",
+    (lastStatus) => {
+      const record = {
+        ...toStoredAgentRecord(createManagedAgent({ provider: "codex" })),
+        lastStatus,
+      };
+
+      expect(buildStoredAgentPayload(record, ["codex"]).status).toBe(lastStatus);
+    },
+  );
+
   it("omits lastUsage when not available", () => {
     const agent = createManagedAgent({ lastUsage: undefined });
     const payload = toAgentPayload(agent);
