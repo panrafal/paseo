@@ -123,7 +123,12 @@ nobody made on a branch.
 `fork/integrate.sh rebase-branches` rebases `fork-base` and every listed
 branch we own that has a local branch of the same name onto `upstream/main`,
 verifies each one on its own, force-pushes them, then rebuilds — see
-[Build and test failures](#build-and-test-failures). Each branch is a job
+[Build and test failures](#build-and-test-failures). A patch branch that
+passes is squashed into one commit on `upstream/main` before it is pushed, so
+the next rebase replays one commit and meets each conflict once. The squash
+keeps the first commit's subject and lists every commit it replaced, flattening
+the list of an earlier squash. `fork-base` keeps its history, and nothing is
+squashed under `--no-verify`. Each branch is a job
 that rebases, verifies and pushes it, `FORK_JOBS` (4) at a time, in a slot of
 its own: `~/.paseo-fork/verify`, `verify-2`, `verify-3`, … Every slot keeps
 its own `node_modules`, so the first run pays one `npm install` per slot. Only
