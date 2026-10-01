@@ -996,6 +996,11 @@ export const WorkspaceLabelListRequestSchema = z.object({
   subscribe: z.object({ subscriptionId: z.string().optional() }).optional(),
   sync: WorkspaceLabelSyncCursorSchema.optional(),
 });
+export const WorkspaceLabelCreateRequestSchema = z.object({
+  type: z.literal("workspace.label.create.request"),
+  requestId: z.string(),
+  label: WorkspaceLabelDefinitionSchema,
+});
 export const WorkspaceLabelAssignmentSetRequestSchema = z.object({
   type: z.literal("workspace.label.assignment.set.request"),
   requestId: z.string(),
@@ -3197,6 +3202,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceTitleSetRequestSchema,
   WorkspacePinSetRequestSchema,
   WorkspaceLabelListRequestSchema,
+  WorkspaceLabelCreateRequestSchema,
   WorkspaceLabelAssignmentSetRequestSchema,
   WorkspaceLabelUpdateRequestSchema,
   WorkspaceLabelDeleteRequestSchema,
@@ -3562,6 +3568,10 @@ export const ServerInfoStatusPayloadSchema = z
         directorySync: z.boolean().optional(),
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         workspaceLabels: z.boolean().optional(),
+        // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+        scheduleWorkspaceLabels: z.boolean().optional(),
+        // COMPAT(workspaceLabelCreation): added in v0.7.3, remove after 2027-03-06.
+        workspaceLabelCreation: z.boolean().optional(),
         // COMPAT(workspaceSetupRun): added in v0.8.0, remove gate after 2027-09-02.
         workspaceSetupRun: z.boolean().optional(),
         // COMPAT(workspaceTerminals): added in v0.8.0, remove gate after 2027-09-05.
@@ -4283,6 +4293,10 @@ export const WorkspaceLabelUpdateSchema = z.object({
       seq: z.number().int().positive(),
     }),
   ]),
+});
+export const WorkspaceLabelCreateResponseSchema = z.object({
+  type: z.literal("workspace.label.create.response"),
+  payload: z.object({ requestId: z.string(), label: WorkspaceLabelDefinitionSchema }),
 });
 export const WorkspaceLabelAssignmentSetResponseSchema = z.object({
   type: z.literal("workspace.label.assignment.set.response"),
@@ -6858,6 +6872,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceUpdateMessageSchema,
   WorkspaceLabelListResponseSchema,
   WorkspaceLabelUpdateSchema,
+  WorkspaceLabelCreateResponseSchema,
   WorkspaceLabelAssignmentSetResponseSchema,
   WorkspaceLabelUpdateResponseSchema,
   WorkspaceLabelDeleteResponseSchema,
