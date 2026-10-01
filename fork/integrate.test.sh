@@ -629,7 +629,8 @@ AGENT
   assert "agent told the result is verified" grep -q 'Do not build' "$FORK_WORK_ROOT/prompt"
   assert "agent resolved in a slot" grep -qx "$FORK_WORK_ROOT/verify\(-[0-9]*\)\?" "$FORK_WORK_ROOT/agent-dir"
   assert "branch based on upstream" git -C "$R" merge-base --is-ancestor upstream/main feat-a
-  assert_eq "both patch commits kept" "$(git -C "$R" rev-list --count upstream/main..feat-a)" 2
+  assert_eq "verified branch squashed" "$(git -C "$R" rev-list --count upstream/main..feat-a)" 1
+  assert_eq "squash lists both patch commits" "$(git -C "$R" log -1 --format=%b feat-a | grep -c '^- ')" 2
   assert_eq "resolved content published" "$(git -C "$R" show origin/feat-a:a.txt)" 'upstream + patch two'
   assert_fails "nothing saved" test -e "$FORK_WORK_ROOT/saved/feat-a"
   assert_eq "rebased on a named branch, which the daemon can read" "$(cat "$FORK_WORK_ROOT/head-name")" refs/heads/fork-rebase/feat-a
@@ -830,7 +831,11 @@ AGENT
   assert "agent checks upstream in its own checkout" grep -q "git switch -q --detach upstream/main" "$FORK_WORK_ROOT/prompt"
   assert "agent re-runs the scoped verify" grep -q "$F/verify $FORK_WORK_ROOT/verify[-0-9]* upstream/main" "$FORK_WORK_ROOT/prompt"
   assert_log "feat-c.* the fix is committed on the branch"
-  assert_eq "fix is the branch tip" "$(git -C "$R" log -1 --format=%s origin/feat-c)" "fork: fix after upstream change"
+  assert_eq "fix squashed into the branch" "$(git -C "$R" rev-list --count upstream/main..origin/feat-c)" 1
+  assert_eq "squash keeps the patch's subject" "$(git -C "$R" log -1 --format=%s origin/feat-c)" "patch: feat-c"
+  assert "squash lists the fix" grep -qx -- "- fork: fix after upstream change" <(git -C "$R" log -1 --format=%b origin/feat-c)
+  assert_log "feat-c.* squashed 2 commits into one"
+  assert "squashed tip counts as verified" grep -qx "$(at feat-c)" "$FORK_WORK_ROOT/verified"
   assert "feat-c on upstream" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-c
   assert_fails "fix is in main" git -C "$R" cat-file -e main:broken-c.txt
   export PATH="$original_path"
@@ -840,6 +845,18 @@ AGENT
   upstream_commit c4.txt 'c4' "upstream: add c4"
   assert "rebase-branches again" run rebase-branches --push
   assert "feat-a checked since its old tip" grep -q " $old_a\$" "$FORK_WORK_ROOT/verify-calls"
+  # A squashed branch with a new commit squashes again into a flat list.
+  git -C "$R" worktree add -q "$F/wt-c" feat-c
+  echo more >"$F/wt-c/more-c.txt"
+  git -C "$F/wt-c" add more-c.txt
+  git -C "$F/wt-c" commit -q -m "patch: more c"
+  git -C "$R" worktree remove "$F/wt-c"
+  git -C "$R" commit -q --allow-empty -m "fork: verified once"
+  assert "re-squash" run rebase-branches --push
+  assert_eq "still one commit" "$(git -C "$R" rev-list --count upstream/main..origin/feat-c)" 1
+  assert_eq "flat list of all three" "$(git -C "$R" log -1 --format=%b origin/feat-c | grep '^- ' | tr '\n' '|')" \
+    "- patch: feat-c|- fork: fix after upstream change|- patch: more c|"
+  assert "fork-base keeps its history" grep -qx "fork: verified once" <(git -C "$R" log --format=%s upstream/main..fork-base)
 }
 
 scenario_parallel() {
