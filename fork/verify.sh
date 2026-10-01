@@ -26,7 +26,10 @@
 # Every step after the install runs even when an earlier one fails, so the log
 # shows every failure at once. Tracked files the steps rewrite (the lockfile,
 # generated validators) are restored at the end, so the worktree is left as
-# clean as it came.
+# clean as it came; edits that were there before the run are kept.
+#
+# The scope is read from commits, so a pass on a tree with no uncommitted
+# changes is recorded against HEAD in verify_passed_file (fork/config.sh).
 
 set -euo pipefail
 
@@ -37,7 +40,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ $# -eq 2 ] || [ $# -eq 3 ] || die "usage: fork/verify.sh <dir> <base> [<since>]"
 dir="$(cd "$1" && pwd)" base="$2" since="${3:-}"
 cd "$dir"
-trap 'git checkout -q -- . 2>/dev/null || true' EXIT
+dirty_before="$(git diff --name-only HEAD)"
+restore_tree() {
+  comm -23 <(git diff --name-only HEAD | sort) <(printf '%s\n' "$dirty_before" | sort) |
+    xargs -r -d '\n' git checkout -q HEAD -- 2>/dev/null || true
+}
+trap restore_tree EXIT
 # Fixer agents run this too, and their sandbox has a read-only /tmp, where
 # vitest writes. node_modules is ignored by git and kept between runs.
 export TMPDIR="$dir/node_modules/.tmp"
@@ -120,3 +128,8 @@ done
 [ "${#packages[@]}" -gt 0 ] || say "no fork-touched tests to run"
 [ "${#failures[@]}" -eq 0 ] || die "failed: $(printf '%s; ' "${failures[@]}")"
 say "build, typecheck, lint and tests pass"
+if [ -z "$dirty_before" ]; then
+  git rev-parse HEAD >>"$(verify_passed_file "$dir")"
+else
+  say "uncommitted changes were checked, so $(git rev-parse --short HEAD) is not recorded as passing"
+fi

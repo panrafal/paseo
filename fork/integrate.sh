@@ -510,9 +510,7 @@ resolve_with_agent() {
    for every later conflict.
    Use 'git rebase --skip' only when the entire commit is already implemented
    upstream. Do not abort or restart the rebase, or change its todo list.
-5. Leave a clean worktree with no rebase in progress. Do not build, typecheck
-   or test: the result is verified next, and a failure comes back to you.
-6. Do not push or update any branch ref, and do not touch another worktree."
+$(rebase_check_steps)"
   else
     steps="4. Do not build, typecheck or test: this worktree has no dependencies
    installed, and the integration is verified after the last merge.
@@ -780,7 +778,7 @@ verify_integration() {
     fix_with_agent "$VERIFY_DIR" "the integration build" "$(integration_fix_context)" \
       "6. In your final message, name the patch branch that should carry the fix,
    so the owner can move it there." &&
-    run_verify "$VERIFY_DIR" "$since"; then
+    { passed_here "$VERIFY_DIR" || run_verify "$VERIFY_DIR" "$since"; }; then
     git -C "$INTEGRATE_DIR" checkout -q --detach "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
     record_verified
     warn "the fix lives only in $INTEGRATION_REF — move it to the patch branch it belongs to, or the next rebuild needs it again"
@@ -805,6 +803,65 @@ run_verify() {
   warn "build, lint or tests failed at $(short "$head")"
   [ "$JOB" -eq 1 ] || tail -n 30 "$VERIFY_LOG" | sed 's/^/    /' >&2
   return 1
+}
+
+# Whether fork/verify.sh, run by the script or by an agent, passed on checkout
+# $1's HEAD as committed.
+passed_here() {
+  grep -qxF "$(git -C "$1" rev-parse HEAD)" "$(verify_passed_file "$1")" 2>/dev/null
+}
+
+# The rest of a rebase resolver's steps, from 5. With verify on, the resolver
+# checks its own result: it knows what it changed and why, so it fixes what
+# breaks better than a second agent would.
+rebase_check_steps() {
+  if [ "$verify" -eq 0 ]; then
+    cat <<STEPS
+5. Leave a clean worktree with no rebase in progress. Do not build, typecheck
+   or test.
+6. Do not push or update any branch ref, and do not touch another worktree.
+STEPS
+    return
+  fi
+  cat <<STEPS
+5. Once the rebase is done, check the result and fix what fails, as below.
+   Commit each fix on top; do not amend the rebased commits. A code failure
+   that $BASE has too is upstream's own: leave it and say so.
+6. Leave a clean worktree with no rebase in progress. Do not push or update
+   any branch ref, and do not touch another worktree.
+
+$(check_guide)
+STEPS
+}
+
+# How an agent checks its work with fork/verify.sh. The tooling paragraph
+# comes from a fixer that stopped on vitest failing with ENOENT under
+# node_modules/.tmp in its sandbox: it found the same on $BASE, took it for
+# upstream's, and dropped a working fix the script's own run would have passed.
+check_guide() {
+  cat <<GUIDE
+Checking: commit first, then run
+  $VERIFY_RERUN
+It builds, typechecks, lints and tests only what the branch can affect, read
+from what is committed, and on exit it restores the tracked files its steps
+rewrote. That is the only check to run: no repo-wide 'npm run typecheck' or
+'npm run test', whatever the repo's agent instructions say. Each step's
+heading is the command it ran, from $VERIFY_DIR; re-run a failing step alone
+with it while you fix. Discard build churn (git checkout -- package-lock.json
+and generated files you did not mean to change), then commit each fix:
+  git add <files> && git -c core.hooksPath=/dev/null commit -m 'Fix <what> after <upstream change>'
+Hooks are off because the check runs what they run. A pass is recorded
+against the commit it checked: end on a passing run of your last commit and
+the script does not check again.
+
+A failure of the tooling rather than the code comes from your sandbox, not
+from upstream: ENOENT, EACCES or EROFS under node_modules/.tmp or /tmp, a
+denied command, vitest failing before it loads any test file. Re-run that
+step once. If it fails again, keep your commits, stop, and name the step in
+your final message: the script runs the whole check again outside your
+sandbox. Do not compare such a failure with $BASE, and do not hold a fix back
+because of it.
+GUIDE
 }
 
 # A job's stdout is already its log, so its build output goes there, in order
@@ -852,19 +909,12 @@ Do this and nothing else:
 2. Fix it so the upstream change and the intent of every patch both survive.
    Re-express the patch on upstream's new code. Never revert an upstream
    change, and never delete, skip or loosen a test or a lint rule to make it pass.
-3. Re-run the step that failed, with the command in its heading, until it
-   passes. Then run the whole check once more, the way the script will:
-     $VERIFY_RERUN
-   It typechecks and tests only the workspaces and test files the branch
-   can affect. That is the only check to run: no repo-wide 'npm run
-   typecheck' or 'npm run test', whatever the repo's agent instructions say.
-4. Discard build churn (git checkout -- package-lock.json and generated
-   files you did not mean to change), then commit only your fix:
-   git add <files> && git -c core.hooksPath=/dev/null commit -m 'Fix <what> after <upstream change>'
-   Hooks are off because you already ran the checks they run.
-5. Do not push, do not amend or rewrite history, do not touch any other
+3. Commit the fix and check it, as below, until the check passes.
+4. Do not push, do not amend or rewrite history, do not touch any other
    branch or worktree.
 $last_step
+
+$(check_guide)
 
 If the failure cannot be fixed without a decision only the repo owner can
 make, stop without committing and explain why." || agent_status=$?
@@ -1318,10 +1368,14 @@ save_checkout() {
 
 # Rebase in the job's checkout, which keeps its node_modules, so an agent that
 # resolves a conflict there can build and test. A rebase can stop once per
-# commit, so keep resolving until it is done.
+# commit, so keep resolving until it is done. $2 is the branch's tip before
+# the rebase. A resolver whose own check passed on the result has verified it.
 rebase_branch() {
-  local branch="$1" position stopped_at sha saved
+  local branch="$1" since position stopped_at sha saved resolved=0
+  since="$(verified_since "${2:-}")"
   drop_saved "$branch"
+  # A resolver checks its own result with this.
+  VERIFY_RERUN="$VERIFY_CMD $VERIFY_DIR $BASE${since:+ $since}"
   open_verify_dir "$branch"
   git -C "$VERIFY_DIR" checkout -q -B "$(rebase_branch_name "$branch")"
   git -C "$VERIFY_DIR" rebase "$BASE" >/dev/null 2>&1 || true
@@ -1338,6 +1392,7 @@ rebase_branch() {
         saved="$(save_checkout "$branch")"
         die "agent did not finish rebase of $branch onto $BASE. Its worktree is kept at $saved until the next run, which starts the rebase over."
       fi
+      resolved=1
       break
     fi
     # Resolved by rerere. A resolution that leaves nothing to
@@ -1357,6 +1412,10 @@ rebase_branch() {
   drop_rebase_branch "$branch"
   move_branch "$branch" "$sha"
   progress "🔀" "rebased onto $BASE"
+  if [ "$resolved" -eq 1 ] && [ "$verify" -eq 1 ] && passed_here "$VERIFY_DIR"; then
+    record_verified
+    progress "🧪" "the agent's check passed on $(short "$sha")"
+  fi
 }
 
 # A local patch branch that is strictly behind its published copy — pushed
@@ -1399,7 +1458,7 @@ verify_branch() {
     progress "🚨" "does not build"
     if [ "$use_agent" -eq 0 ] ||
       ! fix_with_agent "$VERIFY_DIR" "$branch" "$(branch_fix_context "$branch")" ||
-      ! run_verify "$VERIFY_DIR" "$since"; then
+      ! { passed_here "$VERIFY_DIR" || run_verify "$VERIFY_DIR" "$since"; }; then
       stop_on_branch_failure "$branch"
     fi
     move_branch "$branch" "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
@@ -1452,12 +1511,13 @@ git log $BASE..HEAD -- <file>. The files it changes:
 $(git diff --name-only "$BASE...$branch" | sed 's/^/  /')
 
 Your commit becomes part of '$branch' and of its upstream PR, so keep it to
-what the branch needs. Only when a failure looks unrelated to the branch, check
-whether $BASE fails the same way, before you change anything: in this
-checkout, which has the dependencies, run 'git switch -q --detach $BASE', the
-failing command, then 'git switch -q --detach $(git rev-parse "$branch")'.
-Do not create another worktree or clone. A failure $BASE has too is upstream's
-own: do not fix it; stop without committing and say so.
+what the branch needs. Only when a type, lint or test error looks unrelated to
+the branch, check whether $BASE fails the same way, before you change
+anything: in this checkout, which has the dependencies, run
+'git switch -q --detach $BASE', the failing command, then
+'git switch -q --detach $(git rev-parse "$branch")'. Do not create another
+worktree or clone. A code failure $BASE has too is upstream's own: do not fix
+it; stop without committing and say so.
 CONTEXT
 }
 
@@ -1526,7 +1586,7 @@ branch_job() {
   if git merge-base --is-ancestor "$BASE" "$branch"; then
     say "rebase $branch: already on $BASE"
   else
-    rebase_branch "$branch"
+    rebase_branch "$branch" "$3"
   fi
   verify_branch "$branch" "$3"
   [ "$verify" -eq 0 ] || squash_branch "$branch"

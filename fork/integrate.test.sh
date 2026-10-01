@@ -81,9 +81,14 @@ fixture() {
   cat >"$F/verify" <<'VERIFY'
 #!/usr/bin/env bash
 echo "$1 $2 ${3:-}" >>"$FORK_WORK_ROOT/verify-calls"
+git -C "$1" log -1 --format=%s >>"$FORK_WORK_ROOT/verify-subjects"
 if compgen -G "$1/broken*.txt" >/dev/null; then
   echo "error TS2554: Expected 2 arguments, but got 1."
   exit 1
+fi
+# Like fork/verify.sh, a pass on a committed tree is recorded against HEAD.
+if git -C "$1" diff --quiet HEAD; then
+  git -C "$1" rev-parse HEAD >>"$(git -C "$1" rev-parse --path-format=absolute --git-path fork-verify-passed)"
 fi
 VERIFY
   chmod +x "$F/verify"
@@ -580,6 +585,7 @@ scenario_rebase_agent() {
 if [ "$cmd" = send ]; then
   git rm -q broken*.txt
   git commit -q -m "fork: fix after upstream change"
+  [ "${TEST_AGENT_MODE:-}" != breaks-checks ] || "$FORK_VERIFY_CMD" "$PWD" upstream/main
   exit 0
 fi
 cat "$(git rev-parse --git-path rebase-merge/head-name)" >"$FORK_WORK_ROOT/head-name"
@@ -597,7 +603,8 @@ done
 case "${TEST_AGENT_MODE:-}" in
   dirty) echo uncommitted >leftover.txt ;;
   failed) exit 1 ;;
-  breaks) echo x >broken-agent.txt && git add broken-agent.txt && git commit -q -m "patch: breaks the build" ;;
+  breaks | breaks-checks) echo x >broken-agent.txt && git add broken-agent.txt && git commit -q -m "patch: breaks the build" ;;
+  checks) "$FORK_VERIFY_CMD" "$PWD" upstream/main ;;
 esac
 AGENT
   export PATH="$F/bin:$PATH"
@@ -626,7 +633,9 @@ AGENT
   assert_eq "one agent call" "$(cat "$FORK_WORK_ROOT/calls")" run
   assert_eq "two conflicting commits resolved" "$(wc -l <"$FORK_WORK_ROOT/conflicts" | tr -d ' ')" 2
   assert "agent instructed to continue without hooks" grep -q 'git -c core.hooksPath=/dev/null rebase --continue' "$FORK_WORK_ROOT/prompt"
-  assert "agent told the result is verified" grep -q 'Do not build' "$FORK_WORK_ROOT/prompt"
+  assert "agent told to check its result" grep -q 'Once the rebase is done, check the result' "$FORK_WORK_ROOT/prompt"
+  assert "agent given the scoped verify" grep -q "^  $F/verify $FORK_WORK_ROOT/verify[-0-9]* upstream/main" "$FORK_WORK_ROOT/prompt"
+  assert "agent told about sandbox failures" grep -q 'comes from your sandbox' "$FORK_WORK_ROOT/prompt"
   assert "agent resolved in a slot" grep -qx "$FORK_WORK_ROOT/verify\(-[0-9]*\)\?" "$FORK_WORK_ROOT/agent-dir"
   assert "branch based on upstream" git -C "$R" merge-base --is-ancestor upstream/main feat-a
   assert_eq "verified branch squashed" "$(git -C "$R" rev-list --count upstream/main..feat-a)" 1
@@ -644,6 +653,21 @@ AGENT
   assert "fix prompt sent" grep -q 'fixing a failed build' "$FORK_WORK_ROOT/prompt"
   assert "fix committed without hooks" grep -q 'git -c core.hooksPath=/dev/null commit' "$FORK_WORK_ROOT/prompt"
   assert_log "feat-a.* the fix is committed on the branch"
+  assert_fails "fix is published" git -C "$R" cat-file -e origin/feat-a:broken-agent.txt
+  # A resolver whose own check passed is not checked again.
+  upstream_commit a.txt $'upstream third\n' "upstream: a third conflicting change"
+  rm -f "$FORK_WORK_ROOT/verify-subjects"
+  export TEST_AGENT_MODE=checks
+  assert "resolver checks its own result" run rebase-branches --agent --push
+  assert_log "feat-a.* the agent's check passed"
+  assert_eq "feat-a checked once, by the agent" "$(grep -cx "patch: feat-a" "$FORK_WORK_ROOT/verify-subjects")" 1
+  # A fixer whose own check passed is not checked again either.
+  upstream_commit a.txt $'upstream fourth\n' "upstream: a fourth conflicting change"
+  rm -f "$FORK_WORK_ROOT/verify-subjects"
+  export TEST_AGENT_MODE=breaks-checks
+  assert "fixer checks its own fix" run rebase-branches --agent --push
+  assert_eq "the script checks the resolution" "$(grep -cx "patch: breaks the build" "$FORK_WORK_ROOT/verify-subjects")" 1
+  assert_eq "the fix is checked once, by the fixer" "$(grep -cx "fork: fix after upstream change" "$FORK_WORK_ROOT/verify-subjects")" 1
   assert_fails "fix is published" git -C "$R" cat-file -e origin/feat-a:broken-agent.txt
   unset TEST_AGENT_MODE
   export PATH="$original_path"
