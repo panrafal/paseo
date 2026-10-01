@@ -131,8 +131,10 @@ its own `node_modules`, so the first run pays one `npm install` per slot. Only
 doing the same, freezes the devbox. The terminal prints the `tail -f` command
 for each branch's log, `~/.paseo-fork/rebase-branches/<branch>.log` (`/`
 becomes `__`), which also carries the branch's build and test output. It
-then prints a line when the branch hits a conflict, fails its build, hands
-work to an agent (with the `paseo logs -f` command to watch it) and finishes. A failed branch does not stop the
+then prints a line, tagged with the branch and its place in the run (`[4/33]`),
+when the branch is rebased, hits a conflict, starts or fails its build, hands
+work to an agent (with the `paseo logs -f` command to watch it) and finishes,
+with a count of the branches finished so far. A failed branch does not stop the
 others: every branch that passes is pushed, and the run then stops before the
 rebuild and lists the ones that failed.
 
