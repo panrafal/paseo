@@ -614,7 +614,7 @@ AGENT
     git -C "$R" rerere clear
     rm -rf "$R/.git/rr-cache"
     assert_fails "$mode retry fails the same way" run rebase-branches --agent --push
-    assert_log "dropping the unfinished rebase of feat-a"
+    assert_log "feat-a.* dropping the unfinished rebase"
     assert_fails "$mode retry started over" test -e "$FORK_WORK_ROOT/saved/feat-a/marker"
     git -C "$R" rerere clear
     rm -rf "$R/.git/rr-cache"
@@ -622,7 +622,7 @@ AGENT
   unset TEST_AGENT_MODE
   rm -f "$FORK_WORK_ROOT/calls" "$FORK_WORK_ROOT/conflicts"
   assert "one agent finishes multi-conflict rebase" run rebase-branches --agent --push
-  assert_log "dropping the unfinished rebase of feat-a"
+  assert_log "feat-a.* dropping the unfinished rebase"
   assert_eq "one agent call" "$(cat "$FORK_WORK_ROOT/calls")" run
   assert_eq "two conflicting commits resolved" "$(wc -l <"$FORK_WORK_ROOT/conflicts" | tr -d ' ')" 2
   assert "agent instructed to continue without hooks" grep -q 'git -c core.hooksPath=/dev/null rebase --continue' "$FORK_WORK_ROOT/prompt"
@@ -642,7 +642,7 @@ AGENT
   assert_eq "run, then send to it" "$(tr '\n' ' ' <"$FORK_WORK_ROOT/calls")" "run send agent-1 "
   assert "fix prompt sent" grep -q 'fixing a failed build' "$FORK_WORK_ROOT/prompt"
   assert "fix committed without hooks" grep -q 'git -c core.hooksPath=/dev/null commit' "$FORK_WORK_ROOT/prompt"
-  assert_log "feat-a now carries the fix"
+  assert_log "feat-a.* the fix is committed on the branch"
   assert_fails "fix is published" git -C "$R" cat-file -e origin/feat-a:broken-agent.txt
   unset TEST_AGENT_MODE
   export PATH="$original_path"
@@ -797,7 +797,7 @@ scenario_verify_branches() {
   git -C "$F/wt-b" commit -q -m "patch: fix b"
   git -C "$R" worktree remove "$F/wt-b"
   assert "re-run after the fix" run rebase-branches --push
-  assert_log "fork-base: .* passed before"
+  assert_log "fork-base.* passed before"
   assert_eq "feat-b and the integration verified" "$(verify_calls)" 5
   assert_eq "fixed feat-b pushed" "$(at origin/feat-b)" "$(at feat-b)"
   assert "main rebuilt on upstream" git -C "$R" cat-file -e main:c.txt
@@ -829,7 +829,7 @@ AGENT
   assert "agent was given the branch's log" grep -q "rebase-branches/feat-c.log" "$FORK_WORK_ROOT/prompt"
   assert "agent checks upstream in its own checkout" grep -q "git switch -q --detach upstream/main" "$FORK_WORK_ROOT/prompt"
   assert "agent re-runs the scoped verify" grep -q "$F/verify $FORK_WORK_ROOT/verify[-0-9]* upstream/main" "$FORK_WORK_ROOT/prompt"
-  assert_log "feat-c now carries the fix"
+  assert_log "feat-c.* the fix is committed on the branch"
   assert_eq "fix is the branch tip" "$(git -C "$R" log -1 --format=%s origin/feat-c)" "fork: fix after upstream change"
   assert "feat-c on upstream" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-c
   assert_fails "fix is in main" git -C "$R" cat-file -e main:broken-c.txt
