@@ -1109,6 +1109,8 @@ export const ja: TranslationResources = {
       heading: "表示",
       grouping: {
         label: "グループ化",
+        currentLabel: "現在のグループ化: {{current}}",
+        toggleLabel: "現在のグループ化: {{current}}。グループ化を切り替え",
         project: "プロジェクト",
         status: "ステータス",
         labels: "ラベル",
@@ -2294,6 +2296,7 @@ export const ja: TranslationResources = {
         jumpToTab: "タブにジャンプ",
         previousWorkspace: "前のワークスペース",
         nextWorkspace: "次のワークスペース",
+        cycleSidebarGrouping: "グループ化を切り替え",
         previousTab: "前のタブ",
         nextTab: "次のタブ",
         splitPaneRight: "右にペインを分割",
