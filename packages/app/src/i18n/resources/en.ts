@@ -1772,6 +1772,13 @@ export const en = {
       unableToPair: "Unable to pair host",
       errorTitle: "Error",
     },
+    relayAuth: {
+      pairAgain:
+        "This device isn't paired with the host anymore. Scan a new pairing code on the host.",
+      passwordChanged: "The host password changed. Scan a new pairing code on the host.",
+      linkUsed: "This pairing link was already used or has expired. Create a new one on the host.",
+      rateLimited: "Too many failed sign-in attempts. Wait a minute, then try again.",
+    },
     device: {
       loadingOffer: "Loading pairing offer...",
       failedToLoadOffer: "Failed to load pairing offer.",
@@ -1791,6 +1798,10 @@ export const en = {
       hint: "Scan this QR code with Paseo on your phone, or copy the link below.",
       securityWarning:
         "Treat this pairing link like a password. Anyone with it can access this daemon.",
+      oneTimeWarning:
+        "This link pairs one device and stops working after 5 minutes. Don't share it.",
+      expiresIn: "Expires in {{time}}",
+      newLink: "Get new link",
       qrUnavailable: "QR code unavailable.",
       qrAccessibility: "Pairing QR code",
       retry: "Retry",

@@ -939,6 +939,7 @@ export default function contribute(plugin: unknown) {
           relayEnabled: true,
           relayEndpoint: "127.0.0.1:9",
           relayPublicEndpoint: "127.0.0.1:9",
+          deviceAuth: false,
           appBaseUrl: "https://app.paseo.sh",
           includeQr: false,
         });
