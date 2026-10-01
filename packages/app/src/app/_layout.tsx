@@ -94,7 +94,7 @@ import {
 } from "@/navigation/settings-presentation";
 import { ThemedStack } from "@/navigation/themed-stack";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
-import { AgentNavigationListener } from "@/desktop/agent-navigation";
+import { DesktopNavigationListener } from "@/desktop/navigation";
 import { LegacyAgentSkillsMigration } from "@/agent-skills/legacy-migration";
 import { legacyFavoriteProfileMigration } from "@/agent-profiles/migration";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
@@ -961,7 +961,7 @@ function AppShell() {
     <MobilePanelsProvider>
       <HorizontalScrollProvider>
         <OpenProjectListener />
-        <AgentNavigationListener />
+        <DesktopNavigationListener />
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />
