@@ -862,6 +862,8 @@ function AssistantMarkdownImage({
     [containerStyle],
   );
   const imageSizeStyle = useMemo<ViewStyle>(() => {
+    // Never upscale: a narrow image stays at its own width instead of stretching
+    // to the full message column.
     const maxWidth = naturalWidth ?? undefined;
     if (aspectRatio) {
       return { aspectRatio, maxWidth };
