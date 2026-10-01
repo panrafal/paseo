@@ -25,6 +25,7 @@ export class UsageSourceRegistry {
   private readonly known = new Map<string, KnownReport>();
   private readonly cache = new Map<string, { at: number; entry: UsageReportEntry }>();
   private readonly pending = new Map<string, Promise<UsageReportEntry>>();
+  private readonly generations = new Map<string, number>();
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -38,8 +39,15 @@ export class UsageSourceRegistry {
 
   unregister(id: string): void {
     this.sources.delete(id);
+    this.invalidateSource(id);
     for (const key of this.known.keys()) if (key.startsWith(`${id}:`)) this.known.delete(key);
+  }
+
+  /** Discard cached and in-flight reads so the next request observes source-side mutations. */
+  invalidateSource(id: string): void {
+    this.generations.set(id, (this.generations.get(id) ?? 0) + 1);
     for (const key of this.cache.keys()) if (key.startsWith(`${id}:`)) this.cache.delete(key);
+    for (const key of this.pending.keys()) if (key.startsWith(`${id}:`)) this.pending.delete(key);
   }
 
   private async identify(source: UsageSource, input: unknown): Promise<string | null> {
@@ -93,9 +101,11 @@ export class UsageSourceRegistry {
     return discovered.flat();
   }
 
-  // COMPAT(providerUsageList): added in v0.1.98, remove after 2027-03-26.
-  async listLegacyUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }> {
-    const reports = await this.listReports();
+  // COMPAT(providerUsageList): added in v0.9.3, remove after 2027-03-26.
+  async listLegacyUsage(
+    options: { forceRefresh?: boolean } = {},
+  ): Promise<{ fetchedAt: string; providers: ProviderUsage[] }> {
+    const reports = await this.listReports(options);
     return {
       fetchedAt: reports.length
         ? reports.reduce(
@@ -126,6 +136,7 @@ export class UsageSourceRegistry {
       return Promise.resolve(cached.entry);
     const pending = this.pending.get(id);
     if (pending) return pending;
+    const generation = this.generations.get(known.source.id) ?? 0;
     const request = (async () => {
       let entry: UsageReportEntry;
       try {
@@ -142,7 +153,7 @@ export class UsageSourceRegistry {
       } catch (error) {
         entry = this.errorEntry(known.source, id, error, known.label);
       }
-      this.writeCache(id, entry);
+      this.writeCache(id, entry, known.source.id, generation);
       return entry;
     })();
     this.pending.set(id, request);
@@ -152,7 +163,18 @@ export class UsageSourceRegistry {
     return request;
   }
 
-  private writeCache(id: string, entry: UsageReportEntry): void {
+  private writeCache(
+    id: string,
+    entry: UsageReportEntry,
+    sourceId?: string,
+    generation?: number,
+  ): void {
+    if (
+      sourceId !== undefined &&
+      generation !== undefined &&
+      generation !== (this.generations.get(sourceId) ?? 0)
+    )
+      return;
     const at = this.now();
     for (const [cachedId, cached] of this.cache) {
       if (at - cached.at >= this.ttlMs) this.cache.delete(cachedId);
