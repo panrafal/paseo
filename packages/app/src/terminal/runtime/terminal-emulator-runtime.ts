@@ -73,6 +73,7 @@ export interface TerminalEmulatorRuntimeCallbacks {
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
   onOpenExternalUrl?: (url: string) => Promise<void> | void;
+  onOpenUrlInApp?: (url: string) => void;
   onResolveLocalFileLink?: (
     source: TerminalLocalFileLinkSource,
   ) => Promise<TerminalLocalFileLinkTarget | null> | TerminalLocalFileLinkTarget | null;
@@ -434,8 +435,13 @@ export class TerminalEmulatorRuntime {
     this.inputModeTracker.reset();
     this.emitInputModeChange();
 
-    const openExternalLink = (event: MouseEvent, uri: string) => {
+    const openLink = (event: MouseEvent, uri: string) => {
       event.preventDefault();
+      const openInApp = this.callbacks.onOpenUrlInApp;
+      if (openInApp && (event.metaKey || event.ctrlKey)) {
+        openInApp(uri);
+        return;
+      }
       void this.callbacks.onOpenExternalUrl?.(uri);
     };
     const terminal = new Terminal({
@@ -446,7 +452,7 @@ export class TerminalEmulatorRuntime {
       fontFamily: resolveTerminalFontFamily(input.fontFamily),
       fontSize: resolveTerminalFontSize(input.fontSize),
       // OSC 8 hyperlinks; without a handler xterm prompts and calls window.open().
-      linkHandler: { activate: openExternalLink },
+      linkHandler: { activate: openLink },
       lineHeight: 1.0,
       macOptionIsMeta: true,
       minimumContrastRatio: 1,
@@ -463,7 +469,7 @@ export class TerminalEmulatorRuntime {
     let imageAddon: ImageAddon | null = null;
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(unicode11Addon);
-    terminal.loadAddon(new WebLinksAddon(openExternalLink));
+    terminal.loadAddon(new WebLinksAddon(openLink));
     const localFileLinkProvider = terminal.registerLinkProvider(
       createTerminalLocalFileLinkProvider(terminal, {
         resolveLink: async (source) => {
