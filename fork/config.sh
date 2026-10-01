@@ -86,6 +86,11 @@ die() {
   exit 1
 }
 
+# The commits fork/verify.sh passed in checkout $1, one sha per line. It lives
+# in the checkout's git dir, so a fixer agent's run records there too and the
+# script can skip checking a commit again.
+verify_passed_file() { git -C "$1" rev-parse --path-format=absolute --git-path fork-verify-passed; }
+
 # ------------------------------------------------------------- secrets ----
 # The fork's own secrets — today just EXPO_TOKEN, which fork/ios.sh hands to
 # `eas` — live encrypted in fork/.env.fork, committed on the tooling branch.
