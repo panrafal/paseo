@@ -19,7 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
-import { ChevronDown } from "lucide-react-native";
+import { ChevronDown, GitBranch } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
@@ -27,7 +27,7 @@ import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
-import { HostBadge } from "@/hosts/host-badge";
+import { HostBadge, HOST_BADGE_ICON_SIZE } from "@/hosts/host-badge";
 import { useHostBadges } from "@/hosts/use-host-badges";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -248,6 +248,7 @@ function buildWorkspaceFileLocation(
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedGitBranch = withUnistyles(GitBranch);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
@@ -904,27 +905,30 @@ function useCloseTabs(): UseCloseTabsResult {
 }
 
 /**
- * Which project the workspace belongs to, and which machine it runs on.
+ * Which project the workspace belongs to, which machine it runs on, and which branch it is on.
  *
  * The host badge follows the host's own badge setting and nothing else — not the sidebar's "Show →
  * Host" preference, and not whether the sidebar is open — so the header says where the workspace
  * lives on every layout, and a purely local setup stays quiet because the local host defaults to
  * hidden. A project name that only repeats the workspace name is dropped on wide, where the two sit
- * side by side, and kept on compact, where the line exists for the host anyway.
+ * side by side, and kept on compact, where the line exists for the host anyway. The branch follows
+ * the host, the same order the sidebar row uses.
  */
 function WorkspaceHeaderProjectRow({
   subtitle,
   isSubtitleDistinct,
   serverId,
+  branchName,
 }: {
   subtitle: string;
   isSubtitleDistinct: boolean;
   serverId: string;
+  branchName: string | null;
 }) {
   const isCompact = useIsCompactFormFactor();
   const hostBadge = useHostBadges({ enabled: true }).get(serverId) ?? null;
   const showProject = isSubtitleDistinct || isCompact;
-  if (!showProject && !hostBadge) {
+  if (!showProject && !hostBadge && !branchName) {
     return null;
   }
   return (
@@ -940,6 +944,17 @@ function WorkspaceHeaderProjectRow({
       ) : null}
       {showProject && hostBadge ? <Text style={styles.headerProjectSeparator}>·</Text> : null}
       {hostBadge ? <HostBadge badge={hostBadge} /> : null}
+      {branchName && (showProject || hostBadge) ? (
+        <Text style={styles.headerProjectSeparator}>·</Text>
+      ) : null}
+      {branchName ? (
+        <View style={styles.headerBranch} testID="workspace-header-branch">
+          <ThemedGitBranch size={HOST_BADGE_ICON_SIZE} uniProps={mutedColorMapping} />
+          <Text style={styles.headerBranchText} numberOfLines={1}>
+            {branchName}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1014,6 +1029,7 @@ function WorkspaceHeaderTitleBar({
             subtitle={subtitle}
             isSubtitleDistinct={isSubtitleDistinct}
             serverId={normalizedServerId}
+            branchName={currentBranchName}
           />
         </View>
       )}
@@ -4232,6 +4248,21 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundExtraMuted,
     fontSize: theme.fontSize.sm,
     flexShrink: 0,
+  },
+  // Capped so a long branch name can't squeeze the project and host down to an ellipsis.
+  headerBranch: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    minWidth: 0,
+    maxWidth: "45%",
+    flexShrink: 1,
+  },
+  headerBranchText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    flexShrink: 1,
+    minWidth: 0,
   },
   headerTitleSkeleton: {
     width: 220,
