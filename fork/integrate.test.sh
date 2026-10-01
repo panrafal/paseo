@@ -782,6 +782,8 @@ scenario_verify_branches() {
   assert_fails "broken branch stops the run" run rebase-branches --push
   assert_log "feat-b does not build"
   assert_log "TS2554"
+  assert "build output is in the branch's log" grep -q TS2554 "$FORK_WORK_ROOT/rebase-branches/feat-b.log"
+  assert_fails "no separate verify log" ls "$FORK_WORK_ROOT"/rebase-branches/*.verify.log
   assert_eq "fork-base, feat-a and feat-b verified" "$(verify_calls)" 3
   assert_eq "each verified in its own slot" "$(cut -d' ' -f1 "$FORK_WORK_ROOT/verify-calls" | sort -u | tr '\n' ' ')" \
     "$FORK_WORK_ROOT/verify $FORK_WORK_ROOT/verify-2 $FORK_WORK_ROOT/verify-3 "
@@ -824,6 +826,7 @@ AGENT
   unset TEST_AGENT_MODE
   assert "agent fixes the branch" run rebase-branches --agent --push
   assert "agent was told the branch" grep -q "'feat-c' is a branch" "$FORK_WORK_ROOT/prompt"
+  assert "agent was given the branch's log" grep -q "rebase-branches/feat-c.log" "$FORK_WORK_ROOT/prompt"
   assert "agent checks upstream in its own checkout" grep -q "git switch -q --detach upstream/main" "$FORK_WORK_ROOT/prompt"
   assert "agent re-runs the scoped verify" grep -q "$F/verify $FORK_WORK_ROOT/verify[-0-9]* upstream/main" "$FORK_WORK_ROOT/prompt"
   assert_log "feat-c now carries the fix"
