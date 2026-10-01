@@ -288,11 +288,40 @@ const UpdatePlanSchema = z.object({
   ),
 });
 
+const AcpTodosSchema = z.object({
+  _toolName: z.string().optional(),
+  todos: z.array(
+    z.object({
+      content: z.string().optional(),
+      subject: z.string().optional(),
+      text: z.string().optional(),
+      status: z.union([z.string(), z.number()]).optional(),
+      activeForm: z.string().optional(),
+    }),
+  ),
+});
+
 function normalizeToolName(toolName: string): string {
   return toolName
     .trim()
-    .replace(/[.\s-]+/g, "_")
+    .replace(/[./\s-]+/g, "_")
     .toLowerCase();
+}
+
+function taskStatusFromUnknown(value: unknown): TaskStatus | "deleted" {
+  if (value === "completed" || value === 2) return "completed";
+  if (value === "in_progress" || value === "inProgress" || value === 1) return "in_progress";
+  if (value === "cancelled" || value === "canceled" || value === 3) return "deleted";
+  return "pending";
+}
+
+function isTodoToolName(normalized: string): boolean {
+  return (
+    normalized === "updatetodos" ||
+    normalized === "update_todos" ||
+    normalized === "cursor_update_todos" ||
+    normalized.startsWith("update_todos")
+  );
 }
 
 export function extractTaskEntriesFromToolCall(
@@ -300,6 +329,12 @@ export function extractTaskEntriesFromToolCall(
   input: unknown,
 ): TaskEntry[] | null {
   const normalized = normalizeToolName(toolName);
+  const inputRecord =
+    typeof input === "object" && input !== null && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : null;
+  const nestedName =
+    typeof inputRecord?._toolName === "string" ? normalizeToolName(inputRecord._toolName) : null;
 
   // Claude's plan mode uses ExitPlanMode for the approval prompt; it is not a task list.
   if (normalized === "exitplanmode") {
@@ -334,6 +369,26 @@ export function extractTaskEntriesFromToolCall(
         completed: entry.status === "completed",
       }))
       .filter((entry) => entry.text.length > 0);
+  }
+
+  if (isTodoToolName(normalized) || (nestedName !== null && isTodoToolName(nestedName))) {
+    const parsed = AcpTodosSchema.safeParse(input);
+    if (!parsed.success) {
+      return null;
+    }
+    return parsed.data.todos.flatMap((todo) => {
+      const text = (todo.content ?? todo.subject ?? todo.text ?? "").trim();
+      if (!text) return [];
+      const status = taskStatusFromUnknown(todo.status);
+      if (status === "deleted") return [];
+      return [
+        {
+          text: todo.activeForm?.trim() || text,
+          status,
+          completed: status === "completed",
+        },
+      ];
+    });
   }
 
   return null;
