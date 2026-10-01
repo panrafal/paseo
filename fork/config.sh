@@ -61,7 +61,7 @@ FORK_DAEMON_PACKAGES=(highlight relay protocol client plugin server cli)
 
 # Agent used by `--agent` conflict resolution.
 FORK_AGENT_PROVIDER="${FORK_AGENT_PROVIDER:-codex}"
-FORK_AGENT_MODEL="${FORK_AGENT_MODEL:-gpt-5.6-luna}"
+FORK_AGENT_MODEL="${FORK_AGENT_MODEL:-gpt-6-luna}"
 FORK_AGENT_THINKING="${FORK_AGENT_THINKING:-xhigh}"
 FORK_AGENT_MODE="${FORK_AGENT_MODE:-auto-review}"
 FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
