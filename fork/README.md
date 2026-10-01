@@ -129,10 +129,10 @@ the next rebase replays one commit and meets each conflict once. The squash
 keeps the first commit's subject and lists every commit it replaced, flattening
 the list of an earlier squash. `fork-base` keeps its history, and nothing is
 squashed under `--no-verify`. Each branch is a job
-that rebases, verifies and pushes it, `FORK_JOBS` (4) at a time, in a slot of
+that rebases, verifies and pushes it, `FORK_JOBS` (6) at a time, in a slot of
 its own: `~/.paseo-fork/verify`, `verify-2`, `verify-3`, … Every slot keeps
 its own `node_modules`, so the first run pays one `npm install` per slot. Only
-`FORK_VERIFY_JOBS` (2) build and test at once; four at once, next to agents
+`FORK_VERIFY_JOBS` (4) build and test at once; one per job, next to agents
 doing the same, freezes the devbox. The terminal prints the `tail -f` command
 for each branch's log, `~/.paseo-fork/rebase-branches/<branch>.log` (`/`
 becomes `__`), which also carries the branch's build and test output. It
