@@ -546,17 +546,15 @@ export async function beginSkillsTransaction(
           entries.push({ livePath, kind: op.kind, backupPath: null });
           continue;
         }
-        const liveIsDirectory = await isDirectory(livePath);
+        // User-linked skills are outside the managed transaction.
+        if (liveInfo.isSymbolicLink()) continue;
         const backupPath =
           op.kind === "delete"
             ? path.join(root, path.basename(transactionDir), name)
             : path.join(BACKUP_DIRNAME, String(rootIndex), name);
         if (op.kind !== "delete") {
-          const captureSource =
-            liveInfo.isSymbolicLink() && liveIsDirectory ? await realpath(livePath) : livePath;
-          const captureInfo = await lstat(captureSource);
-          await cp(captureSource, resolveBackupPath(transactionDir, backupPath)!, {
-            recursive: captureInfo.isDirectory(),
+          await cp(livePath, resolveBackupPath(transactionDir, backupPath)!, {
+            recursive: liveInfo.isDirectory(),
             preserveTimestamps: true,
             verbatimSymlinks: true,
           });
