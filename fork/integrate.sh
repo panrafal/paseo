@@ -446,6 +446,11 @@ ask_agent() {
   prompt="Work in $dir. Your shell may start in another directory: cd to $dir
 first and run every command there.
 
+Nobody answers questions while you work: an agent that asks is stopped. Finish,
+or stop and explain in your final message. Leave your commits on this
+checkout's HEAD; the script moves the branch to them afterwards, also where
+the branch is checked out in another worktree.
+
 $prompt"
   if [ -n "$JOB_AGENT" ]; then
     id="$JOB_AGENT"
@@ -542,7 +547,7 @@ If a conflict genuinely cannot be resolved without a decision only the repo
 owner can make, stop, leave the worktree in place, and explain why." || agent_status=$?
 
   if [ "$operation" = rebase ]; then
-    [ "$agent_status" -eq 0 ] || return 1
+    [ "$agent_status" -eq 0 ] || { [ "$verify" -eq 1 ] && passed_here "$dir"; } || return 1
     ! rebase_in_progress "$dir" || return 1
     git -C "$dir" merge-base --is-ancestor "$BASE" HEAD || return 1
     [ -z "$(git -C "$dir" status --porcelain)" ] || return 1
@@ -919,7 +924,10 @@ $(check_guide)
 If the failure cannot be fixed without a decision only the repo owner can
 make, stop without committing and explain why." || agent_status=$?
 
-  [ "$agent_status" -eq 0 ] || return 1
+  # An agent that timed out or stopped on a question after its own check
+  # passed on its last commit has done the job; add-devin-usage-skills lost a
+  # working fix to a question about where the branch was checked out.
+  [ "$agent_status" -eq 0 ] || passed_here "$dir" || return 1
   ! git -C "$dir" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1 || return 1
   [ "$(git -C "$dir" rev-parse HEAD)" != "$before" ] || return 1
   git merge-base --is-ancestor "$before" "$(git -C "$dir" rev-parse HEAD)" || return 1
