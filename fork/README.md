@@ -247,7 +247,8 @@ branch's slot, so it has `node_modules`. Once the rebase is done it runs
 and why, so it fixes what breaks better than a second agent would. The script
 checks that the rebase finished on upstream with a clean worktree. When the
 agent's last check passed on the branch's final commit, the script does not
-verify again; otherwise it verifies and sends a failure back to the same agent. An unfinished or failed agent run moves the slot to
+verify again; otherwise it verifies and sends a failure back to the same agent. An agent that stops early, on a timeout or a question, still
+counts when the rebase is done and that check passed. An unfinished or failed agent run moves the slot to
 `~/.paseo-fork/saved/<branch>`, and the next job in that slot starts a fresh
 checkout. It stays there for a look until the branch's next rebase, which
 drops it with a warning naming the commit its HEAD was on and starts over.
@@ -305,7 +306,9 @@ tip that passed before is skipped, so a re-run after a failure verifies only
 what is left. With `--agent`, a failure goes to the agent that resolved the
 branch's conflicts, or to a new one, which commits its fix on top of the
 branch; the run moves the branch to it, verifying again first unless the
-agent's own check passed on that commit. The agent gets the exact
+agent's own check passed on that commit. That pass also keeps the fix of an
+agent that timed out or stopped on a question: nobody answers one, so the
+script stops the agent and takes its last commit. The agent gets the exact
 `fork/verify.sh` command the run used and is told to check with it alone, not
 with the repo-wide typecheck and tests the repo's agent instructions ask for.
 `fork/verify.sh` records each pass on a tree with nothing uncommitted against
