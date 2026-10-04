@@ -659,7 +659,30 @@ stop, rather than handing `eas` the ciphertext.
 
 ### Push notifications
 
-They need your own Firebase `GoogleService-Info.plist`. `packages/app` reads
+iOS push delivery needs an APNs key assigned to the fork's EAS project and
+bundle identifier. Signing certificates and an App Store Connect API key do
+not supply push credentials. From the fork build checkout, load the fork identity
+before opening EAS credentials:
+
+```bash
+cd ~/.paseo-fork/build/packages/app
+. ../../fork/dist.env
+APP_PACKAGE_ID="$FORK_IOS_BUNDLE_ID" EAS_OWNER="$FORK_EAS_OWNER" \
+  EAS_PROJECT_ID="$FORK_EAS_PROJECT_ID" ../../node_modules/.bin/eas credentials -p ios
+```
+
+Choose **production** → **Push Notifications key**, then upload your Apple APNs
+`.p8` key (with its Key ID and Apple Team ID), or let EAS create one. Confirm the
+app is `pl.stamina.paseo` in `@capitally/panrafal-paseo`. Without that assignment,
+Expo returns `InvalidCredentials: Could not find APNs credentials for
+pl.stamina.paseo (@capitally/panrafal-paseo)`. Reopen the phone app afterward to
+register its push token again.
+
+`eas credentials` has no non-interactive push-key check; `fork/ios.sh doctor`
+checks the Expo login and identifiers only. See Expo's
+[push setup](https://docs.expo.dev/push-notifications/push-notifications-setup/).
+
+For Firebase configuration, use your own `GoogleService-Info.plist`. `packages/app` reads
 the path from `GOOGLE_SERVICE_INFO_PLIST_PROD` and falls back to
 `packages/app/.secrets/GoogleService-Info.prod.plist`, but that fallback is
 local-only: `.secrets/` is gitignored and EAS does not upload gitignored files
