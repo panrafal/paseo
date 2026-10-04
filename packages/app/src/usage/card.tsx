@@ -1,5 +1,5 @@
 import { RotateCw } from "lucide-react-native";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { Text, View, type StyleProp, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
@@ -50,6 +50,7 @@ export function UsageCard({
   pinnable,
   refreshable,
   compact = false,
+  children,
 }: {
   serverId: string;
   entry: UsageReportEntry;
@@ -59,12 +60,14 @@ export function UsageCard({
   /** Whether the header has a Refresh button. Without one the freshness shows on the card. */
   refreshable: boolean;
   compact?: boolean;
+  children?: ReactNode;
 }) {
   const isCompact = useIsCompactFormFactor();
   const { refresh, refreshState } = useReportRefresh(serverId, entry.id);
   // Where there is no hover the freshness is printed on the card; elsewhere the Refresh tooltip.
   const showsFreshnessInline = isNative || isCompact || !refreshable;
   const usage = entry.report;
+  const bankedResets = usage.status === "available" ? usage.bankedResets : undefined;
   const status = statusText(usage);
   const footer = entry.account.label ?? null;
   const { windows, balances, details, message } = reportContent(usage);
@@ -147,6 +150,17 @@ export function UsageCard({
           ))}
         </View>
       ) : null}
+
+      {bankedResets ? (
+        <View style={styles.details}>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Banked resets</Text>
+            <Text style={styles.detailValue}>{bankedResets.availableCount} available</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {children}
 
       {footer || showsFreshnessInline ? (
         <View style={styles.footerRow}>
