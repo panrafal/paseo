@@ -7,6 +7,7 @@ export interface SkillSyncOptions {
   agentsDir: string;
   claudeDir: string;
   codexDir: string;
+  kiloDir: string;
   skillNames: readonly string[];
   onSkillError?: (skillName: string, error: unknown) => void;
 }
@@ -174,6 +175,7 @@ export interface RemoveSkillTargets {
   agentsDir: string;
   claudeDir: string;
   codexDir: string;
+  kiloDir: string;
 }
 
 export async function removeSkill(skillName: string, targets: RemoveSkillTargets): Promise<void> {
@@ -181,6 +183,7 @@ export async function removeSkill(skillName: string, targets: RemoveSkillTargets
     path.join(targets.agentsDir, skillName),
     path.join(targets.claudeDir, skillName),
     path.join(targets.codexDir, skillName),
+    path.join(targets.kiloDir, skillName),
   ];
   for (const p of paths) {
     await fs.rm(p, { recursive: true, force: true });
@@ -256,6 +259,11 @@ export async function syncSkills(options: SkillSyncOptions): Promise<SkillSyncRe
       if (await isLegacyCodexCopy(skillName, options)) {
         changedFiles += await retireManagedSkill(path.join(options.codexDir, skillName));
       }
+
+      changedFiles += await syncDirectoryFiles(
+        bundleSkillDir,
+        path.join(options.kiloDir, skillName),
+      );
 
       processedSkills++;
     } catch (error) {
