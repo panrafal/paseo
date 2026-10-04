@@ -1,8 +1,10 @@
+import type { NotifyHandler } from "./notify.js";
 import { searchTimeline } from "./agent/chat-search/index.js";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { BrowserAutomationHostCapabilitySchema } from "@getpaseo/protocol/browser-automation/capabilities";
 import type {
   SessionEventSubscription,
+  CodexBankedResetOutcome,
   UsageReportEntry,
   ProviderUsage,
 } from "@getpaseo/protocol/messages";
@@ -10,6 +12,7 @@ import { relative } from "node:path";
 import { isAbsolute } from "node:path";
 import { CreationService } from "./creation/index.js";
 import type { CreationSnapshot, AgentCreateRequest } from "@getpaseo/protocol/messages";
+import { AGENT_TIMELINE_ERROR_CWD_MISSING } from "@getpaseo/protocol/messages";
 import type { MessageReceipts } from "./message-receipts/index.js";
 import equal from "fast-deep-equal";
 import { SessionDelivery, type OwnedSubscription } from "./session/owned-subscriptions/index.js";
@@ -99,7 +102,11 @@ import {
   type WorkspaceLabelService,
 } from "./workspace-labels/index.js";
 
-import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
+import {
+  AgentManager,
+  AgentRunCancellationError,
+  WorkingDirectoryMissingError,
+} from "./agent/agent-manager.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
@@ -439,6 +446,7 @@ const nodeSessionFileSystem: SessionFileSystem = {
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
 export interface SessionOptions {
+  onNotify?: NotifyHandler;
   browserToolsBroker?: BrowserToolsBroker | null;
   clientId: string;
   permissions: readonly DaemonPermission[];
@@ -516,7 +524,15 @@ export interface SessionOptions {
       forceRefresh?: boolean;
       reportIds?: string[];
     }): Promise<UsageReportEntry[]>;
-    listLegacyUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }>;
+    listLegacyUsage(options?: { forceRefresh?: boolean }): Promise<{
+      fetchedAt: string;
+      providers: ProviderUsage[];
+    }>;
+    supportsCodexBankedResets?(): boolean;
+    consumeCodexBankedReset?(input: {
+      creditId: string;
+      idempotencyKey: string;
+    }): Promise<CodexBankedResetOutcome>;
   };
   orchestrationSkills?: import("./orchestration-skills/index.js").OrchestrationSkills;
   mcpBaseUrl?: string | null;
@@ -799,7 +815,10 @@ export class Session {
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
   private readonly creationService: Pick<CreationService, "create" | "subscribe">;
 
+  private readonly onNotify: NotifyHandler | undefined;
+
   constructor(options: SessionOptions) {
+    this.onNotify = options.onNotify;
     const {
       clientId,
       permissions,
@@ -2934,6 +2953,8 @@ export class Session {
     switch (msg.type) {
       case "workspace.label.list.request":
         return this.handleWorkspaceLabelList(msg);
+      case "workspace.label.create.request":
+        return this.handleWorkspaceLabelCreate(msg);
       case "workspace.label.assignment.set.request":
         return this.handleWorkspaceLabelAssignment(msg);
       case "workspace.label.update.request":
@@ -3013,6 +3034,8 @@ export class Session {
         return this.providerCatalogSession.handleRefreshProvidersSnapshotRequest(msg);
       case "provider_diagnostic_request":
         return this.providerCatalogSession.handleProviderDiagnosticRequest(msg);
+      case "provider.codex.consume_banked_reset.request":
+        return this.usageSession.handleCodexBankedResetConsumeRequest(msg);
       case "provider.usage.list.request":
         return this.usageSession.handleLegacyList(msg);
       case "usage.list_reports.request":
@@ -3064,6 +3087,10 @@ export class Session {
 
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {
     switch (msg.type) {
+      case "agent.notify.request":
+        if (!this.onNotify) throw new Error("Notifications are unavailable");
+        this.emit({ type: "agent.notify.response", payload: await this.onNotify(msg) });
+        return;
       case "list_commands_request":
         await this.handleListCommandsRequest(msg);
         return;
@@ -6451,6 +6478,20 @@ export class Session {
     }
   }
 
+  private async handleWorkspaceLabelCreate(
+    request: Extract<SessionInboundMessage, { type: "workspace.label.create.request" }>,
+  ): Promise<void> {
+    try {
+      const label = await this.requireWorkspaceLabels().create(request.label);
+      this.emit({
+        type: "workspace.label.create.response",
+        payload: { requestId: request.requestId, label },
+      });
+    } catch (error) {
+      this.emitWorkspaceLabelError(request, error);
+    }
+  }
+
   private async handleWorkspaceLabelAssignment(
     request: Extract<SessionInboundMessage, { type: "workspace.label.assignment.set.request" }>,
   ): Promise<void> {
@@ -7701,10 +7742,21 @@ export class Session {
         source,
       );
     } catch (error) {
-      this.sessionLogger.error(
-        { err: error, agentId: msg.agentId },
-        "Failed to handle fetch_agent_timeline_request",
-      );
+      // An agent whose worktree was removed cannot be resumed to read history.
+      // That is expected for archived work, and retrying never fixes it, so it
+      // is reported without a stack and tagged so clients stop asking.
+      const cwdMissing = error instanceof WorkingDirectoryMissingError;
+      if (cwdMissing) {
+        this.sessionLogger.warn(
+          { agentId: msg.agentId, cwd: error.cwd },
+          "Timeline unavailable: agent working directory no longer exists",
+        );
+      } else {
+        this.sessionLogger.error(
+          { err: error, agentId: msg.agentId },
+          "Failed to handle fetch_agent_timeline_request",
+        );
+      }
       this.emitForSource(
         {
           type: "fetch_agent_timeline_response",
@@ -7726,6 +7778,7 @@ export class Session {
             ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
             entries: [],
             error: error instanceof Error ? error.message : String(error),
+            ...(cwdMissing ? { errorCode: AGENT_TIMELINE_ERROR_CWD_MISSING } : {}),
           },
         },
         source,

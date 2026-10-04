@@ -1,3 +1,4 @@
+import type { NotifyOptions, NotifyResponse } from "@getpaseo/protocol/notify";
 import { legacyUsageIcon } from "./legacy-usage-icons.js";
 import { subscribeTimeline, type TimelineMessage } from "./timeline-subscription/index.js";
 import { ProviderSnapshotUpdates } from "./provider-snapshots/index.js";
@@ -154,6 +155,7 @@ import {
 import {
   createRelayE2eeTransportFactory,
   createRelayTransportFactory,
+  type RelayAuthOptions,
   createWebSocketTransportFactory,
   decodeMessageData,
   defaultWebSocketFactory,
@@ -326,6 +328,17 @@ export type {
 } from "./daemon-client-transport.js";
 
 export type { TerminalStreamEvent };
+export { parseRelayAuthFailure, RelayAuthError } from "./daemon-client-transport.js";
+export type { RelayAuthOptions } from "./daemon-client-transport.js";
+export type {
+  RelayAuthFailureReason,
+  RelayAuthProof,
+  RelayDeviceCredential,
+} from "@getpaseo/relay/e2ee";
+
+function relayAuthOptions(config: DaemonClientConfig): RelayAuthOptions | undefined {
+  return config.e2ee?.auth;
+}
 
 export type ConnectionState =
   | { status: "idle" }
@@ -405,6 +418,7 @@ export interface DaemonClientConfig {
   e2ee?: {
     enabled?: boolean;
     daemonPublicKeyB64?: string;
+    auth?: RelayAuthOptions;
   };
   reconnect?: {
     enabled?: boolean;
@@ -433,7 +447,7 @@ export interface SendMessageOptions {
 
 export interface AgentAttentionRequiredNotification {
   agentId: string;
-  reason: "finished" | "error" | "permission";
+  reason: "finished" | "error" | "permission" | "notify";
   timestamp: string;
   shouldNotify: boolean;
   notification?: AgentAttentionNotificationPayload;
@@ -805,6 +819,10 @@ export type WorkspaceLabelListPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.list.response" }
 >["payload"];
+export type WorkspaceLabelCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace.label.create.response" }
+>["payload"];
 export type WorkspaceLabelAssignmentPayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.label.assignment.set.response" }
@@ -855,6 +873,7 @@ export interface CreateScheduleOptions {
           model?: string;
           thinkingOptionId?: string;
           archiveOnFinish?: boolean;
+          workspaceLabels?: string[];
           isolation?: "local" | "worktree";
           title?: string | null;
           providerOptions?: AgentSessionConfig["providerOptions"];
@@ -877,6 +896,7 @@ export interface UpdateScheduleNewAgentConfig {
   modeId?: string | null;
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
+  workspaceLabels?: string[];
   isolation?: "local" | "worktree";
   cwd?: string;
 }
@@ -1032,6 +1052,23 @@ class PingTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
     super(`Ping timed out (${timeoutMs}ms)`);
     this.name = "PingTimeoutError";
+  }
+}
+
+/**
+ * A timeline fetch the daemon answered with an error. `code` is set only when
+ * the daemon classified the failure; older daemons leave it undefined, which
+ * callers must treat as retryable.
+ */
+export class AgentTimelineFetchError extends Error {
+  readonly agentId: string;
+  readonly code?: string;
+
+  constructor(params: { agentId: string; error: string; code?: string }) {
+    super(params.error);
+    this.name = "AgentTimelineFetchError";
+    this.agentId = params.agentId;
+    this.code = params.code;
   }
 }
 
@@ -1382,6 +1419,7 @@ export class DaemonClient {
           baseFactory: transportFactory,
           daemonPublicKeyB64,
           logger: this.logger,
+          auth: relayAuthOptions(this.config),
         });
       }
       const transportUrl = this.resolveTransportUrlForAttempt();
@@ -2522,6 +2560,20 @@ export class DaemonClient {
     );
   }
 
+  async createWorkspaceLabel(options: {
+    label: Extract<SessionInboundMessage, { type: "workspace.label.create.request" }>["label"];
+    requestId?: string;
+  }): Promise<WorkspaceLabelCreatePayload> {
+    // COMPAT(workspaceLabelCreation): added in v0.7.3, remove after 2027-03-06.
+    if (this.lastServerInfoMessage?.features?.workspaceLabelCreation !== true) {
+      throw new Error("Update the host to create workspace labels.");
+    }
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.label.create.response">({
+      requestId: options.requestId,
+      message: { type: "workspace.label.create.request", label: options.label },
+    });
+  }
+
   setWorkspaceLabel(options: {
     workspaceId: string;
     label: Extract<
@@ -3258,7 +3310,11 @@ export class DaemonClient {
     });
 
     if (payload.error) {
-      throw new Error(payload.error);
+      throw new AgentTimelineFetchError({
+        agentId,
+        error: payload.error,
+        code: payload.errorCode,
+      });
     }
 
     return payload;
@@ -5253,11 +5309,32 @@ export class DaemonClient {
     });
   }
 
-  async listProviderUsage(options?: { requestId?: string }): Promise<ProviderUsageListPayload> {
+  async consumeCodexBankedReset(options: {
+    creditId: string;
+    idempotencyKey: string;
+    requestId?: string;
+  }) {
+    return this.sendNamespacedCorrelatedSessionRequest<"provider.codex.consume_banked_reset.response">(
+      {
+        requestId: options.requestId,
+        message: {
+          type: "provider.codex.consume_banked_reset.request",
+          creditId: options.creditId,
+          idempotencyKey: options.idempotencyKey,
+        },
+      },
+    );
+  }
+
+  async listProviderUsage(options?: {
+    requestId?: string;
+    forceRefresh?: boolean;
+  }): Promise<ProviderUsageListPayload> {
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId: options?.requestId,
       message: {
         type: "provider.usage.list.request",
+        ...(options?.forceRefresh ? { forceRefresh: true } : {}),
       },
     });
   }
@@ -6031,7 +6108,22 @@ export class DaemonClient {
     });
   }
 
+  async notify(options: NotifyOptions): Promise<NotifyResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "agent.notify.request", ...options },
+      responseType: "agent.notify.response",
+    });
+  }
+
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {
+    // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+    if (
+      options.target.type === "new-agent" &&
+      options.target.config.workspaceLabels !== undefined &&
+      this.lastServerInfoMessage?.features?.scheduleWorkspaceLabels !== true
+    ) {
+      throw new Error("Update the host to assign workspace labels to schedules.");
+    }
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
       message: {
@@ -6125,6 +6217,13 @@ export class DaemonClient {
   }
 
   async scheduleUpdate(options: UpdateScheduleOptions): Promise<ScheduleUpdatePayload> {
+    // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+    if (
+      options.newAgentConfig?.workspaceLabels !== undefined &&
+      this.lastServerInfoMessage?.features?.scheduleWorkspaceLabels !== true
+    ) {
+      throw new Error("Update the host to assign workspace labels to schedules.");
+    }
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
       message: {

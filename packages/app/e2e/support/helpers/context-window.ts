@@ -32,7 +32,7 @@ export async function reloadAgent(page: Page): Promise<void> {
 
 /** Wide screens show the meter's details in a tooltip while the pointer is on it. */
 export async function hoverContextWindowMeter(page: Page): Promise<Locator> {
-  await page.getByRole("img", { name: METER_NAME }).hover({ timeout: 30_000 });
+  await page.getByRole("button", { name: METER_NAME }).hover({ timeout: 30_000 });
   const tooltip = page.getByRole("tooltip").filter({ hasText: "Context window" });
   await expect(tooltip).toBeVisible();
   return tooltip;

@@ -134,7 +134,7 @@ async function validateEntries(
   entries: CapturedDirectory[],
 ): Promise<boolean> {
   const names = new Set(await listManagedSkillNames(targets.sourceDir));
-  const roots = [targets.agentsDir, targets.claudeDir, targets.codexDir];
+  const roots = [targets.agentsDir, targets.claudeDir, targets.codexDir, targets.kiloDir];
   return entries.every((entry) => {
     const rootIndex = roots.findIndex((root) => path.dirname(entry.livePath) === root);
     if (rootIndex === -1) return false;
@@ -443,7 +443,9 @@ async function restore(
 function transactionParents(targets: SkillTargets): string[] {
   return [
     ...new Set(
-      [targets.agentsDir, targets.claudeDir, targets.codexDir].map((root) => path.dirname(root)),
+      [targets.agentsDir, targets.claudeDir, targets.codexDir, targets.kiloDir].map((root) =>
+        path.dirname(root),
+      ),
     ),
   ];
 }
@@ -493,7 +495,7 @@ export async function beginSkillsTransaction(
   nextSelection: SkillSelection,
   ops: readonly SkillOp[],
 ): Promise<SkillsTransaction> {
-  const roots = [targets.agentsDir, targets.claudeDir, targets.codexDir];
+  const roots = [targets.agentsDir, targets.claudeDir, targets.codexDir, targets.kiloDir];
   const seenRoots = new Set<string>();
   const uniqueRoots: Array<{ root: string; rootIndex: number }> = [];
   for (const [rootIndex, root] of roots.entries()) {

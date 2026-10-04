@@ -1,3 +1,4 @@
+import { isAbsoluteRemotePath } from "./remote.js";
 import type {
   EditorTarget,
   EditorTargetDescriptor,
@@ -61,7 +62,10 @@ export async function listAvailableEditorTargets(
   const descriptors: EditorTargetDescriptor[] = [];
   for (const target of targets) {
     if (await target.isInstalled(runtime)) {
-      descriptors.push(await target.describe(runtime));
+      descriptors.push({
+        ...(await target.describe(runtime)),
+        remoteDestinationKinds: target.remoteDestinationKinds(runtime),
+      });
     }
   }
   return descriptors;
@@ -76,27 +80,51 @@ export function getEditorTarget(
   return target;
 }
 
+/** A remote path belongs to the daemon machine; a local one belongs to this machine. */
+function isAbsoluteLaunchPath(input: {
+  path: string;
+  isRemote: boolean;
+  runtime: EditorTargetRuntime;
+}): boolean {
+  if (input.isRemote) {
+    return isAbsoluteRemotePath(input.path);
+  }
+  return input.runtime.isAbsolutePath(input.path);
+}
+
 export async function openEditorTarget(
   input: EditorTargetLaunchInput & { editorId: string },
   runtime: EditorTargetRuntime,
   targets: readonly EditorTarget[] = EDITOR_TARGETS,
 ): Promise<void> {
-  if (!runtime.isAbsolutePath(input.workspacePath)) {
-    throw new Error("Editor target workspace path must be an absolute local path");
+  const target = getEditorTarget(input.editorId, targets);
+  // Remote paths live on the daemon machine, so this process can only check their shape.
+  const remoteDestination = input.remoteDestination;
+  const isRemote = remoteDestination !== undefined;
+  if (
+    remoteDestination &&
+    !target.remoteDestinationKinds(runtime).includes(remoteDestination.kind)
+  ) {
+    const descriptor = await target.describe(runtime);
+    throw new Error(
+      `Editor target cannot open a ${remoteDestination.kind} remote workspace: ${descriptor.label}`,
+    );
   }
-  if (!runtime.pathExists(input.workspacePath)) {
+  if (!isAbsoluteLaunchPath({ path: input.workspacePath, isRemote, runtime })) {
+    throw new Error("Editor target workspace path must be an absolute path");
+  }
+  if (!isRemote && !runtime.pathExists(input.workspacePath)) {
     throw new Error(`Path does not exist: ${input.workspacePath}`);
   }
   if (input.filePath) {
-    if (!runtime.isAbsolutePath(input.filePath)) {
-      throw new Error("Editor target file path must be an absolute local path");
+    if (!isAbsoluteLaunchPath({ path: input.filePath, isRemote, runtime })) {
+      throw new Error("Editor target file path must be an absolute path");
     }
-    if (!runtime.pathExists(input.filePath)) {
+    if (!isRemote && !runtime.pathExists(input.filePath)) {
       throw new Error(`Path does not exist: ${input.filePath}`);
     }
   }
 
-  const target = getEditorTarget(input.editorId, targets);
   if (!(await target.isInstalled(runtime))) {
     const descriptor = await target.describe(runtime);
     throw new Error(`Editor target unavailable: ${descriptor.label}`);

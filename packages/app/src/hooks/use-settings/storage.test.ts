@@ -1094,3 +1094,45 @@ describe("content max width", () => {
     expect((await load("wide")).contentMaxWidth).toBeNull();
   });
 });
+
+describe("confirmTerminalClose", () => {
+  it("defaults to true", async () => {
+    expect(DEFAULT_CLIENT_SETTINGS.confirmTerminalClose).toBe(true);
+    expect((await loadAppSettingsFromStorage(makeDeps())).confirmTerminalClose).toBe(true);
+  });
+
+  it("loads a persisted false back", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ confirmTerminalClose: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).confirmTerminalClose).toBe(false);
+  });
+
+  it("falls back to true when the persisted value is invalid", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ confirmTerminalClose: "never" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).confirmTerminalClose).toBe(true);
+  });
+
+  it("round-trips a saved value", async () => {
+    const deps = makeDeps();
+
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      updates: { confirmTerminalClose: false },
+      deps,
+    });
+
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "{}")).toMatchObject({
+      confirmTerminalClose: false,
+    });
+    expect((await loadAppSettingsFromStorage(deps)).confirmTerminalClose).toBe(false);
+  });
+});

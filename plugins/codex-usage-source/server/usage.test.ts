@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
-import { fetchUsage, discover } from "./usage.js";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { consumeBankedReset, discover, fetchUsage } from "./usage.js";
 
 import { inputSchema, type CodexUsageInput } from "../shared/input.js";
 
@@ -408,6 +408,150 @@ test("session discovery isolates CODEX_HOME and excludes foreign routes", async 
     expect(
       await discover({ ...scope, env: { HOME: home, CODEX_HOME: join(home, "missing") } }),
     ).toEqual([]);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("loads banked reset details alongside quota usage", async () => {
+  const fetchApi = vi.fn<typeof fetch>(async (url) => {
+    if (url.toString().endsWith("/usage")) {
+      return Response.json({
+        rate_limit: { primary_window: { used_percent: 42 } },
+        rate_limit_reset_credits: { available_count: 1 },
+      });
+    }
+    return Response.json({
+      available_count: 1,
+      credits: [
+        {
+          id: "reset-1",
+          reset_type: "codex_rate_limits",
+          status: "available",
+          granted_at: "2026-09-01T00:00:00Z",
+          expires_at: "2026-10-01T00:00:00Z",
+          title: "Referral reward",
+          description: null,
+        },
+      ],
+    });
+  });
+  await writeAuth("fixture-token", "fixture-account");
+  const usage = await fetchUsage(authInput(fixtureHome), fetchApi);
+  expect(usage.bankedResets).toEqual({
+    availableCount: 1,
+    credits: [
+      {
+        id: "reset-1",
+        resetType: "codex_rate_limits",
+        supportedByPlan: null,
+        status: "available",
+        grantedAt: "2026-09-01T00:00:00Z",
+        expiresAt: "2026-10-01T00:00:00Z",
+        title: "Referral reward",
+        description: null,
+      },
+    ],
+    error: null,
+  });
+  expect(fetchApi).toHaveBeenLastCalledWith(
+    "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: "Bearer fixture-token",
+        "ChatGPT-Account-Id": "fixture-account",
+      }),
+    }),
+  );
+});
+
+test("reset detail schema errors propagate while expected transport failures preserve usage", async () => {
+  await writeAuth("fixture-token", "fixture-account");
+  for (const error of [
+    new TypeError("Unexpected reset adapter defect"),
+    new SyntaxError("invalid"),
+  ]) {
+    const fetchApi: typeof fetch = async (url) => {
+      if (url.toString().endsWith("/usage"))
+        return Response.json({ rate_limit_reset_credits: { available_count: 1 } });
+      throw error;
+    };
+    await expect(fetchUsage(authInput(fixtureHome), fetchApi)).rejects.toBe(error);
+  }
+
+  const expectedFailures = [
+    new TypeError("fetch failed"),
+    new DOMException("Request timed out", "TimeoutError"),
+    new DOMException("Request aborted", "AbortError"),
+  ];
+  for (const error of expectedFailures) {
+    const fetchApi: typeof fetch = async (url) => {
+      if (url.toString().endsWith("/usage")) {
+        return Response.json({
+          rate_limit: { primary_window: { used_percent: 75 } },
+          rate_limit_reset_credits: { available_count: 1 },
+        });
+      }
+      throw error;
+    };
+    await expect(fetchUsage(authInput(fixtureHome), fetchApi)).resolves.toMatchObject({
+      windows: [expect.objectContaining({ usedPct: 75 })],
+      bankedResets: {
+        availableCount: 1,
+        credits: null,
+        error: "Could not load banked reset details. Refresh usage to try again.",
+      },
+    });
+  }
+
+  const invalidDetails = async (url: RequestInfo | URL) => {
+    if (url.toString().endsWith("/usage"))
+      return Response.json({ rate_limit_reset_credits: { available_count: 1 } });
+    return Response.json({ available_count: 1, credits: "invalid" });
+  };
+  await expect(fetchUsage(authInput(fixtureHome), invalidDetails)).rejects.toThrow();
+});
+
+test("redeems a banked reset once and preserves the idempotency key", async () => {
+  const home = await mkdtemp(join(tmpdir(), "usage-codex-reset-"));
+  try {
+    process.env["CODEX_HOME"] = home;
+    await writeFile(
+      join(home, "auth.json"),
+      JSON.stringify({ tokens: { access_token: "fixture-token", account_id: "fixture-account" } }),
+    );
+    const fetchApi = vi.fn<typeof fetch>(async () => Response.json({ code: "reset" }));
+    await expect(
+      consumeBankedReset({ creditId: "reset-1", idempotencyKey: "attempt-1" }, fetchApi),
+    ).resolves.toBe("reset");
+    expect(fetchApi).toHaveBeenCalledTimes(1);
+    expect(fetchApi).toHaveBeenCalledWith(
+      "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ credit_id: "reset-1", redeem_request_id: "attempt-1" }),
+      }),
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("expected consume transport failures are actionable and are not retried", async () => {
+  const home = await mkdtemp(join(tmpdir(), "usage-codex-reset-"));
+  try {
+    process.env["CODEX_HOME"] = home;
+    await writeFile(
+      join(home, "auth.json"),
+      JSON.stringify({ tokens: { access_token: "fixture-token" } }),
+    );
+    const fetchApi = vi.fn<typeof fetch>(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(
+      consumeBankedReset({ creditId: "reset-1", idempotencyKey: "attempt-1" }, fetchApi),
+    ).rejects.toThrow("Codex request failed. Refresh usage before retrying.");
+    expect(fetchApi).toHaveBeenCalledTimes(1);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

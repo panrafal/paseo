@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test as base } from "../support/fixtures";
 import { expectComposerVisible } from "../support/helpers/composer";
+import { openCommandCenter } from "../support/helpers/command-center";
 import {
   type AgentUsageScript,
   closeContextWindowSheet,
@@ -24,6 +25,8 @@ import {
 } from "../support/helpers/context-window";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { claudeAndCodexReports, expectUnpinnableRows } from "../support/helpers/usage-sidebar-item";
+import { getServerId } from "../support/helpers/server-id";
+import { buildSettingsHostSectionRoute } from "../../src/utils/host-routes";
 
 const test = base.extend<{ agent: MockAgentSession }>({
   agent: async ({ page: _page }, provide) => {
@@ -283,3 +286,95 @@ for (const theme of ["light", "dark"] as const) {
     });
   });
 }
+
+test.describe("context window usage navigation", () => {
+  test.describe("touch input", () => {
+    test.use({ hasTouch: true });
+
+    test("a single tap opens details; a double tap opens host Usage", async ({ page, agent }) => {
+      test.setTimeout(180_000);
+      await page.setViewportSize(COMPACT);
+      await openAgent(page, agent);
+      const agentUrl = page.url();
+      const meter = page.getByTestId("context-window-meter");
+      await meter.tap();
+      await expect(contextWindowSheet(page)).toBeVisible();
+      await expect(page).toHaveURL(agentUrl);
+      await closeContextWindowSheet(page);
+
+      const bounds = await meter.boundingBox();
+      if (!bounds) throw new Error("Context meter has no bounds");
+      const cdp = await page.context().newCDPSession(page);
+      const touchPoints = [{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }];
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+      await page.waitForTimeout(600);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await expect(page).toHaveURL(agentUrl);
+      await page.waitForTimeout(350);
+
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await page.waitForTimeout(100);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+      await page.waitForTimeout(300);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+      await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+    });
+  });
+
+  test("compact single clicks keep the details sheet; a double click opens host Usage", async ({
+    page,
+    agent,
+  }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize(COMPACT);
+    await openAgent(page, agent);
+    const agentUrl = page.url();
+    const meter = page.getByTestId("context-window-meter");
+    await meter.click();
+    await expect(contextWindowSheet(page)).toBeVisible();
+    await expect(page).toHaveURL(agentUrl);
+    await closeContextWindowSheet(page);
+
+    await meter.click({ delay: 600 });
+    await expect(page).toHaveURL(agentUrl);
+    await meter.dblclick({ delay: 80 });
+    const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+    await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+    await expect(contextWindowSheet(page)).toHaveCount(0);
+  });
+
+  test("desktop double click navigates and command-center Usage follows the current host", async ({
+    page,
+    agent,
+  }) => {
+    test.setTimeout(180_000);
+    await openAgent(page, agent);
+    await page.setViewportSize(DESKTOP);
+    const agentUrl = page.url();
+    const meter = page.getByTestId("context-window-meter");
+    await meter.click();
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(agentUrl);
+    await meter.click({ delay: 600 });
+    await expect(page).toHaveURL(agentUrl);
+    await meter.dblclick({ delay: 80 });
+    const usageRoute = buildSettingsHostSectionRoute(getServerId(), "usage");
+    await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+
+    await openAgent(page, agent);
+    const panel = await openCommandCenter(page);
+    await panel.getByTestId("command-center-input").fill("Usage");
+    await expect(panel.getByText("Usage", { exact: true })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+    await expect(panel).toBeHidden();
+
+    await page.goto("/new?serverId=stale-host");
+    const newWorkspacePanel = await openCommandCenter(page);
+    await newWorkspacePanel.getByTestId("command-center-input").fill("Usage");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`${usageRoute}$`));
+  });
+});
