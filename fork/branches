@@ -56,7 +56,7 @@ origin/fix/timeline-fetch-missing-cwd
 
 origin/stored-agent-busy-status
 origin/fix/acp-child-process-leak
+origin/isolate-test-home-skills
 
 # Last on rebuild, so it wins conflicts with the rest of the stack.
 origin/vscode
-origin/isolate-test-home-skills
