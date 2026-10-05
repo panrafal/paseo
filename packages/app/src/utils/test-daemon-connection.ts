@@ -18,6 +18,8 @@ import {
   createDesktopDaemonTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
 import type { DesktopDaemonTransportTarget } from "@/desktop/daemon/desktop-daemon";
+import { createRelayAuthOptions } from "@/runtime/relay-auth";
+import { relayDeviceLabel } from "@/runtime/relay-device-label";
 
 export interface DaemonProbeClient {
   readonly lastError: string | null;
@@ -200,7 +202,14 @@ export async function buildClientConfig(
       useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
       serverId,
     }),
-    e2ee: { enabled: true, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+    e2ee: {
+      enabled: true,
+      daemonPublicKeyB64: connection.daemonPublicKeyB64,
+      auth: createRelayAuthOptions({
+        host: { serverId, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+        label: relayDeviceLabel(deps.resolveAppVersion()),
+      }),
+    },
   };
 }
 

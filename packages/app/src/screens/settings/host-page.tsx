@@ -1,3 +1,4 @@
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import {
   ArrowDown,
   ArrowUp,
@@ -236,7 +237,7 @@ function HostConnectionError({ serverId }: { serverId: string }) {
       <InlineAlert
         size="sm"
         variant="error"
-        title={connectionError}
+        title={formatHostConnectionError(connectionError, t)}
         description={snapshot?.authFailureReason ? t("settings.host.password.guidance") : undefined}
         testID="host-connection-error"
       />
