@@ -11,7 +11,7 @@
 #   gh api repos/panrafal/paseo/contents/fork/update-macos.sh?ref=main \
 #     -H 'Accept: application/vnd.github.raw' | bash
 #
-# Quitting the app and restarting its daemon kill the local agents, so it
+# Quitting the app and stopping its daemon kill the local agents, so it
 # first waits until none is running (fork/wait-for-agents.sh);
 # FORK_SKIP_AGENT_WAIT=1 skips that.
 #
@@ -49,9 +49,12 @@ wait_for_agents() {
   bash "$waiter" "$paseo" "this Mac"
 }
 
-restart_and_launch() {
-  say "Restarting the local daemon"
-  "$APP/Contents/Resources/bin/paseo" daemon restart
+# Quitting the app usually takes its daemon down too, and `daemon restart`
+# fails on a daemon that is not running. Stop it instead, which succeeds either
+# way, and let the app start the new bundled daemon on launch.
+stop_daemon_and_launch() {
+  say "Stopping the local daemon"
+  "$APP/Contents/Resources/bin/paseo" daemon stop --force
   say "Launching"
   open "$APP"
 }
@@ -89,7 +92,7 @@ say "wanted: $tag   installed: ${installed:-none}"
 if [ -n "$installed" ] && [ "$tag" = "fork-v$installed" ]; then
   say "Already up to date."
   wait_for_agents
-  restart_and_launch
+  stop_daemon_and_launch
   exit 0
 fi
 
@@ -118,4 +121,4 @@ cp -R "$mount_point/Paseo.app" /Applications/
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
 say "Installed $(defaults read "$APP/Contents/Info" CFBundleShortVersionString)"
-restart_and_launch
+stop_daemon_and_launch

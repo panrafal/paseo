@@ -68,9 +68,9 @@ if [ "$*" = 'ls -g --json' ]; then
   printf '[\\n  {\\n    "id": "agent-1",\\n    "shortId": "agent-1",\\n    "name": "fixture",\\n    "status": "%s"\\n  }\\n]\\n' "$status"
   exit 0
 fi
-[ "$*" = 'daemon restart' ]
-echo "restart $version" >> "$TEST_ROOT/events"
-exit "${RESTART_EXIT:-0}"
+[ "$*" = 'daemon stop --force' ]
+echo "stop $version" >> "$TEST_ROOT/events"
+exit "${STOP_EXIT:-0}"
 ''')
         (app / "Contents/version").write_text(version + "\n")
 
@@ -79,27 +79,27 @@ exit "${RESTART_EXIT:-0}"
                               env=dict(self.env, **env), capture_output=True,
                               text=True, timeout=5)
 
-    def test_upgrade_restarts_new_bundled_daemon_before_launch(self):
+    def test_upgrade_stops_daemon_before_launch(self):
         self.make_app(self.app, "0.7.2-panrafal.9")
         result = self.update()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.root / "events").read_text(),
-                         "ls 0.7.2-panrafal.9\nrestart 0.7.2-panrafal.10\nlaunch\n")
+                         "ls 0.7.2-panrafal.9\nstop 0.7.2-panrafal.10\nlaunch\n")
 
-    def test_installed_version_still_restarts_daemon(self):
+    def test_installed_version_still_stops_daemon(self):
         self.make_app(self.app, "0.7.2-panrafal.10")
         result = self.update()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.root / "events").read_text(),
-                         "ls 0.7.2-panrafal.10\nrestart 0.7.2-panrafal.10\nlaunch\n")
+                         "ls 0.7.2-panrafal.10\nstop 0.7.2-panrafal.10\nlaunch\n")
         self.assertFalse((self.root / "build-arm64.dmg").exists())
 
-    def test_restart_failure_stops_before_launch(self):
+    def test_stop_failure_stops_before_launch(self):
         self.make_app(self.app, "0.7.2-panrafal.9")
-        result = self.update(RESTART_EXIT="7")
+        result = self.update(STOP_EXIT="7")
         self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
         self.assertEqual((self.root / "events").read_text(),
-                         "ls 0.7.2-panrafal.9\nrestart 0.7.2-panrafal.10\n")
+                         "ls 0.7.2-panrafal.9\nstop 0.7.2-panrafal.10\n")
 
     def test_waits_for_running_agents_before_quitting(self):
         self.make_app(self.app, "0.7.2-panrafal.9")
@@ -108,14 +108,14 @@ exit "${RESTART_EXIT:-0}"
         self.assertIn("agent-1 running fixture", result.stdout)
         self.assertEqual((self.root / "events").read_text(),
                          "ls 0.7.2-panrafal.9\n" * 3 +
-                         "quit\nrestart 0.7.2-panrafal.10\nlaunch\n")
+                         "quit\nstop 0.7.2-panrafal.10\nlaunch\n")
 
     def test_skip_agent_wait(self):
         self.make_app(self.app, "0.7.2-panrafal.9")
         result = self.update(BUSY_POLLS="5", FORK_SKIP_AGENT_WAIT="1")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.root / "events").read_text(),
-                         "restart 0.7.2-panrafal.10\nlaunch\n")
+                         "stop 0.7.2-panrafal.10\nlaunch\n")
 
 
 if __name__ == "__main__":
