@@ -28,22 +28,25 @@
     "typecheck": {
       "command": "npm run typecheck"
     },
-    "\ud83c\udf71 deploy all": {
+    "🛳️ deploy all": {
       "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh"
     },
-    "\ud83c\udf71 deploy daemon": {
+    "🛳️ deploy daemon 👹": {
       "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh daemon"
     },
-    "\ud83c\udf71 deploy desktop": {
+    "🛳️ deploy desktop 💻": {
       "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh desktop"
     },
-    "\ud83c\udf71 update": {
+    "🛳️ deploy ios 📱": {
+      "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh ios"
+    },
+    "🍱 update": {
       "command": "./fork/integrate.sh rebase --agent --push"
     },
-    "\ud83c\udf71 rebuild integration": {
+    "🍱 rebuild integration": {
       "command": "./fork/integrate.sh rebuild --agent --push"
     },
-    "\ud83c\udf71 rebase branches": {
+    "🍱 rebase branches": {
       "command": "./fork/integrate.sh rebase-branches --agent --push"
     }
   }
