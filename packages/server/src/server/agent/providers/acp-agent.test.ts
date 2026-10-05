@@ -2546,6 +2546,11 @@ describe("ACPAgentSession slash commands", () => {
           name: "create_plan",
           description: "Draft a plan for the requested work",
         },
+        {
+          name: "explain",
+          description: "Explain the selected code",
+          input: { hint: "[prompt]" },
+        },
       ],
     });
 
@@ -2560,6 +2565,12 @@ describe("ACPAgentSession slash commands", () => {
         name: "create_plan",
         description: "Draft a plan for the requested work",
         argumentHint: "",
+        kind: "command",
+      },
+      {
+        name: "explain",
+        description: "Explain the selected code",
+        argumentHint: "[prompt]",
         kind: "command",
       },
     ]);
@@ -2577,7 +2588,180 @@ describe("ACPAgentSession slash commands", () => {
         argumentHint: "",
         kind: "command",
       },
+      {
+        name: "explain",
+        description: "Explain the selected code",
+        argumentHint: "[prompt]",
+        kind: "command",
+      },
     ]);
+  });
+
+  test("classifies commands through slashCommandKindResolver when provided", async () => {
+    const session = new ACPAgentSession(
+      {
+        provider: "devin",
+        cwd: "/tmp/paseo-acp-test",
+      },
+      {
+        provider: "devin",
+        logger: createTestLogger(),
+        defaultCommand: ["devin", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: true,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+        slashCommandKindResolver: (command) =>
+          command._meta?.["cognition.ai/category"] === "Skills" ? "skill" : "command",
+      },
+    );
+
+    asInternals<ACPSessionInternals>(session).translateSessionUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [
+        {
+          name: "compact",
+          description: "Compact the session",
+          _meta: { "cognition.ai/category": "Session" },
+        },
+        {
+          name: "plan",
+          description: "Draft a plan for the requested work",
+          _meta: { "cognition.ai/category": "Skills" },
+        },
+      ],
+    });
+
+    expect(await session.listCommands()).toEqual([
+      {
+        name: "compact",
+        description: "Compact the session",
+        argumentHint: "",
+        kind: "command",
+      },
+      {
+        name: "plan",
+        description: "Draft a plan for the requested work",
+        argumentHint: "",
+        kind: "skill",
+      },
+    ]);
+  });
+});
+
+describe("ACPAgentSession usage updates", () => {
+  function createUsageSession(): ACPAgentSession {
+    return new ACPAgentSession(
+      {
+        provider: "devin",
+        cwd: "/tmp/paseo-acp-test",
+      },
+      {
+        provider: "devin",
+        logger: createTestLogger(),
+        defaultCommand: ["devin", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: true,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+      },
+    );
+  }
+
+  async function emitUsageUpdate(
+    session: ACPAgentSession,
+    update: {
+      used: number;
+      size: number;
+      cost?: { amount: number; currency: "USD" | "EUR" };
+    },
+  ): Promise<unknown[]> {
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    const events: unknown[] = [];
+    session.subscribe((event) => {
+      if (event.type === "usage_updated") events.push(event);
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: { sessionUpdate: "usage_update", ...update },
+    });
+    return events;
+  }
+
+  test("emits usage_updated with context window totals on the active foreground turn", async () => {
+    const session = createUsageSession();
+    asInternals<ACPSessionInternals>(session).activeForegroundTurnId = "turn-1";
+
+    expect(await emitUsageUpdate(session, { used: 33648, size: 1_000_000 })).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+        },
+        turnId: "turn-1",
+      },
+    ]);
+  });
+
+  test("includes USD cost and reports the update without an active turn", async () => {
+    const session = createUsageSession();
+
+    expect(
+      await emitUsageUpdate(session, {
+        used: 33648,
+        size: 1_000_000,
+        cost: { amount: 1.5, currency: "USD" },
+      }),
+    ).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+          totalCostUsd: 1.5,
+        },
+      },
+    ]);
+  });
+
+  test("omits cost totals reported in a non-USD currency", async () => {
+    const session = createUsageSession();
+
+    expect(
+      await emitUsageUpdate(session, {
+        used: 33648,
+        size: 1_000_000,
+        cost: { amount: 2, currency: "EUR" },
+      }),
+    ).toEqual([
+      {
+        type: "usage_updated",
+        provider: "devin",
+        usage: {
+          contextWindowUsedTokens: 33648,
+          contextWindowMaxTokens: 1_000_000,
+        },
+      },
+    ]);
+  });
+
+  test("ignores usage_update without a context window size", async () => {
+    const session = createUsageSession();
+
+    expect(await emitUsageUpdate(session, { used: 33648, size: 0 })).toEqual([]);
   });
 });
 

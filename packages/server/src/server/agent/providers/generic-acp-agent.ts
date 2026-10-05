@@ -8,6 +8,7 @@ import {
   type ACPConfigFeatureOption,
   DEFAULT_ACP_CAPABILITIES,
   type ACPExtensionCommandsParser,
+  type ACPSlashCommandKindResolver,
 } from "./acp-agent.js";
 import {
   buildBinaryDiagnosticRows,
@@ -28,6 +29,7 @@ interface GenericACPAgentClientOptions {
   clientCapabilityMeta?: ACPClientCapabilityMeta;
   configFeatureOptions?: ACPConfigFeatureOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  slashCommandKindResolver?: ACPSlashCommandKindResolver;
   catalogModelResolver?: ACPCatalogModelResolver;
   now?: () => number;
 }
@@ -54,6 +56,7 @@ export class GenericACPAgentClient extends ACPAgentClient {
       clientCapabilityMeta: options.clientCapabilityMeta,
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
+      slashCommandKindResolver: options.slashCommandKindResolver,
       catalogModelResolver: options.catalogModelResolver,
       now: options.now,
     });
