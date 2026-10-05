@@ -34,6 +34,7 @@ export interface PairingOffer {
   relayEnabled: boolean;
   url: string | null;
   qr: string | null;
+  expiresAt: string | null;
 }
 
 const PAIRING_DAEMON_RPC_TIMEOUT_MS = 1500;
@@ -92,6 +93,7 @@ export async function resolveLocalPairingOffer(options: {
     relayPublicEndpoint: config.relayPublicEndpoint,
     relayUseTls: config.relayUseTls,
     relayPublicUseTls: config.relayPublicUseTls,
+    deviceAuth: config.relayDeviceAuth === true,
     appBaseUrl: config.appBaseUrl,
     includeQr: true,
   });
@@ -133,6 +135,7 @@ async function resolveDaemonPairingOffer(
       relayEnabled: offer.relayEnabled,
       url: offer.url || null,
       qr: offer.qr ?? null,
+      expiresAt: offer.expiresAt ?? null,
     };
   } finally {
     await client.close().catch(() => undefined);
@@ -203,7 +206,13 @@ function outputPairingResult(
   if (options.json) {
     output.writeStdout(
       `${JSON.stringify(
-        { relayEnabled: pairing.relayEnabled, url: pairing.url, qr: pairing.qr, connectionUri },
+        {
+          relayEnabled: pairing.relayEnabled,
+          url: pairing.url,
+          qr: pairing.qr,
+          connectionUri,
+          expiresAt: pairing.expiresAt,
+        },
         null,
         2,
       )}\n`,
@@ -216,6 +225,7 @@ function outputPairingResult(
       url: pairing.url,
       qr: pairing.qr,
       connectionUri,
+      expiresAt: pairing.expiresAt,
       columns: output.columns,
     }),
   );

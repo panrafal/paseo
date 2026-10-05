@@ -41,6 +41,7 @@ interface MountedTerminal {
   terminalKeys: TerminalKeyRecord[];
   inputModeChanges: TerminalInputModeState[];
   openedUrls: string[];
+  openedInAppUrls: string[];
 }
 
 const mountedTerminals: MountedTerminal[] = [];
@@ -100,6 +101,7 @@ function createTerminalHost(input: CreateTerminalHostInput): MountedTerminal {
   const terminalKeys: TerminalKeyRecord[] = [];
   const inputModeChanges: TerminalInputModeState[] = [];
   const openedUrls: string[] = [];
+  const openedInAppUrls: string[] = [];
   const runtime = new TerminalEmulatorRuntime(
     input.isMac === undefined ? undefined : { isMac: input.isMac },
   );
@@ -119,6 +121,9 @@ function createTerminalHost(input: CreateTerminalHostInput): MountedTerminal {
       },
       onOpenExternalUrl: (url) => {
         openedUrls.push(url);
+      },
+      onOpenUrlInApp: (url) => {
+        openedInAppUrls.push(url);
       },
     },
   });
@@ -143,6 +148,7 @@ function createTerminalHost(input: CreateTerminalHostInput): MountedTerminal {
     terminalKeys,
     inputModeChanges,
     openedUrls,
+    openedInAppUrls,
   };
   mountedTerminals.push(mounted);
   return mounted;
@@ -232,6 +238,7 @@ async function clickTerminalLink(input: {
   host: HTMLElement;
   row: number;
   col: number;
+  modifiers?: ("Meta" | "Control")[];
 }): Promise<void> {
   const terminal = getBrowserTerminal();
   const screen = input.host.querySelector<HTMLElement>(".xterm-screen");
@@ -246,7 +253,7 @@ async function clickTerminalLink(input: {
   await waitFor({
     predicate: () => input.host.querySelector(".xterm-cursor-pointer") !== null,
   });
-  await userEvent.click(screen, { position });
+  await userEvent.click(screen, { position, modifiers: input.modifiers });
 }
 
 afterEach(() => {
@@ -679,4 +686,28 @@ describe("terminal emulator runtime in a real browser", () => {
     expect(mounted.openedUrls).toEqual(["https://example.com/plain", "https://example.com/osc8"]);
     expect(confirm).not.toHaveBeenCalled();
   });
+
+  it.each(["Meta", "Control"] as const)(
+    "opens %s-clicked plain and OSC 8 links in the app",
+    async (modifier) => {
+      await page.viewport(900, 600);
+      const mounted = createTerminalHost({ width: 720, height: 360 });
+
+      await waitFor({ predicate: () => mounted.sizes.length > 0 });
+
+      await writeLines(mounted, [
+        hyperlink({ url: "https://example.com/osc8", text: "example" }),
+        "https://example.com/plain",
+      ]);
+
+      await clickTerminalLink({ host: mounted.host, row: 1, col: 4, modifiers: [modifier] });
+      await clickTerminalLink({ host: mounted.host, row: 0, col: 2, modifiers: [modifier] });
+
+      expect(mounted.openedInAppUrls).toEqual([
+        "https://example.com/plain",
+        "https://example.com/osc8",
+      ]);
+      expect(mounted.openedUrls).toEqual([]);
+    },
+  );
 });

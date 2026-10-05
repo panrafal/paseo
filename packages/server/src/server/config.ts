@@ -336,6 +336,13 @@ function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
   };
 }
 
+function resolveRelayDeviceAuth(persisted: PersistedConfig): boolean {
+  // COMPAT(relayDeviceAuth): opt-in while apps without relay auth are in use; make it the
+  // default and remove the unauthenticated relay path after 2027-03-14.
+  // Config-file only: turning it off is the dangerous direction.
+  return persisted.daemon?.relay?.deviceAuth === true;
+}
+
 interface ResolvedVoiceLlm {
   provider: AgentProvider | null;
   providerExplicit: boolean;
@@ -643,6 +650,7 @@ export function resolveConfigFromPersisted(
     relayPublicEndpoint: relay.publicEndpoint,
     relayUseTls: relay.useTls,
     relayPublicUseTls: relay.publicUseTls,
+    relayDeviceAuth: resolveRelayDeviceAuth(persisted),
     serviceProxy,
     webUi,
     appBaseUrl,

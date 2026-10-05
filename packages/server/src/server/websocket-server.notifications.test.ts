@@ -12,6 +12,7 @@ import { asInternals, createStub } from "./test-utils/class-mocks.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { PushNotificationSender, PushPayload } from "./push/index.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
+import { notifyAgent, type AgentAttentionParams } from "./notify.js";
 
 const WORKSPACE_ID = "workspace-1";
 
@@ -52,6 +53,8 @@ interface WebSocketServerInternals {
     preview?: string;
     providerId?: string;
     timestamp?: string;
+    notification?: AgentAttentionParams["notification"];
+    urgent?: boolean;
   }): Promise<void>;
 }
 
@@ -222,6 +225,321 @@ function readAttentionRequiredMessage(ws: ReturnType<typeof createOpenSocket>) {
 }
 
 describe("VoiceAssistantWebSocketServer notification payloads", () => {
+  it.each([
+    {
+      deviceType: "web",
+      appVisible: true,
+      focusedAgentId: null,
+      urgent: undefined,
+      push: false,
+      inApp: true,
+    },
+    {
+      deviceType: "mobile",
+      appVisible: true,
+      focusedAgentId: null,
+      urgent: undefined,
+      push: true,
+      inApp: true,
+    },
+    {
+      deviceType: "mobile",
+      appVisible: false,
+      focusedAgentId: "agent-1",
+      urgent: undefined,
+      push: true,
+      inApp: true,
+    },
+    {
+      deviceType: "web",
+      appVisible: false,
+      focusedAgentId: null,
+      urgent: undefined,
+      push: true,
+      inApp: true,
+    },
+    {
+      deviceType: "web",
+      appVisible: true,
+      focusedAgentId: "agent-1",
+      urgent: undefined,
+      push: false,
+      inApp: false,
+    },
+    {
+      deviceType: "mobile",
+      appVisible: true,
+      focusedAgentId: "agent-1",
+      urgent: undefined,
+      push: false,
+      inApp: false,
+    },
+    {
+      deviceType: "web",
+      appVisible: true,
+      focusedAgentId: "agent-1",
+      urgent: true,
+      push: true,
+      inApp: true,
+    },
+    {
+      deviceType: "mobile",
+      appVisible: true,
+      focusedAgentId: "agent-1",
+      urgent: true,
+      push: true,
+      inApp: true,
+    },
+  ] as const)(
+    "routes notify for $deviceType (visible: $appVisible, focused: $focusedAgentId, urgent: $urgent)",
+    async ({ deviceType, appVisible, focusedAgentId, urgent, push, inApp }) => {
+      const { server, agentManager, pushNotifications } = createServer({
+        getAgent: () => ({
+          provider: "claude",
+          workspaceId: WORKSPACE_ID,
+          config: { title: "Bot" },
+        }),
+      });
+      const older = connectClient(server, {
+        deviceType: "web",
+        appVisible: true,
+        focusedAgentId: null,
+        lastActivityAt: new Date(Date.now() - 60_000),
+      });
+      const latest = connectClient(server, {
+        deviceType,
+        appVisible,
+        focusedAgentId,
+        lastActivityAt: new Date(Date.now() - 1000),
+      });
+      await notifyAgent({
+        request: {
+          type: "agent.notify.request",
+          requestId: "notify-1",
+          agentId: "agent-1",
+          message: "Review needed",
+          urgent,
+        },
+        agentManager: createStub<AgentManager>(agentManager),
+        agentStorage: createStub<AgentStorage>({ get: async () => null }),
+        serverId: "srv-test",
+        broadcastAttention: (params) =>
+          asInternals<WebSocketServerInternals>(server).broadcastAgentAttention(params),
+      });
+      expect(pushNotifications.sent).toHaveLength(push ? 1 : 0);
+      expect(readAttentionRequiredMessage(older).shouldNotify).toBe(false);
+      expect(readAttentionRequiredMessage(latest)).toMatchObject({
+        reason: "notify",
+        shouldNotify: inApp,
+        notification: { title: "Bot", body: "Review needed" },
+      });
+    },
+  );
+
+  it("caps long push text at 220 characters while preserving the full in-app text", async () => {
+    const { server, agentManager, pushNotifications } = createServer({
+      getAgent: () => ({ provider: "claude", workspaceId: WORKSPACE_ID, config: {} }),
+    });
+    const client = connectClient(server, {
+      deviceType: "web",
+      appVisible: true,
+      focusedAgentId: null,
+      lastActivityAt: new Date(),
+    });
+    await notifyAgent({
+      request: {
+        type: "agent.notify.request",
+        requestId: "notify-1",
+        agentId: "agent-1",
+        message: "a".repeat(5000),
+        title: "b".repeat(5000),
+        urgent: true,
+      },
+      agentManager: createStub<AgentManager>(agentManager),
+      agentStorage: createStub<AgentStorage>({ get: async () => null }),
+      serverId: "srv-test",
+      broadcastAttention: (params) =>
+        asInternals<WebSocketServerInternals>(server).broadcastAgentAttention(params),
+    });
+    expect(pushNotifications.sent).toEqual([
+      {
+        title: "b".repeat(217) + "...",
+        body: "a".repeat(217) + "...",
+        data: {
+          serverId: "srv-test",
+          workspaceId: "workspace-1",
+          agentId: "agent-1",
+          reason: "notify",
+        },
+        priority: "high",
+        channelId: "urgent",
+        interruptionLevel: "time-sensitive",
+      },
+    ]);
+    expect(readAttentionRequiredMessage(client)).toMatchObject({
+      shouldNotify: true,
+      notification: { title: "b".repeat(5000), body: "a".repeat(5000) },
+    });
+  });
+
+  it("urgent notify reaches push and the latest focused client for an internal delegated agent", async () => {
+    const { server, agentManager, pushNotifications } = createServer({
+      getAgent: () => ({
+        id: "child-agent",
+        provider: "claude",
+        workspaceId: WORKSPACE_ID,
+        config: { title: "Original title" },
+        internal: true,
+        labels: { parentAgentId: "parent-agent" },
+        pendingPermissions: new Map(),
+      }),
+    });
+    const older = connectClient(server, {
+      deviceType: "web",
+      focusedAgentId: null,
+      appVisible: true,
+      lastActivityAt: new Date(Date.now() - 1000),
+    });
+    const latest = connectClient(server, {
+      deviceType: "web",
+      focusedAgentId: "child-agent",
+      appVisible: true,
+      lastActivityAt: new Date(),
+    });
+    const response = await notifyAgent({
+      request: {
+        type: "agent.notify.request",
+        requestId: "notify-1",
+        agentId: "child-agent",
+        message: "Build failed\nPlease review",
+        urgent: true,
+      },
+      agentManager: createStub<AgentManager>(agentManager),
+      agentStorage: createStub<AgentStorage>({ get: async () => ({ title: "Renamed bot" }) }),
+      serverId: "srv-test",
+      broadcastAttention: (params) =>
+        asInternals<WebSocketServerInternals>(server).broadcastAgentAttention(params),
+    });
+    expect(response).toEqual({ requestId: "notify-1", agentId: "child-agent", error: null });
+    expect(pushNotifications.sent).toEqual([
+      {
+        title: "Renamed bot",
+        body: "Build failed\nPlease review",
+        data: {
+          serverId: "srv-test",
+          workspaceId: "workspace-1",
+          agentId: "child-agent",
+          reason: "notify",
+        },
+        priority: "high",
+        channelId: "urgent",
+        interruptionLevel: "time-sensitive",
+      },
+    ]);
+    expect(readAttentionRequiredMessage(older).shouldNotify).toBe(false);
+    expect(readAttentionRequiredMessage(latest)).toMatchObject({
+      reason: "notify",
+      shouldNotify: true,
+      notification: { title: "Renamed bot", body: "Build failed\nPlease review" },
+    });
+    expect(agentManager.getLastAssistantMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { title: "Custom title", expected: "Custom title" },
+    { title: undefined, expected: "Agent message" },
+  ])(
+    "uses notify title $expected and pushes without active clients",
+    async ({ title, expected }) => {
+      const { server, agentManager, pushNotifications } = createServer({
+        getAgent: () => ({
+          provider: "claude",
+          workspaceId: WORKSPACE_ID,
+          config: {},
+          pendingPermissions: new Map(),
+        }),
+      });
+      await notifyAgent({
+        request: {
+          type: "agent.notify.request",
+          requestId: "notify-1",
+          agentId: "agent-1",
+          message: "Hello",
+          title,
+        },
+        agentManager: createStub<AgentManager>(agentManager),
+        agentStorage: createStub<AgentStorage>({ get: async () => null }),
+        serverId: "srv-test",
+        broadcastAttention: (params) =>
+          asInternals<WebSocketServerInternals>(server).broadcastAgentAttention(params),
+      });
+      expect(pushNotifications.sent).toEqual([
+        {
+          title: expected,
+          body: "Hello",
+          data: {
+            serverId: "srv-test",
+            workspaceId: "workspace-1",
+            agentId: "agent-1",
+            reason: "notify",
+          },
+        },
+      ]);
+    },
+  );
+
+  it("rejects unknown agents without sending a notification", async () => {
+    const { agentManager, pushNotifications } = createServer({ getAgent: () => null });
+    const broadcastAttention = vi.fn();
+    expect(
+      await notifyAgent({
+        request: {
+          type: "agent.notify.request",
+          requestId: "notify-1",
+          agentId: "missing",
+          message: "Hello",
+        },
+        agentManager: createStub<AgentManager>(agentManager),
+        agentStorage: createStub<AgentStorage>({ get: async () => null }),
+        serverId: "srv-test",
+        broadcastAttention,
+      }),
+    ).toEqual({ requestId: "notify-1", agentId: "missing", error: "Agent not found: missing" });
+    expect(broadcastAttention).not.toHaveBeenCalled();
+    expect(pushNotifications.sent).toEqual([]);
+  });
+
+  it("notifies from an unloaded stored agent", async () => {
+    const { server, agentManager, pushNotifications } = createServer({ getAgent: () => null });
+    await notifyAgent({
+      request: {
+        type: "agent.notify.request",
+        requestId: "notify-1",
+        agentId: "stored-agent",
+        message: "Hello",
+      },
+      agentManager: createStub<AgentManager>(agentManager),
+      agentStorage: createStub<AgentStorage>({
+        get: async () => ({ provider: "claude", workspaceId: "workspace-1", title: "Stored bot" }),
+      }),
+      serverId: "srv-test",
+      broadcastAttention: (params) =>
+        asInternals<WebSocketServerInternals>(server).broadcastAgentAttention(params),
+    });
+    expect(pushNotifications.sent).toEqual([
+      {
+        title: "Stored bot",
+        body: "Hello",
+        data: {
+          serverId: "srv-test",
+          workspaceId: "workspace-1",
+          agentId: "stored-agent",
+          reason: "notify",
+        },
+      },
+    ]);
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });

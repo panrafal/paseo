@@ -120,11 +120,14 @@ Then list, use, rename, or archive it:
 
 ```bash
 paseo workspace ls
+paseo workspace ls --label blocked            # Only workspaces carrying that label (repeat for several)
 paseo run --workspace <workspace-id> "implement authentication"
 paseo workspace rename <workspace-id> "Auth rework"
 paseo workspace rename <workspace-id> --reset   # back to the branch or directory name
 paseo workspace archive <workspace-id>
 ```
+
+The list shows each workspace's labels and pull request. Label filters match by name, ignoring case, and a workspace must carry every label you pass. `--json` also includes the branch and the pull request's URL, title, checks, and review decision.
 
 Add `--forge <name>` to PR checkout when Paseo cannot infer the forge from the source checkout. See [Git worktrees](/docs/worktrees) for setup hooks and services.
 
@@ -196,7 +199,8 @@ behavior.
 paseo ls                    # Non-archived agents in active workspaces
 paseo ls -a                 # Also include archived agents
 paseo ls -g                 # Non-archived agents across all workspaces
-paseo ls -a -g --json       # All agents, including archived, as JSON
+paseo ls --label team=api   # Only agents carrying that label (repeat for several)
+paseo ls -a -g --json       # All agents, including archived, as JSON with each agent's labels
 ```
 
 ## Streaming output
@@ -240,6 +244,36 @@ paseo wait <id> --timeout 60   # 60 second timeout
 ```
 
 Useful in scripts or when one agent needs to wait for another.
+
+## Notify the human
+
+Send a notification that opens the sending agent when tapped:
+
+```bash
+paseo notify "The build is ready to review"
+paseo notify "Production checks failed" --title "Maintenance bot" --urgent
+paseo notify "Please review this agent" --agent <id> --json
+```
+
+The agent ID comes from `PASEO_AGENT_ID`; `--agent` overrides it and is required
+outside a Paseo agent. The title defaults to the agent's title, or `Agent message`
+when it has none. Internal and delegated agents can notify too. Push titles and
+bodies are truncated to 220 characters; in-app notifications keep the full text.
+
+By default, the most recently active client within 180 seconds receives the
+notification. Push is also sent unless that recipient is a visible web or desktop
+client. A visible, active client focused on that agent suppresses both. Notify
+pushes show a banner even while the phone app is open.
+
+`--urgent` always sends a high-priority push and also notifies the most recently
+active client, even when it is focused on that agent. Android uses the `urgent`
+channel; iOS uses time-sensitive delivery, subject to the phone's notification
+settings.
+
+The command supports the usual `--json`, `--home`, and `--host` options. An
+`accepted` result means the daemon applied the notification policy; it does not
+confirm delivery to a phone. Paseo does not repeat or rate-limit these messages.
+The calling agent decides when to send another. This command has no MCP tool.
 
 ## Schedules
 
@@ -375,6 +409,16 @@ paseo daemon pair --json   # structured output; never prompts
 ```
 
 Relay is off for new installations. A disabled relay returns a `RELAY_DISABLED` error; pass `--relay` to provide explicit consent. For a stopped home, pairing is labelled offline; `--relay` saves relay enablement and the offer includes a start instruction. A live but unreachable home never falls back to an offline identity. Relay pairing is end-to-end encrypted. See [Security](/docs/security).
+
+With `daemon.relay.deviceAuth` on, each link works once and expires after 5 minutes. An offer URL passed to `--host` spends that token. To reuse one link, set `PASEO_PASSWORD` to the daemon password; the CLI then signs in with the password instead and doesn't add itself to the device list.
+
+List and revoke paired devices on the daemon machine:
+
+```bash
+paseo daemon devices
+paseo daemon devices revoke <id>
+paseo daemon devices revoke --all
+```
 
 Use it from anywhere:
 

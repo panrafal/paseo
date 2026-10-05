@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { UsageReportEntry } from "@getpaseo/protocol/messages";
+import type { CodexBankedResetOutcome, UsageReportEntry } from "@getpaseo/protocol/messages";
 import { daemonWsRoutePattern, wsRoutePatternForPort } from "./daemon-port";
 
 export interface UsageListRequest {
@@ -29,6 +29,12 @@ interface UsageReportsFixtureOptions {
   providerUsageListOnly?: boolean;
   /** The host daemon's port; defaults to the E2E daemon. */
   port?: number;
+  /** Advertise and handle the Codex banked-reset action. */
+  supportsBankedResets?: boolean;
+  consume?: (request: {
+    creditId: string;
+    idempotencyKey: string;
+  }) => Promise<{ outcome: CodexBankedResetOutcome } | { error: string }>;
 }
 
 /**
@@ -63,6 +69,7 @@ function withUsageSupportFeature(
   message: WebSocketMessage,
   enabled: boolean,
   providerUsageListOnly: boolean,
+  bankedResets: boolean,
 ): string | null {
   const envelope = parseJson(message) as {
     type?: unknown;
@@ -88,6 +95,7 @@ function withUsageSupportFeature(
           ...features,
           usageSources: enabled && !providerUsageListOnly,
           providerUsageList: enabled,
+          codexBankedResets: bankedResets,
         },
       },
     },
@@ -118,6 +126,44 @@ function createCounter() {
   };
 }
 
+async function handleBankedResetRequest(
+  request: Record<string, unknown> | null,
+  requestId: unknown,
+  consume: UsageReportsFixtureOptions["consume"],
+  send: (message: string) => void,
+): Promise<boolean> {
+  if (request?.type !== "provider.codex.consume_banked_reset.request") return false;
+  if (
+    typeof requestId !== "string" ||
+    typeof request.creditId !== "string" ||
+    typeof request.idempotencyKey !== "string" ||
+    !consume
+  ) {
+    throw new Error("Unexpected banked reset request");
+  }
+  const result = await consume({
+    creditId: request.creditId,
+    idempotencyKey: request.idempotencyKey,
+  });
+  const response =
+    "error" in result
+      ? {
+          type: "rpc_error",
+          payload: {
+            requestId,
+            requestType: request.type,
+            error: result.error,
+            code: "codex_banked_reset_failed",
+          },
+        }
+      : {
+          type: "provider.codex.consume_banked_reset.response",
+          payload: { requestId, outcome: result.outcome },
+        };
+  send(JSON.stringify({ type: "session", message: response }));
+  return true;
+}
+
 export async function installUsageReportsFixture(
   page: Page,
   options: UsageReportsFixtureOptions,
@@ -131,15 +177,22 @@ export async function installUsageReportsFixture(
   const requestType = providerUsageListOnly
     ? "provider.usage.list.request"
     : "usage.list_reports.request";
+  const supportsBankedResets = options.supportsBankedResets ?? true;
 
   const route =
     options.port === undefined ? daemonWsRoutePattern() : wsRoutePatternForPort(`${options.port}`);
   await page.routeWebSocket(route, (ws) => {
     const server = ws.connectToServer();
 
-    ws.onMessage((message) => {
+    ws.onMessage(async (message) => {
       const request = getSessionMessage(message);
       const requestId = request?.requestId;
+      if (
+        await handleBankedResetRequest(request, requestId, options.consume, (response) =>
+          ws.send(response),
+        )
+      )
+        return;
       if (request?.type === requestType && typeof requestId === "string") {
         const listRequest: UsageListRequest = {
           forceRefresh: request.forceRefresh === true,
@@ -229,7 +282,12 @@ export async function installUsageReportsFixture(
     server.onMessage((message) => {
       const serverInfo =
         typeof message === "string"
-          ? withUsageSupportFeature(message, isUsageSupported(), providerUsageListOnly)
+          ? withUsageSupportFeature(
+              message,
+              isUsageSupported(),
+              providerUsageListOnly,
+              supportsBankedResets,
+            )
           : null;
       ws.send(serverInfo ?? message);
     });

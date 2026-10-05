@@ -12,6 +12,7 @@ import {
 } from "@/stores/session-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import { AGENT_TIMELINE_ERROR_CWD_MISSING } from "@getpaseo/protocol/messages";
 import { getSendingClientMessageIds } from "@/composer/submission/model";
 import {
   getInitDeferred,
@@ -434,6 +435,20 @@ const getNextRetryDelayMs = (previousDelayMs: number | undefined): number => {
   return Math.min(previousDelayMs * 2, MAX_RETRY_DELAY_MS);
 };
 
+const TERMINAL_FETCH_ERROR_CODES = new Set<string>([AGENT_TIMELINE_ERROR_CWD_MISSING]);
+
+/**
+ * A failure the daemon says retrying cannot fix. Backing off forever on these
+ * keeps every archived agent still held open in a workspace layout asking
+ * roughly twice a minute for a page that can never be served. Daemons that do
+ * not classify the failure send no code, so unknown errors stay retryable.
+ */
+const isTerminalFetchError = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false;
+  const { code } = error as { code?: unknown };
+  return typeof code === "string" && TERMINAL_FETCH_ERROR_CODES.has(code);
+};
+
 function isSameCatchUpRequest(
   left: ProjectedTimelineForwardFetchPlan | undefined,
   right: ProjectedTimelineForwardFetchPlan | undefined,
@@ -598,19 +613,26 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       setVisibilityCatchUpReady(agentId);
     } catch (error) {
       if (catchUps.get(agentId)?.generation === generation) {
-        const nextRetryDelayMs = getNextRetryDelayMs(catchUps.get(agentId)?.retryDelayMs);
-        const cancelRetry = ports.schedule(() => {
-          const current = catchUps.get(agentId);
-          if (current?.generation !== generation || current.status !== "error") return;
-          startCatchUp(agentId);
-        }, nextRetryDelayMs);
-        catchUps.set(agentId, {
-          generation,
-          status: "error",
-          request,
-          cancelRetry,
-          retryDelayMs: nextRetryDelayMs,
-        });
+        if (isTerminalFetchError(error)) {
+          // Rest in the error state with no timer. The supersede paths
+          // (setActive, setConnected, recoverGap, a manual retry) still clear
+          // it, so a restored workspace recovers on the next user action.
+          catchUps.set(agentId, { generation, status: "error", request });
+        } else {
+          const nextRetryDelayMs = getNextRetryDelayMs(catchUps.get(agentId)?.retryDelayMs);
+          const cancelRetry = ports.schedule(() => {
+            const current = catchUps.get(agentId);
+            if (current?.generation !== generation || current.status !== "error") return;
+            startCatchUp(agentId);
+          }, nextRetryDelayMs);
+          catchUps.set(agentId, {
+            generation,
+            status: "error",
+            request,
+            cancelRetry,
+            retryDelayMs: nextRetryDelayMs,
+          });
+        }
         setVisibilityCatchUpError([agentId], error);
         ports.reportError(error);
       }
