@@ -4,6 +4,7 @@ import { PortalProvider } from "@gorhom/portal";
 import { LucideProvider } from "lucide-react-native";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
+import { foregroundNotificationBehavior } from "@/push-notifications/foreground";
 import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-router";
 import {
   createContext,
@@ -225,14 +226,8 @@ function PushNotificationRouter() {
     }
 
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        // When the app is open, don't show OS banners.
-        shouldShowAlert: false,
-        shouldShowBanner: false,
-        shouldShowList: false,
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-      }),
+      handleNotification: async (notification) =>
+        foregroundNotificationBehavior(notification.request.content.data),
     });
 
     const openFromResponse = (response: Notifications.NotificationResponse) => {

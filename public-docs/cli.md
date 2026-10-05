@@ -241,6 +241,36 @@ paseo wait <id> --timeout 60   # 60 second timeout
 
 Useful in scripts or when one agent needs to wait for another.
 
+## Notify the human
+
+Send a notification that opens the sending agent when tapped:
+
+```bash
+paseo notify "The build is ready to review"
+paseo notify "Production checks failed" --title "Maintenance bot" --urgent
+paseo notify "Please review this agent" --agent <id> --json
+```
+
+The agent ID comes from `PASEO_AGENT_ID`; `--agent` overrides it and is required
+outside a Paseo agent. The title defaults to the agent's title, or `Agent message`
+when it has none. Internal and delegated agents can notify too. Push titles and
+bodies are truncated to 220 characters; in-app notifications keep the full text.
+
+By default, the most recently active client within 180 seconds receives the
+notification. Push is also sent unless that recipient is a visible web or desktop
+client. A visible, active client focused on that agent suppresses both. Notify
+pushes show a banner even while the phone app is open.
+
+`--urgent` always sends a high-priority push and also notifies the most recently
+active client, even when it is focused on that agent. Android uses the `urgent`
+channel; iOS uses time-sensitive delivery, subject to the phone's notification
+settings.
+
+The command supports the usual `--json`, `--home`, and `--host` options. An
+`accepted` result means the daemon applied the notification policy; it does not
+confirm delivery to a phone. Paseo does not repeat or rate-limit these messages.
+The calling agent decides when to send another. This command has no MCP tool.
+
 ## Schedules
 
 Run an agent on a cron schedule. The CLI also accepts simple cadence presets and compiles them to cron. See [Schedules from the CLI](/docs/schedules-cli) for the full reference.
