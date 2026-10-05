@@ -69,8 +69,8 @@ FORK_AGENT_TIMEOUT="${FORK_AGENT_TIMEOUT:-45m}"
 # rebase-branches works on this many branches at once, each in its own
 # checkout with its own node_modules. Only FORK_VERIFY_JOBS of them build and
 # test at a time; the rest rebase or wait on an agent.
-FORK_JOBS="${FORK_JOBS:-6}"
-FORK_VERIFY_JOBS="${FORK_VERIFY_JOBS:-6}"
+FORK_JOBS="${FORK_JOBS:-10}"
+FORK_VERIFY_JOBS="${FORK_VERIFY_JOBS:-8}"
 
 # Seconds before retrying a rejected push, and three times that before the
 # last try.
