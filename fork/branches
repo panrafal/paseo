@@ -36,9 +36,7 @@ origin/fix/cursor-usage-official-display
 
 # Fork features not yet sent upstream.
 origin/assign-schedule-labels
-origin/usage-shortcuts
 origin/add-profile-selector-schedules
-origin/fix-duplicate-chat-creation
 origin/fix/timeline-image-width
 origin/workspace-commit-push
 origin/fix/cursor-agent-mcp
@@ -48,7 +46,11 @@ origin/workspace/reorder-labels-branch-width
 origin/feat/add-kilo-usage-skills
 origin/add-devin-usage-skills
 origin/plan-relay-shortlived-tokens
-origin/feature/agent-task-display
+
+# Fixed in upstream and potentially not needed anymore
+# origin/fix-duplicate-chat-creation
+# origin/feature/agent-task-display
+# origin/usage-shortcuts
 
 origin/feat/plugin-session-open-labels
 origin/add-osc8-cmd-modifier
@@ -57,7 +59,7 @@ origin/fix/timeline-fetch-missing-cwd
 origin/stored-agent-busy-status
 origin/fix/acp-child-process-leak
 origin/isolate-test-home-skills
+origin/feat/notify-cli
 
 # Last on rebuild, so it wins conflicts with the rest of the stack.
 origin/vscode
-origin/feat/notify-cli
