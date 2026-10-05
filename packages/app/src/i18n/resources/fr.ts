@@ -1855,6 +1855,16 @@ export const fr: TranslationResources = {
       unableToPair: "Impossible d’associer l’hôte",
       errorTitle: "Erreur",
     },
+    relayAuth: {
+      pairAgain:
+        "Cet appareil n'est plus associé à l'hôte. Scannez un nouveau code d'association sur l'hôte.",
+      passwordChanged:
+        "Le mot de passe de l'hôte a changé. Scannez un nouveau code d'association sur l'hôte.",
+      linkUsed:
+        "Ce lien d'association a déjà été utilisé ou a expiré. Créez-en un nouveau sur l'hôte.",
+      rateLimited:
+        "Trop de tentatives de connexion échouées. Patientez une minute, puis réessayez.",
+    },
     device: {
       loadingOffer: "Chargement de l’offre d’association…",
       failedToLoadOffer: "Impossible de charger l’offre d’association.",
@@ -1874,6 +1884,10 @@ export const fr: TranslationResources = {
       hint: "Scannez ce code QR avec Paseo sur votre téléphone, ou copiez le lien ci-dessous.",
       securityWarning:
         "Traitez ce lien d’association comme un mot de passe. Toute personne qui le possède peut accéder à ce daemon.",
+      oneTimeWarning:
+        "Ce lien associe un seul appareil et cesse de fonctionner après 5 minutes. Ne le partagez pas.",
+      expiresIn: "Expire dans {{time}}",
+      newLink: "Obtenir un nouveau lien",
       qrUnavailable: "Code QR indisponible.",
       qrAccessibility: "Code QR d’association",
       retry: "Réessayer",
