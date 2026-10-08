@@ -40,7 +40,7 @@ function hostUsageQueryKey(serverId: string) {
   return ["usage", serverId] as const;
 }
 
-function usageReportsQueryKey(serverId: string) {
+export function usageReportsQueryKey(serverId: string) {
   return [...hostUsageQueryKey(serverId), "reports"] as const;
 }
 

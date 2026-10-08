@@ -194,6 +194,8 @@ contract, account and window identity, provider-derived period names, login fall
 read-only credential rules. Usage adapters own the interpretation of provider fields; the app
 renders their names and resolves pins without provider-specific duration guesses.
 
+Account actions such as Codex banked resets use capability-gated controls. Confirm the selected reset, reuse its idempotency key on retry, and never automatically retry the POST. A timeout can arrive after the credit was spent, so invalidate pre-redemption usage reads even on failure. Keep reset-detail failures separate from quota-window availability, and honor the backend's per-credit plan eligibility.
+
 ---
 
 ## ACP Provider Checklist

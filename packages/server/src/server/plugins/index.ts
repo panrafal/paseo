@@ -4,6 +4,7 @@ import { stat, rm } from "node:fs/promises";
 import type pino from "pino";
 import type { ProviderRegistration } from "@getpaseo/plugin/server/provider";
 import {
+  CodexBankedResetOutcomeSchema,
   PluginIdSchema,
   type PluginLogEntry,
   type PluginListItem,
@@ -164,8 +165,32 @@ export class PluginService {
     return this.usageSources.listReports(options);
   }
 
-  listLegacyUsage() {
-    return this.usageSources.listLegacyUsage();
+  listLegacyUsage(options?: { forceRefresh?: boolean }) {
+    return this.usageSources.listLegacyUsage(options);
+  }
+
+  supportsCodexBankedResets(): boolean {
+    return this.usageSourceIdsByPlugin.get("codex-usage-source")?.includes("codex") === true;
+  }
+
+  async consumeCodexBankedReset(input: {
+    creditId: string;
+    idempotencyKey: string;
+  }): Promise<import("@getpaseo/protocol/messages").CodexBankedResetOutcome> {
+    if (!this.supportsCodexBankedResets()) {
+      throw new Error("Codex banked resets are unavailable on this host.");
+    }
+    try {
+      const result = await this.runtime.invoke(
+        "codex-usage-source",
+        "codex.consume_banked_reset",
+        input,
+      );
+      return CodexBankedResetOutcomeSchema.parse(result);
+    } finally {
+      // A timed-out POST may still have spent the credit. Discard pre-reset reads too.
+      this.usageSources.invalidateSource("codex");
+    }
   }
 
   subscribeProviderRegistrations(listener: () => void): () => void {

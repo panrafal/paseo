@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
+import { CodexBankedResetManagement } from "./banked-resets";
 import { UsageCard } from "./card";
 import type { UsageDisplay } from "./display";
 import { useUsageInSidebar } from "./in-sidebar";
@@ -27,7 +28,14 @@ export function UsageList({
             display={display}
             pinnable={inSidebar}
             refreshable
-          />
+          >
+            {entry.sourceId === "codex" ? (
+              <CodexBankedResetManagement
+                serverId={serverId}
+                resets={entry.report.status === "available" ? entry.report.bankedResets : undefined}
+              />
+            ) : null}
+          </UsageCard>
         </View>
       ))}
     </View>
