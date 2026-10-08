@@ -169,12 +169,18 @@ export function estimateAssistantMessageHeightFromCache({
   }
 
   const imageHeights = parsed.sources.map((source) => {
-    const aspectRatio =
-      getAssistantImageMetadata({ source, ...imageContext })?.aspectRatio ??
-      ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO;
+    const metadata = getAssistantImageMetadata({ source, ...imageContext });
+    if (metadata) {
+      return Math.round(
+        Math.min(contentMaxWidth - ASSISTANT_IMAGE_INSET, metadata.width) / metadata.aspectRatio,
+      );
+    }
+
     return Math.max(
       ASSISTANT_IMAGE_MIN_HEIGHT,
-      Math.round((contentMaxWidth - ASSISTANT_IMAGE_INSET) / aspectRatio),
+      Math.round(
+        (contentMaxWidth - ASSISTANT_IMAGE_INSET) / ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO,
+      ),
     );
   });
 

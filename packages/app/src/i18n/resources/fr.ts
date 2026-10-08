@@ -1953,6 +1953,8 @@ export const fr: TranslationResources = {
       loading: "Chargement du fichier…",
       noPreview: "Aucun aperçu disponible",
       binaryPreviewUnavailable: "Aperçu indisponible pour un fichier binaire",
+      videoPlaybackFailed:
+        "Impossible de lire cette vidéo. Le fichier est peut-être endommagé ou son format n’est pas pris en charge sur cet appareil.",
       tooLargeToDisplay: "Ce fichier est trop volumineux pour être affiché",
       failedToLoad: "Impossible de charger le fichier",
       failedToLoadPreview: "Impossible de charger l’aperçu du fichier",
