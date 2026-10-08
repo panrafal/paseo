@@ -691,6 +691,8 @@ export const fr: TranslationResources = {
         reloadedAgent: "Agent rechargé",
         failedToReloadAgent: "Impossible de recharger l’agent",
         failedToCloseAgent: "Impossible de fermer l’agent",
+        failedToSaveClosePreference:
+          "Impossible d'enregistrer votre préférence de fermeture du terminal",
       },
       confirmations: {
         unsavedTitle: "Modifications non enregistrées",
@@ -705,6 +707,8 @@ export const fr: TranslationResources = {
         archive: "Archiver",
         closeTerminalTitle: "Fermer le terminal ?",
         closeTerminalMessage: "Tout processus en cours dans ce terminal sera arrêté immédiatement.",
+        rememberChoice: "Mémoriser ce choix",
+        closeAndDontAskAgain: "Fermer et ne plus demander",
         archiveRunningAgentTitle: "Archiver l’agent en cours ?",
         archiveRunningAgentMessage:
           "Cet agent est toujours en cours d’exécution. L’archiver arrêtera l’agent et fermera l’onglet.",
@@ -2186,6 +2190,10 @@ export const fr: TranslationResources = {
         label: "Historique du terminal",
         description: "Lignes conservées dans le tampon du terminal intégré",
         accessibilityLabel: "Lignes d’historique du terminal",
+      },
+      confirmTerminalClose: {
+        label: "Confirmer la fermeture des terminaux",
+        description: "Demander avant de fermer un onglet de terminal",
       },
       autoExpandReasoning: {
         label: "Toujours afficher le raisonnement",
