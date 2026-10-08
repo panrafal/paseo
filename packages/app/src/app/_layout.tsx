@@ -710,7 +710,17 @@ function OfferLinkListener() {
         return;
       try {
         const result = await getHostRuntimeStore().importConnectionLink(url, "openProject");
-        if (!cancelled && result.status === "connected") router.replace(buildOpenProjectRoute());
+        if (!cancelled && result.status === "connected") {
+          // The pairing token is spent; keep it out of browser history.
+          if (isWeb && window.location.hash.includes("offer=")) {
+            window.history.replaceState(
+              null,
+              "",
+              `${window.location.pathname}${window.location.search}`,
+            );
+          }
+          router.replace(buildOpenProjectRoute());
+        }
       } catch (error) {
         console.warn("[OfferLinkListener] Pairing link failed", error);
       }
