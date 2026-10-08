@@ -87,6 +87,13 @@ function selectNaturalWidth(
   return loaded && loaded.uri === uri ? loaded.width : null;
 }
 
+function isLoadedForUri(
+  lifecycle: AssistantImageLifecycle,
+  uri: string | null,
+): lifecycle is Extract<AssistantImageLifecycle, { status: "loaded" }> {
+  return lifecycle.status === "loaded" && lifecycle.uri === uri;
+}
+
 export type AssistantImageResult =
   | {
       status: "loading";
@@ -441,10 +448,11 @@ export function useAssistantImage({
   const preview = dataImage ? dataImagePreview : filePreview;
   const previewUri = preview.status === "loaded" ? preview.uri : null;
   const uri = directUri ?? previewUri;
-  const { metadata: cachedMetadata, aspectRatio: cachedAspectRatio } = useMemo(() => {
-    const metadata = getAssistantImageMetadata({ source, workspaceRoot, serverId });
-    return { metadata, aspectRatio: metadata?.aspectRatio ?? null };
-  }, [serverId, source, workspaceRoot]);
+  const cachedMetadata = useMemo(
+    () => getAssistantImageMetadata({ source, workspaceRoot, serverId }),
+    [serverId, source, workspaceRoot],
+  );
+  const cachedAspectRatio = cachedMetadata?.aspectRatio ?? null;
   const [lifecycle, dispatchLifecycle] = useReducer(
     lifecycleReducer,
     uri,
@@ -512,7 +520,7 @@ export function useAssistantImage({
         ? setAssistantImageMetadata({ source, workspaceRoot, serverId }, dimensions)
         : null;
       setLoadedNaturalWidth(toNaturalWidthState(uri, metadata));
-      const aspectRatio = metadata?.aspectRatio ?? cachedAspectRatio;
+      const aspectRatio = metadata?.aspectRatio ?? cachedMetadata?.aspectRatio ?? null;
       if (!aspectRatio) {
         dispatch({
           type: "failed",
@@ -523,7 +531,7 @@ export function useAssistantImage({
       }
       dispatch({ type: "image_loaded", uri, aspectRatio });
     },
-    [cachedAspectRatio, dispatch, serverId, source, t, uri, workspaceRoot],
+    [cachedMetadata, dispatch, serverId, source, t, uri, workspaceRoot],
   );
 
   const acquisitionFailure = getAcquisitionFailure({
@@ -550,7 +558,7 @@ export function useAssistantImage({
       onError: handleImageError,
     };
   }
-  if (lifecycle.status === "loaded" && lifecycle.uri === uri) {
+  if (isLoadedForUri(lifecycle, uri)) {
     return {
       status: "loaded",
       binding: {

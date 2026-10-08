@@ -36,6 +36,16 @@ describe("zoomable viewport geometry", () => {
     ).toEqual({ width: 600, height: 300 });
   });
 
+  it("keeps content at its own size when upscaling is disallowed", () => {
+    expect(fitContentSize({ width: 200, height: 100 }, viewport, { allowUpscale: false })).toEqual({
+      width: 200,
+      height: 100,
+    });
+    expect(fitContentSize({ width: 1600, height: 800 }, viewport, { allowUpscale: false })).toEqual(
+      fittedContent,
+    );
+  });
+
   it("distinguishes backdrop taps from taps on transformed content", () => {
     expect(
       isPointInsideTransformedContent({

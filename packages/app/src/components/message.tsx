@@ -783,7 +783,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   imageFrame: {
     width: "100%",
-    minHeight: 160,
     marginHorizontal: -theme.spacing[1],
   },
   imageSurface: {
@@ -864,10 +863,10 @@ function AssistantMarkdownImage({
   );
   const imageSizeStyle = useMemo<ViewStyle>(() => {
     if (image.status === "failed") return { height: 160 };
-    return {
-      aspectRatio: aspectRatio ?? ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO,
-      maxWidth: naturalWidth ?? undefined,
-    };
+    // Never upscale: a narrow image stays at its own width instead of stretching
+    // to the full message column.
+    const maxWidth = naturalWidth ?? undefined;
+    return { aspectRatio: aspectRatio ?? ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO, maxWidth };
   }, [aspectRatio, image.status, naturalWidth]);
   const surfaceStyle = useMemo<StyleProp<ViewStyle>>(
     () => [assistantMessageStylesheet.imageSurface, imageSizeStyle],
