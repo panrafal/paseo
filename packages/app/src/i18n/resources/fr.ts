@@ -1182,6 +1182,8 @@ export const fr: TranslationResources = {
       heading: "Affichage",
       grouping: {
         label: "Regroupement",
+        currentLabel: "Regroupement actuel : {{current}}",
+        toggleLabel: "Regroupement actuel : {{current}}. Changer de regroupement",
         project: "Projet",
         status: "Statut",
         labels: "Libellés",
@@ -2393,6 +2395,7 @@ export const fr: TranslationResources = {
         jumpToTab: "Aller à l’onglet",
         previousWorkspace: "Espace de travail précédent",
         nextWorkspace: "Espace de travail suivant",
+        cycleSidebarGrouping: "Changer le regroupement",
         previousTab: "Onglet précédent",
         nextTab: "Onglet suivant",
         splitPaneRight: "Diviser le panneau vers la droite",
