@@ -113,6 +113,9 @@ export default {
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
+      entitlements: {
+        "com.apple.developer.usernotifications.time-sensitive": true,
+      },
       infoPlist: {
         NSMicrophoneUsageDescription: "This app needs access to the microphone for voice commands.",
         ITSAppUsesNonExemptEncryption: false,

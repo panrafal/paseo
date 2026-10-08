@@ -1,3 +1,4 @@
+import type { NotifyOptions, NotifyResponse } from "@getpaseo/protocol/notify";
 import { legacyUsageIcon } from "./legacy-usage-icons.js";
 import { subscribeTimeline, type TimelineMessage } from "./timeline-subscription/index.js";
 import { ProviderSnapshotUpdates } from "./provider-snapshots/index.js";
@@ -446,7 +447,7 @@ export interface SendMessageOptions {
 
 export interface AgentAttentionRequiredNotification {
   agentId: string;
-  reason: "finished" | "error" | "permission";
+  reason: "finished" | "error" | "permission" | "notify";
   timestamp: string;
   shouldNotify: boolean;
   notification?: AgentAttentionNotificationPayload;
@@ -6104,6 +6105,13 @@ export class DaemonClient {
       message,
       responseType: "capture_terminal_response",
       options: { skipQueue: true },
+    });
+  }
+
+  async notify(options: NotifyOptions): Promise<NotifyResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "agent.notify.request", ...options },
+      responseType: "agent.notify.response",
     });
   }
 
