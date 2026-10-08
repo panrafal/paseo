@@ -267,10 +267,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const notifyAgentAttention = useCallback(
     (params: {
       agentId: string;
-      reason: "finished" | "error" | "permission";
+      reason: AgentAttentionReason;
       timestamp: string;
       notification?: AgentAttentionNotificationPayload;
     }) => {
+      if (params.reason === "notify") {
+        if (params.notification) void sendOsNotification(params.notification);
+        return;
+      }
       const appState = appStateRef.current;
       const session = useSessionStore.getState().sessions[serverId];
       const attentionFocusedAgentId = session?.focusedAgentId ?? null;

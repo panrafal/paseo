@@ -18,6 +18,8 @@ import {
   createDesktopDaemonTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
 import type { DesktopDaemonTransportTarget } from "@/desktop/daemon/desktop-daemon";
+import { createRelayAuthOptions } from "@/runtime/relay-auth";
+import { relayDeviceLabel } from "@/runtime/relay-device-label";
 
 export interface DaemonProbeClient {
   readonly lastError: string | null;
@@ -90,6 +92,23 @@ function pickBestReason(reason: string | null, lastError: string | null): string
   return "Unable to connect";
 }
 
+function isIncorrectPasswordFailure(input: {
+  config: DaemonClientConfig;
+  reason: string | null;
+  lastError: string | null;
+}): boolean {
+  if (!input.config.password) {
+    return false;
+  }
+  const details = [input.reason, input.lastError].filter(Boolean).join("\n").toLowerCase();
+  return (
+    details.includes("401") ||
+    details.includes("4001") ||
+    details.includes("unauthorized") ||
+    details.includes("code 1006")
+  );
+}
+
 export class DaemonConnectionTestError extends Error {
   reason: string | null;
   lastError: string | null;
@@ -129,6 +148,14 @@ function resolveConnectionCredentials(
   };
 }
 
+function usesDesktopTransport(connection: HostConnection): boolean {
+  return (
+    connection.type === "directSocket" ||
+    connection.type === "directPipe" ||
+    connection.type === "directTcpBridge"
+  );
+}
+
 export async function buildClientConfig(
   connection: HostConnection,
   serverId?: string,
@@ -157,8 +184,7 @@ export async function buildClientConfig(
     ...resolveConnectionCredentials(connection, options),
     ...(options?.capabilities ? { capabilities: options.capabilities } : {}),
     ...(options?.trace ? { trace: options.trace } : {}),
-    ...((connection.type === "directSocket" || connection.type === "directPipe") &&
-    desktopTransportFactory
+    ...(usesDesktopTransport(connection) && desktopTransportFactory
       ? { transportFactory: desktopTransportFactory }
       : {}),
   };
@@ -182,6 +208,16 @@ export async function buildClientConfig(
     });
   }
 
+  if (connection.type === "directTcpBridge") {
+    return {
+      ...base,
+      url: deps.buildDesktopTransportUrl({
+        transportType: "tcp",
+        endpoint: connection.endpoint,
+      }),
+    };
+  }
+
   if (connection.type === "directTcp") {
     return {
       ...base,
@@ -200,7 +236,14 @@ export async function buildClientConfig(
       useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
       serverId,
     }),
-    e2ee: { enabled: true, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+    e2ee: {
+      enabled: true,
+      daemonPublicKeyB64: connection.daemonPublicKeyB64,
+      auth: createRelayAuthOptions({
+        host: { serverId, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+        label: relayDeviceLabel(deps.resolveAppVersion()),
+      }),
+    },
   };
 }
 
@@ -265,9 +308,14 @@ export function connectAndProbe(
           const lastError = normalizeNonEmptyString(client.lastError);
           const authFailureReason =
             getDaemonAuthFailureReason(error) ?? client.authFailureReason ?? null;
-          const message = authFailureReason
-            ? new DaemonAuthenticationError(authFailureReason).message
-            : pickBestReason(reason, lastError);
+          let message: string;
+          if (authFailureReason) {
+            message = new DaemonAuthenticationError(authFailureReason).message;
+          } else if (isIncorrectPasswordFailure({ config, reason, lastError })) {
+            message = "Incorrect password";
+          } else {
+            message = pickBestReason(reason, lastError);
+          }
           void client.close().catch(() => undefined);
           reject(new DaemonConnectionTestError(message, { reason, lastError, authFailureReason }));
         });

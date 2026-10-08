@@ -288,6 +288,7 @@ vi.mock("./worktree-bootstrap.js", async (importOriginal) => {
 });
 
 interface SessionForTestOptions {
+  onNotify?: SessionOptions["onNotify"];
   clientId?: string;
   permissions?: readonly DaemonPermission[];
   agentManager?: { [K in keyof SessionOptions["agentManager"]]?: unknown };
@@ -367,6 +368,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   const messages = options.messages ?? [];
 
   const sessionOptions: SessionOptions = {
+    onNotify: options.onNotify,
     messageReceipts: createMessageReceiptsStub(),
     creationService: createTestCreationService(),
     clientId: options.clientId ?? "test-client",
@@ -443,6 +445,25 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   };
   return new Session(sessionOptions);
 }
+
+test("dispatches notify and returns its correlated result", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const onNotify = vi.fn(async () => ({ requestId: "notify-1", agentId: "agent-1", error: null }));
+  const session = createSessionForTest({ messages, onNotify });
+  const request = {
+    type: "agent.notify.request" as const,
+    requestId: "notify-1",
+    agentId: "agent-1",
+    message: "Review needed",
+    urgent: true,
+  };
+  await session.handleMessage(request);
+  expect(onNotify).toHaveBeenCalledWith(request);
+  expect(messages).toContainEqual({
+    type: "agent.notify.response",
+    payload: { requestId: "notify-1", agentId: "agent-1", error: null },
+  });
+});
 
 test("routes host-scoped agent skills requests through the daemon owner", async () => {
   const messages: SessionOutboundMessage[] = [];
@@ -2060,6 +2081,8 @@ describe("daemon status + pairing RPC", () => {
           url: "",
           qr: null,
           relayEnabled: false,
+          expiresAt: null,
+          expiresInMs: null,
         },
       },
     ]);

@@ -43,6 +43,12 @@ export interface RemoteSshHostConnection {
   daemonPort?: number;
 }
 
+export interface DirectTcpBridgeHostConnection {
+  id: string;
+  type: "directTcpBridge";
+  endpoint: string;
+}
+
 export interface RelayHostConnection {
   id: string;
   type: "relay";
@@ -53,6 +59,7 @@ export interface RelayHostConnection {
 
 export type HostConnection =
   | DirectTcpHostConnection
+  | DirectTcpBridgeHostConnection
   | DirectSocketHostConnection
   | DirectPipeHostConnection
   | RemoteSshHostConnection
@@ -131,20 +138,24 @@ function hostConnectionEquals(left: HostConnection, right: HostConnection): bool
   if (left.type === "directTcp" && right.type === "directTcp") {
     return left.endpoint === right.endpoint && (left.useTls ?? false) === (right.useTls ?? false);
   }
-  if (left.type === "directSocket" && right.type === "directSocket") {
-    return left.path === right.path;
+  if (left.type === "directTcpBridge") {
+    return left.endpoint === (right as DirectTcpBridgeHostConnection).endpoint;
   }
-  if (left.type === "directPipe" && right.type === "directPipe") {
-    return left.path === right.path;
+  if (left.type === "directSocket") {
+    return left.path === (right as DirectSocketHostConnection).path;
   }
-  if (left.type === "remoteSsh" && right.type === "remoteSsh") {
-    return remoteSshConnectionEquals(left, right);
+  if (left.type === "directPipe") {
+    return left.path === (right as DirectPipeHostConnection).path;
   }
-  if (left.type === "relay" && right.type === "relay") {
+  if (left.type === "remoteSsh") {
+    return remoteSshConnectionEquals(left, right as RemoteSshHostConnection);
+  }
+  if (left.type === "relay") {
+    const matchingRight = right as RelayHostConnection;
     return (
-      left.relayEndpoint === right.relayEndpoint &&
-      left.useTls === right.useTls &&
-      left.daemonPublicKeyB64 === right.daemonPublicKeyB64
+      left.relayEndpoint === matchingRight.relayEndpoint &&
+      left.useTls === matchingRight.useTls &&
+      left.daemonPublicKeyB64 === matchingRight.daemonPublicKeyB64
     );
   }
 
@@ -408,6 +419,11 @@ const StoredHostConnectionSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     id: z.string().optional(),
+    type: z.literal("directTcpBridge"),
+    endpoint: z.string(),
+  }),
+  z.strictObject({
+    id: z.string().optional(),
     type: z.literal("directSocket"),
     path: z.string(),
   }),
@@ -456,6 +472,18 @@ function normalizeStoredConnection(connection: StoredHostConnection): HostConnec
         useTls: connection.useTls,
       });
       return { id: parsed.id, type: parsed.type, endpoint: parsed.endpoint, useTls: parsed.useTls };
+    } catch {
+      return null;
+    }
+  }
+  if (connection.type === "directTcpBridge") {
+    try {
+      const endpoint = normalizeHostPort(connection.endpoint);
+      return {
+        id: `bridge:${endpoint}`,
+        type: "directTcpBridge",
+        endpoint,
+      };
     } catch {
       return null;
     }

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
+import type { PluginLifecycle } from "../plugins/lifecycle/index.js";
+import type { PluginSessionOpenRequest } from "@getpaseo/plugin/server";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import {
   AgentManager,
@@ -4191,6 +4193,69 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
       PASEO_AGENT_CWD: workdir,
     },
   });
+});
+
+test("session_open receives create labels before registration and stored labels on resume", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-session-open-labels-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const agentId = "00000000-0000-4000-8000-000000000201";
+  const labels = { "paseo.schedule-id": "sched-1" };
+  const sessionOpens: Array<{
+    labels: Record<string, string>;
+    reason: PluginSessionOpenRequest["reason"];
+    registered: boolean;
+  }> = [];
+  let manager: AgentManager;
+  const pluginLifecycle: PluginLifecycle = {
+    emit() {},
+    async before(name, request) {
+      if (name === "agent.session_open") {
+        sessionOpens.push({
+          labels: request.labels,
+          reason: request.reason,
+          registered: manager.getAgent(request.agentId) !== null,
+        });
+      }
+      return request;
+    },
+  };
+  manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+    pluginLifecycle,
+  });
+  try {
+    const created = await manager.createAgent({ provider: "codex", cwd: workdir }, agentId, {
+      labels,
+      workspaceId: undefined,
+    });
+    expect(created.labels).toEqual({ "paseo.schedule-id": "sched-1" });
+    expect(manager.getAgent(agentId)?.labels).toEqual({ "paseo.schedule-id": "sched-1" });
+    expect(created.persistence?.provider).toBe("codex");
+    await manager.closeAgent(agentId);
+    await manager.resumeAgentFromPersistence(
+      { provider: "codex", sessionId: created.persistence!.sessionId },
+      { cwd: workdir },
+      agentId,
+    );
+    expect(sessionOpens).toEqual([
+      {
+        labels: { "paseo.schedule-id": "sched-1" },
+        reason: "create",
+        registered: false,
+      },
+      {
+        labels: { "paseo.schedule-id": "sched-1" },
+        reason: "resume",
+        registered: false,
+      },
+    ]);
+  } finally {
+    await manager.closeAgent(agentId).catch(() => undefined);
+    await storage.flush();
+    rmSync(workdir, { recursive: true, force: true });
+  }
 });
 
 test("importProviderSession imports the selected session without listing and publishes ready state", async () => {

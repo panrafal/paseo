@@ -93,6 +93,8 @@ import {
   useAssistantLinkPress,
 } from "@/assistant-file-links";
 import { getCompactionMarkerLabel } from "./message-compaction-label";
+import { AssistantVideo } from "@/assistant-video";
+import { assistantVideoMarkdown } from "@/assistant-video/markdown";
 import { useAssistantImage } from "@/assistant-image/use-assistant-image";
 import {
   AttachmentFrame,
@@ -781,7 +783,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   imageFrame: {
     width: "100%",
-    minHeight: 160,
     marginHorizontal: -theme.spacing[1],
   },
   imageSurface: {
@@ -853,6 +854,7 @@ function AssistantMarkdownImage({
   });
   const binding = image.status === "failed" ? null : image.binding;
   const aspectRatio = image.status === "failed" ? null : image.aspectRatio;
+  const naturalWidth = image.status === "failed" ? null : image.naturalWidth;
   const imageUri = binding?.uri ?? "";
   const imageSource = useMemo(() => ({ uri: imageUri }), [imageUri]);
   const frameStyle = useMemo<StyleProp<ViewStyle>>(
@@ -861,8 +863,11 @@ function AssistantMarkdownImage({
   );
   const imageSizeStyle = useMemo<ViewStyle>(() => {
     if (image.status === "failed") return { height: 160 };
-    return { aspectRatio: aspectRatio ?? ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO };
-  }, [aspectRatio, image.status]);
+    // Never upscale: a narrow image stays at its own width instead of stretching
+    // to the full message column.
+    const maxWidth = naturalWidth ?? undefined;
+    return { aspectRatio: aspectRatio ?? ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO, maxWidth };
+  }, [aspectRatio, image.status, naturalWidth]);
   const surfaceStyle = useMemo<StyleProp<ViewStyle>>(
     () => [assistantMessageStylesheet.imageSurface, imageSizeStyle],
     [imageSizeStyle],
@@ -1503,9 +1508,12 @@ export const AssistantMessage = memo(function AssistantMessage({
   phase,
 }: AssistantMessageProps) {
   const { t } = useTranslation();
-  const markdownParser = useMemo(createAssistantMarkdownParser, []);
+  const markdownParser = useMemo(
+    () => createAssistantMarkdownParser().use(assistantVideoMarkdown),
+    [],
+  );
   const streamingMarkdownParser = useMemo(
-    () => createAssistantMarkdownParser({ streaming: true }),
+    () => createAssistantMarkdownParser({ streaming: true }).use(assistantVideoMarkdown),
     [],
   );
   const renderedMessage = useMemo(
@@ -1912,7 +1920,9 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MarkdownParagraphView
           key={node.key}
           paragraphStyle={styles.paragraph}
-          containsImage={markdownNodeContainsType(node, "image")}
+          containsImage={
+            markdownNodeContainsType(node, "image") || markdownNodeContainsType(node, "video")
+          }
         >
           {children}
         </MarkdownParagraphView>
@@ -1925,6 +1935,15 @@ export const AssistantMessage = memo(function AssistantMessage({
         >
           {colorMarkdownLinkChildren(children, styles.link.color)}
         </AssistantMarkdownLink>
+      ),
+      video: (node: ASTNode) => (
+        <AssistantVideo
+          key={node.key}
+          source={String(node.attributes?.src ?? "")}
+          client={client}
+          workspaceRoot={workspaceRoot}
+          serverId={serverId}
+        />
       ),
       image: (
         node: ASTNode,

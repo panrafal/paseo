@@ -62,6 +62,42 @@ async function compileInlineSchema(sourceSchema: string): Promise<GeneratedSchem
 }
 
 describe("WS outbound zod-aot validation", () => {
+  it("accepts notify responses and attention payloads", () => {
+    expect(
+      GeneratedWSOutboundMessageSchema.safeParse({
+        type: "session",
+        message: {
+          type: "agent.notify.response",
+          payload: { requestId: "notify-1", agentId: "agent-1", error: null },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      GeneratedWSOutboundMessageSchema.safeParse({
+        type: "session",
+        message: {
+          type: "agent_attention_required",
+          payload: {
+            agentId: "agent-1",
+            reason: "notify",
+            shouldNotify: true,
+            timestamp: "2026-10-04T12:00:00.000Z",
+            notification: {
+              title: "Bot",
+              body: "Review needed",
+              data: {
+                serverId: "srv-1",
+                workspaceId: "ws-1",
+                agentId: "agent-1",
+                reason: "notify",
+              },
+            },
+          },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("applies defaults inside discriminated-union branches", async () => {
     const schema = await compileInlineSchema(`
 const SourceSchema = z.discriminatedUnion("type", [
