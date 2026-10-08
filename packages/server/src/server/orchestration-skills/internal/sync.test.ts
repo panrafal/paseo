@@ -353,6 +353,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
       onSkillError: (skillName) => errors.push(skillName),
     });
@@ -409,6 +410,7 @@ describe("removeSkill", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
     });
 
     expect((await fs.lstat(path.join(sandbox.agentsDir, "paseo"))).isSymbolicLink()).toBe(true);
