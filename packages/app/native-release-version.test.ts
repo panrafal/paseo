@@ -23,6 +23,18 @@ describe("native release version", () => {
     });
   });
 
+  it("accepts a fork prerelease under the stable app version", () => {
+    expect(getNativeReleaseVersion("0.8.0-panrafal.1")).toEqual({
+      appVersion: "0.8.0",
+      androidVersionCode: 8000,
+      iosBuildNumber: "1",
+    });
+  });
+
+  it("rejects a fork stamp that kept upstream's -beta.N", () => {
+    expect(() => getNativeReleaseVersion("0.8.0-beta.1-panrafal.1")).toThrow("unsupported version");
+  });
+
   it("rejects beta numbers that consume the stable iOS build slot", () => {
     expect(() => getNativeReleaseVersion("0.2.6-beta.999")).toThrow(
       "iOS beta number must be between 1 and 998",
