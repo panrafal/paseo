@@ -110,6 +110,19 @@ For agent-scoped `create_agent` and background `send_agent_prompt`, leave `notif
 
 Don't poll `list_agents` or `get_agent_status` to "check on" a running agent. The notification will tell you.
 
+## Notify the human
+
+Use the CLI to send a notification whose tap opens your agent:
+
+```bash
+paseo notify "The build is ready to review"
+paseo notify "Production checks failed" --title "Maintenance bot" --urgent
+```
+
+`PASEO_AGENT_ID` identifies you; `--agent <id>` overrides it. Use `--urgent` when
+the phone must receive a push even while a desktop client is active. Repeating
+is your responsibility. There is no notify MCP tool.
+
 ## CLI semantics
 
 The CLI and tools use the same ownership semantics even where their syntax differs:
