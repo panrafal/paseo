@@ -1008,6 +1008,7 @@ export const fr: TranslationResources = {
         setUpRemoteHost: "Configurer l'ouverture de cet hôte dans un éditeur",
         setUpToast:
           "Pour ouvrir {{host}} dans un éditeur, renseignez son hôte SSH sous Ouvrir dans l'éditeur.",
+        failedOpenFile: "Impossible d’ouvrir le fichier",
       },
       pr: {
         actions: {
@@ -1583,6 +1584,11 @@ export const fr: TranslationResources = {
     errorTitle: "Une erreur s’est produite",
     errorDescription:
       "Le serveur local n’a pas pu démarrer. Si le problème persiste, signalez-le sur GitHub en joignant les journaux ci-dessous.",
+    status: {
+      connecting: "Connexion au démon Paseo…",
+      loadingWorkspaces: "Chargement de vos espaces de travail…",
+      opening: "Ouverture de ce dossier dans Paseo…",
+    },
     logs: {
       loading: "Chargement des journaux du daemon…",
       unavailable: "Aucun journal du daemon disponible.",

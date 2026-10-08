@@ -48,6 +48,7 @@ import {
 } from "@/workspace-tabs/model";
 import { openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
 import { useSettings } from "@/hooks/use-settings";
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -425,7 +426,7 @@ export function WorkspaceDraftAgentTab({
   );
   const handleOpenWorkspaceAttachment = useCallback(
     (attachment: WorkspaceComposerAttachment) => {
-      if (attachment.kind !== "review") {
+      if (!getWorkspaceSurfaceConfig().showFileExplorer || attachment.kind !== "review") {
         return;
       }
       openWorkspaceChanges({
