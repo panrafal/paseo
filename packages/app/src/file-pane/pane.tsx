@@ -28,6 +28,8 @@ import { useLiveFile } from "./live-file/hook";
 import { useFilePreview } from "./preview-lifecycle/hook";
 import { resolveFilePreviewLifecycle } from "./preview-lifecycle/model";
 import { FilePanelBar } from "./bar";
+import { VideoPreview } from "@/components/video-preview";
+import { resolveVideoMimeType } from "@/attachments/file-types";
 import { FileHtmlPreview } from "./html-preview";
 import { FileMarkdownPreview } from "./markdown-preview";
 import { FileEditorModel, getFileConflictCallout, type FileConflictCallout } from "./editor/model";
@@ -40,8 +42,11 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import type { Theme } from "@/styles/theme";
 import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import type { ViewportFitOptions } from "@/components/zoomable-viewport/geometry";
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+// Show image files at their own size; only oversized images shrink to fit.
+const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -53,7 +58,7 @@ interface FilePreviewBodyProps {
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
-  imagePreviewUri: string | null;
+  mediaPreviewUri: string | null;
 }
 
 type TextExplorerFile = ExplorerFile & { kind: "text" };
@@ -134,7 +139,7 @@ function FilePreviewBody({
   isMobile: _isMobile,
   location,
   navigationRevision,
-  imagePreviewUri,
+  mediaPreviewUri,
 }: FilePreviewBodyProps) {
   const { t } = useTranslation();
   const filePath = location.path;
@@ -162,6 +167,10 @@ function FilePreviewBody({
         <Text style={styles.emptyText}>{t("panels.file.noPreview")}</Text>
       </View>
     );
+  }
+
+  if (resolveVideoMimeType({ mimeType: preview.mimeType, path: filePath })) {
+    return <VideoPreview key={mediaPreviewUri} uri={mediaPreviewUri} />;
   }
 
   if (preview.kind === "text") {
@@ -199,7 +208,7 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "image") {
-    if (!imagePreviewUri) {
+    if (!mediaPreviewUri) {
       return (
         <View style={styles.centerState}>
           <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
@@ -208,7 +217,9 @@ function FilePreviewBody({
       );
     }
 
-    return <ZoomableImage uri={imagePreviewUri} testID="image-file-preview" />;
+    return (
+      <ZoomableImage uri={mediaPreviewUri} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />
+    );
   }
 
   return (
@@ -278,8 +289,8 @@ export function FilePane({
 
   useEffect(() => setPreviewMode("preview"), [targetKey]);
 
-  const { file: preview, imageAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
-  const imagePreviewUri = useAttachmentPreviewUrl(imageAttachment);
+  const { file: preview, mediaAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
+  const mediaPreviewUri = useAttachmentPreviewUrl(mediaAttachment);
   const isRenderable = isRenderablePreview(preview, location.path);
   const editable = isEditableTextFile({
     preview,
@@ -315,7 +326,7 @@ export function FilePane({
       isMobile={isMobile}
       location={location}
       navigationRevision={navigationRevision}
-      imagePreviewUri={imagePreviewUri}
+      mediaPreviewUri={mediaPreviewUri}
     />
   );
 }
@@ -356,7 +367,7 @@ function FilePanePresentation({
   isMobile,
   location,
   navigationRevision,
-  imagePreviewUri,
+  mediaPreviewUri,
 }: {
   serverId: string;
   client: DaemonClient | null;
@@ -377,7 +388,7 @@ function FilePanePresentation({
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
-  imagePreviewUri: string | null;
+  mediaPreviewUri: string | null;
 }) {
   if (!client && readTarget) {
     return (
@@ -448,7 +459,7 @@ function FilePanePresentation({
         isMobile={isMobile}
         location={location}
         navigationRevision={navigationRevision}
-        imagePreviewUri={imagePreviewUri}
+        mediaPreviewUri={mediaPreviewUri}
       />
     </View>
   );
@@ -621,7 +632,7 @@ function EditableFilePane({
           isMobile={isMobile}
           location={location}
           navigationRevision={navigationRevision}
-          imagePreviewUri={null}
+          mediaPreviewUri={null}
         />
       )}
     </View>

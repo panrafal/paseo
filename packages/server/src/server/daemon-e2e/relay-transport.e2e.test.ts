@@ -9,7 +9,11 @@ import { Buffer } from "node:buffer";
 
 import { generateLocalPairingOffer } from "../pairing-offer.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
-import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
+import {
+  createClientChannel,
+  parseRelayAuthResultFrame,
+  type Transport,
+} from "@getpaseo/relay/e2ee";
 import {
   deriveSharedKey,
   decrypt,
@@ -49,6 +53,7 @@ async function getPairingOfferUrl(args: {
     relayEnabled: args.relayEnabled,
     relayEndpoint: args.relayEndpoint,
     relayPublicEndpoint: args.relayPublicEndpoint,
+    deviceAuth: true,
     appBaseUrl: args.appBaseUrl,
     includeQr: false,
   });
@@ -61,6 +66,7 @@ async function getPairingOfferUrl(args: {
 function decodeOfferFromFragmentUrl(url: string): {
   serverId: string;
   daemonPublicKeyB64: string;
+  pairingToken: string;
 } {
   const marker = "#offer=";
   const idx = url.indexOf(marker);
@@ -70,7 +76,14 @@ function decodeOfferFromFragmentUrl(url: string): {
   const encoded = url.slice(idx + marker.length);
   const json = Buffer.from(encoded, "base64url").toString("utf8");
   const offer = ConnectionOfferSchema.parse(JSON.parse(json));
-  return { serverId: offer.serverId, daemonPublicKeyB64: offer.daemonPublicKeyB64 };
+  if (!offer.pairing) {
+    throw new Error(`offer has no pairing token: ${url}`);
+  }
+  return {
+    serverId: offer.serverId,
+    daemonPublicKeyB64: offer.daemonPublicKeyB64,
+    pairingToken: offer.pairing.token,
+  };
 }
 
 function encodeCiphertext(ciphertext: ArrayBuffer): string {
@@ -252,6 +265,7 @@ async function waitForCapturedLog(
       logger,
       relayEnabled: true,
       relayEndpoint: `127.0.0.1:${relayPort}`,
+      relayDeviceAuth: true,
     });
 
     try {
@@ -262,7 +276,7 @@ async function waitForCapturedLog(
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
         appBaseUrl: daemon.config.appBaseUrl,
       });
-      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
+      const { serverId, daemonPublicKeyB64, pairingToken } = decodeOfferFromFragmentUrl(offerUrl);
 
       const stableClientId = `cid_test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
       const ws = new WebSocket(
@@ -328,6 +342,23 @@ async function waitForCapturedLog(
             const channel = await createClientChannel(transport, daemonPublicKeyB64, {
               onmessage: (data) => {
                 try {
+                  const authResult =
+                    typeof data === "string" ? parseRelayAuthResultFrame(data) : null;
+                  if (authResult) {
+                    if (!authResult.ok) {
+                      settleReject(new Error(`relay auth failed: ${authResult.reason}`));
+                      return;
+                    }
+                    void channelRef?.send(
+                      JSON.stringify({
+                        type: "hello",
+                        clientId: stableClientId,
+                        clientType: "cli",
+                        protocolVersion: 1,
+                      }),
+                    );
+                    return;
+                  }
                   const payload = typeof data === "string" ? JSON.parse(data) : data;
                   const wsMsg = WSOutboundMessageSchema.safeParse(payload);
                   if (
@@ -356,12 +387,7 @@ async function waitForCapturedLog(
             });
             channelRef = channel;
             await channel.send(
-              JSON.stringify({
-                type: "hello",
-                clientId: stableClientId,
-                clientType: "cli",
-                protocolVersion: 1,
-              }),
+              JSON.stringify({ type: "relay_auth", v: 1, method: "token", token: pairingToken }),
             );
           } catch (err) {
             settleReject(err);
@@ -393,6 +419,7 @@ async function waitForCapturedLog(
       logger,
       relayEnabled: true,
       relayEndpoint: `127.0.0.1:${relayPort}`,
+      relayDeviceAuth: true,
     });
 
     try {
@@ -509,6 +536,7 @@ async function waitForCapturedLog(
       logger,
       relayEnabled: true,
       relayEndpoint: `127.0.0.1:${relayPort}`,
+      relayDeviceAuth: true,
     });
 
     try {
@@ -519,7 +547,7 @@ async function waitForCapturedLog(
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
         appBaseUrl: daemon.config.appBaseUrl,
       });
-      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
+      const { serverId, daemonPublicKeyB64, pairingToken } = decodeOfferFromFragmentUrl(offerUrl);
 
       // Previously, the daemon would time out waiting for `hello` and reconnect every ~10s.
       // Wait long enough to catch that regression.
@@ -591,6 +619,24 @@ async function waitForCapturedLog(
             let channelRef: Awaited<ReturnType<typeof createClientChannel>> | null = null;
             const channel = await createClientChannel(transport, daemonPublicKeyB64, {
               onmessage: (data) => {
+                const authResult =
+                  typeof data === "string" ? parseRelayAuthResultFrame(data) : null;
+                if (authResult) {
+                  if (!authResult.ok) {
+                    clearTimeout(timeout);
+                    reject(new Error(`relay auth failed: ${authResult.reason}`));
+                    return;
+                  }
+                  void channelRef?.send(
+                    JSON.stringify({
+                      type: "hello",
+                      clientId: stableClientId,
+                      clientType: "cli",
+                      protocolVersion: 1,
+                    }),
+                  );
+                  return;
+                }
                 const payload = typeof data === "string" ? JSON.parse(data) : data;
                 const wsMsg = WSOutboundMessageSchema.safeParse(payload);
                 if (
@@ -618,12 +664,7 @@ async function waitForCapturedLog(
             });
             channelRef = channel;
             await channel.send(
-              JSON.stringify({
-                type: "hello",
-                clientId: stableClientId,
-                clientType: "cli",
-                protocolVersion: 1,
-              }),
+              JSON.stringify({ type: "relay_auth", v: 1, method: "token", token: pairingToken }),
             );
           } catch (err) {
             clearTimeout(timeout);
@@ -644,7 +685,7 @@ async function waitForCapturedLog(
     }
   }, 90000);
 
-  test("daemon accepts a relay client that pipelines app hello after E2EE hello", async () => {
+  test("daemon closes a relay client that sends app traffic without pairing", async () => {
     process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
@@ -655,6 +696,7 @@ async function waitForCapturedLog(
       logger,
       relayEnabled: true,
       relayEndpoint: `127.0.0.1:${relayPort}`,
+      relayDeviceAuth: true,
     });
 
     try {
@@ -666,6 +708,84 @@ async function waitForCapturedLog(
         appBaseUrl: daemon.config.appBaseUrl,
       });
       const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
+      const clientKeyPair = generateKeyPair();
+      const sharedKey = deriveSharedKey(
+        clientKeyPair.secretKey,
+        importPublicKey(daemonPublicKeyB64),
+      );
+      const ws = new WebSocket(
+        buildRelayWebSocketUrl({
+          endpoint: `127.0.0.1:${relayPort}`,
+          useTls: false,
+          serverId,
+          role: "client",
+        }),
+      );
+
+      let receivedSessionTraffic = false;
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({ type: "e2ee_hello", key: exportPublicKey(clientKeyPair.publicKey) }),
+        );
+        ws.send(
+          encodeCiphertext(
+            encrypt(
+              sharedKey,
+              JSON.stringify({
+                type: "hello",
+                clientId: "cid_relay_unpaired",
+                clientType: "cli",
+                protocolVersion: 1,
+              }),
+            ),
+          ),
+        );
+      });
+      ws.on("message", (data) => {
+        try {
+          const parsed = WSOutboundMessageSchema.safeParse(
+            parseEncryptedJson(sharedKey, data.toString()),
+          );
+          if (parsed.success && parsed.data.type === "session") receivedSessionTraffic = true;
+        } catch {
+          // Plaintext e2ee_ready cannot be decrypted and is irrelevant to this assertion.
+        }
+      });
+
+      const isRejectedLog = (line: string) =>
+        line.includes("relay_auth_rejected_unauthenticated_client");
+      await waitForCapturedLog(lines, isRejectedLog, 20_000);
+      ws.close();
+      expect(receivedSessionTraffic).toBe(false);
+    } finally {
+      await daemon.close();
+      await stopRelay();
+    }
+  }, 90000);
+
+  test("daemon accepts a relay client that pipelines relay auth and app hello after E2EE hello", async () => {
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+
+    const { logger, lines } = createCapturingLogger();
+    await startRelay();
+
+    const daemon = await createTestPaseoDaemon({
+      listen: "127.0.0.1",
+      logger,
+      relayEnabled: true,
+      relayEndpoint: `127.0.0.1:${relayPort}`,
+      relayDeviceAuth: true,
+    });
+
+    try {
+      const offerUrl = await getPairingOfferUrl({
+        paseoHome: daemon.paseoHome,
+        relayEnabled: daemon.config.relayEnabled,
+        relayEndpoint: daemon.config.relayEndpoint,
+        relayPublicEndpoint: daemon.config.relayPublicEndpoint,
+        appBaseUrl: daemon.config.appBaseUrl,
+      });
+      const { serverId, daemonPublicKeyB64, pairingToken } = decodeOfferFromFragmentUrl(offerUrl);
       const clientKeyPair = generateKeyPair();
       const sharedKey = deriveSharedKey(
         clientKeyPair.secretKey,
@@ -709,6 +829,14 @@ async function waitForCapturedLog(
             encodeCiphertext(
               encrypt(
                 sharedKey,
+                JSON.stringify({ type: "relay_auth", v: 1, method: "token", token: pairingToken }),
+              ),
+            ),
+          );
+          ws.send(
+            encodeCiphertext(
+              encrypt(
+                sharedKey,
                 JSON.stringify({
                   type: "hello",
                   clientId: "cid_relay_pipelined_hello",
@@ -737,9 +865,14 @@ async function waitForCapturedLog(
           }
 
           try {
-            const parsed = WSOutboundMessageSchema.parse(
-              parseEncryptedJson(sharedKey, data.toString()),
-            );
+            const payload = parseEncryptedJson(sharedKey, data.toString());
+            const authResult = parseRelayAuthResultFrame(JSON.stringify(payload));
+            if (authResult) {
+              if (!authResult.ok)
+                settleReject(new Error(`relay auth failed: ${authResult.reason}`));
+              return;
+            }
+            const parsed = WSOutboundMessageSchema.parse(payload);
             if (
               parsed.type === "session" &&
               parsed.message.type === "status" &&

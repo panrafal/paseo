@@ -92,9 +92,69 @@ test("session-open hooks reject changes to session identity instead of silently 
         cwd: "/project",
         reason: "resume",
         purpose: "interactive",
+        labels: {},
         env: {},
       },
       paseo,
     ),
   ).rejects.toThrow("agent.session_open hooks can only change env");
+});
+
+test("session-open hooks reject changes to labels instead of silently ignoring them", async () => {
+  const hooks = new PluginHookHandlers(() => {});
+  hooks.before("agent.session_open", ({ request }) => {
+    return { ...request, labels: { "paseo.schedule-id": "other" } };
+  });
+  await expect(
+    hooks.invoke(
+      "operation",
+      "before",
+      "agent.session_open",
+      {
+        agentId: "agent",
+        workspaceId: "workspace",
+        provider: "claude",
+        cwd: "/project",
+        reason: "create",
+        purpose: "interactive",
+        labels: { "paseo.schedule-id": "sched-1" },
+        env: {},
+      },
+      paseo,
+    ),
+  ).rejects.toThrow("agent.session_open hooks can only change env");
+});
+
+test("session-open hooks expose labels and still allow env changes", async () => {
+  const hooks = new PluginHookHandlers(() => {});
+  hooks.before("agent.session_open", ({ request }) => {
+    return { ...request, env: { ...request.env, REGION: "eu" } };
+  });
+  await expect(
+    hooks.invoke(
+      "operation",
+      "before",
+      "agent.session_open",
+      {
+        agentId: "agent",
+        workspaceId: "workspace",
+        provider: "claude",
+        cwd: "/project",
+        reason: "create",
+        purpose: "interactive",
+        labels: { "paseo.schedule-id": "sched-1" },
+        env: { EXISTING: "yes" },
+      },
+      paseo,
+    ),
+  ).resolves.toEqual({
+    agentId: "agent",
+    workspaceId: "workspace",
+    provider: "claude",
+    cwd: "/project",
+    reason: "create",
+    purpose: "interactive",
+    labels: { "paseo.schedule-id": "sched-1" },
+    env: { EXISTING: "yes", REGION: "eu" },
+  });
 });

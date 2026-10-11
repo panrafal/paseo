@@ -692,6 +692,8 @@ export const fr: TranslationResources = {
         reloadedAgent: "Agent rechargé",
         failedToReloadAgent: "Impossible de recharger l’agent",
         failedToCloseAgent: "Impossible de fermer l’agent",
+        failedToSaveClosePreference:
+          "Impossible d'enregistrer votre préférence de fermeture du terminal",
       },
       confirmations: {
         unsavedTitle: "Modifications non enregistrées",
@@ -706,6 +708,8 @@ export const fr: TranslationResources = {
         archive: "Archiver",
         closeTerminalTitle: "Fermer le terminal ?",
         closeTerminalMessage: "Tout processus en cours dans ce terminal sera arrêté immédiatement.",
+        rememberChoice: "Mémoriser ce choix",
+        closeAndDontAskAgain: "Fermer et ne plus demander",
         archiveRunningAgentTitle: "Archiver l’agent en cours ?",
         archiveRunningAgentMessage:
           "Cet agent est toujours en cours d’exécution. L’archiver arrêtera l’agent et fermera l’onglet.",
@@ -793,6 +797,11 @@ export const fr: TranslationResources = {
           pending: "Commit en cours…",
           success: "Commité",
         },
+        commitAndPush: {
+          label: "Valider et pousser",
+          pending: "Validation et poussée...",
+          success: "Validé et poussé",
+        },
         pull: {
           label: "Pull",
           pending: "Pull en cours…",
@@ -864,6 +873,8 @@ export const fr: TranslationResources = {
           pullUpToDate: "Pull indisponible : cette branche est déjà à jour",
           pushNoRemote:
             "Push indisponible : cette branche n’est pas encore liée à un dépôt distant",
+          commitAndPushNoRemote:
+            "Commit et push indisponibles : cette branche n’est pas encore liée à un dépôt distant",
           pushBehind:
             "Push indisponible pour l’instant : des modifications plus récentes doivent d’abord être récupérées",
           pushNothing: "Push indisponible : il n’y a rien de nouveau à pousser",
@@ -910,6 +921,7 @@ export const fr: TranslationResources = {
         },
         toasts: {
           failedCommit: "Impossible de commiter",
+          failedCommitAndPush: "Impossible de commiter et pousser",
           failedPull: "Échec du pull",
           failedPush: "Échec du push",
           failedPullAndPush: "Échec du pull et du push",
@@ -993,6 +1005,11 @@ export const fr: TranslationResources = {
         openIn: "Ouvrir l’espace de travail dans {{target}}",
         openFileIn: "Ouvrir {{fileName}} dans {{target}}",
         failedOpen: "Impossible d’ouvrir l’espace de travail",
+        setUp: "Configurer…",
+        setUpRemoteHost: "Configurer l'ouverture de cet hôte dans un éditeur",
+        setUpToast:
+          "Pour ouvrir {{host}} dans un éditeur, renseignez son hôte SSH sous Ouvrir dans l'éditeur.",
+        failedOpenFile: "Impossible d’ouvrir le fichier",
       },
       pr: {
         actions: {
@@ -1111,6 +1128,8 @@ export const fr: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection:
+      "Certaines étiquettes sélectionnées n’existent plus. Retirez-les pour continuer.",
     title: "Étiquettes",
     unlabelled: "Sans étiquette",
     create: "Créer une étiquette",
@@ -1180,6 +1199,8 @@ export const fr: TranslationResources = {
       heading: "Affichage",
       grouping: {
         label: "Regroupement",
+        currentLabel: "Regroupement actuel : {{current}}",
+        toggleLabel: "Regroupement actuel : {{current}}. Changer de regroupement",
         project: "Projet",
         status: "Statut",
         labels: "Libellés",
@@ -1565,6 +1586,11 @@ export const fr: TranslationResources = {
     errorTitle: "Une erreur s’est produite",
     errorDescription:
       "Le serveur local n’a pas pu démarrer. Si le problème persiste, signalez-le sur GitHub en joignant les journaux ci-dessous.",
+    status: {
+      connecting: "Connexion au démon Paseo…",
+      loadingWorkspaces: "Chargement de vos espaces de travail…",
+      opening: "Ouverture de ce dossier dans Paseo…",
+    },
     logs: {
       loading: "Chargement des journaux du daemon…",
       unavailable: "Aucun journal du daemon disponible.",
@@ -1857,6 +1883,16 @@ export const fr: TranslationResources = {
       unableToPair: "Impossible d’associer l’hôte",
       errorTitle: "Erreur",
     },
+    relayAuth: {
+      pairAgain:
+        "Cet appareil n'est plus associé à l'hôte. Scannez un nouveau code d'association sur l'hôte.",
+      passwordChanged:
+        "Le mot de passe de l'hôte a changé. Scannez un nouveau code d'association sur l'hôte.",
+      linkUsed:
+        "Ce lien d'association a déjà été utilisé ou a expiré. Créez-en un nouveau sur l'hôte.",
+      rateLimited:
+        "Trop de tentatives de connexion échouées. Patientez une minute, puis réessayez.",
+    },
     device: {
       loadingOffer: "Chargement de l’offre d’association…",
       failedToLoadOffer: "Impossible de charger l’offre d’association.",
@@ -1876,6 +1912,10 @@ export const fr: TranslationResources = {
       hint: "Scannez ce code QR avec Paseo sur votre téléphone, ou copiez le lien ci-dessous.",
       securityWarning:
         "Traitez ce lien d’association comme un mot de passe. Toute personne qui le possède peut accéder à ce daemon.",
+      oneTimeWarning:
+        "Ce lien associe un seul appareil et cesse de fonctionner après 5 minutes. Ne le partagez pas.",
+      expiresIn: "Expire dans {{time}}",
+      newLink: "Obtenir un nouveau lien",
       qrUnavailable: "Code QR indisponible.",
       qrAccessibility: "Code QR d’association",
       retry: "Réessayer",
@@ -1949,6 +1989,8 @@ export const fr: TranslationResources = {
       loading: "Chargement du fichier…",
       noPreview: "Aucun aperçu disponible",
       binaryPreviewUnavailable: "Aperçu indisponible pour un fichier binaire",
+      videoPlaybackFailed:
+        "Impossible de lire cette vidéo. Le fichier est peut-être endommagé ou son format n’est pas pris en charge sur cet appareil.",
       tooLargeToDisplay: "Ce fichier est trop volumineux pour être affiché",
       failedToLoad: "Impossible de charger le fichier",
       failedToLoadPreview: "Impossible de charger l’aperçu du fichier",
@@ -2201,6 +2243,10 @@ export const fr: TranslationResources = {
         description: "Lignes conservées dans le tampon du terminal intégré",
         accessibilityLabel: "Lignes d’historique du terminal",
       },
+      confirmTerminalClose: {
+        label: "Confirmer la fermeture des terminaux",
+        description: "Demander avant de fermer un onglet de terminal",
+      },
       autoExpandReasoning: {
         label: "Toujours afficher le raisonnement",
         description: "Afficher par défaut le raisonnement de l’agent entièrement déplié",
@@ -2399,6 +2445,7 @@ export const fr: TranslationResources = {
         jumpToTab: "Aller à l’onglet",
         previousWorkspace: "Espace de travail précédent",
         nextWorkspace: "Espace de travail suivant",
+        cycleSidebarGrouping: "Changer le regroupement",
         previousTab: "Onglet précédent",
         nextTab: "Onglet suivant",
         splitPaneRight: "Diviser le panneau vers la droite",
@@ -2414,6 +2461,8 @@ export const fr: TranslationResources = {
         closePane: "Fermer le panneau",
         newTerminal: "Nouveau terminal",
         searchFiles: "Rechercher des fichiers",
+        historyBack: "Reculer dans l’historique",
+        historyForward: "Avancer dans l’historique",
         toggleCommandCenter: "Afficher/masquer la palette de commandes",
         showKeyboardShortcuts: "Afficher les raccourcis clavier",
         toggleLeftSidebar: "Afficher/masquer la barre latérale gauche",
@@ -2503,6 +2552,22 @@ export const fr: TranslationResources = {
         },
         preview: {
           workspaceName: "my-workspace",
+        },
+      },
+      openInEditor: {
+        title: "Ouvrir dans l'éditeur",
+        info: "Ouvrir dans l'éditeur lance l'éditeur installé sur cet ordinateur. Lorsque le démon tourne sur une autre machine, l'éditeur l'atteint par SSH : VS Code et Cursor via Remote-SSH, Zed via une URL ssh://.",
+        sshHost: {
+          label: "Hôte SSH",
+          hint: "Permet aux éditeurs de cet ordinateur d'ouvrir les fichiers de cet hôte par SSH",
+          notSet: "Non défini",
+          editLabel: "Modifier l'hôte SSH",
+          modalTitle: "Hôte SSH",
+          modalHint:
+            "Généralement un alias de votre ~/.ssh/config, par exemple my-dev-host. Laissez vide pour désactiver.",
+          placeholder: "my-dev-host",
+          save: "Enregistrer",
+          invalid: "Utilisez un seul hôte SSH, sans espaces ni barres obliques.",
         },
       },
       notFound: "Hôte introuvable",
