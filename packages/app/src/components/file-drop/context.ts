@@ -9,8 +9,12 @@ export interface FileDropContextValue {
   suppressed: SharedValue<boolean>;
   /** Whether a consumer is currently registered — no consumer (e.g. archived agent), no backdrop. */
   hasSink: SharedValue<boolean>;
-  /** Register the active sink. Pass a getter so the zone always reads the latest handlers. */
-  registerSink: (getSink: () => FileDropSink | null) => () => void;
+  /**
+   * Register a sink. Pass a getter so the zone always reads the latest handlers, and an
+   * `isActive` probe so a drop goes to the surface the user is looking at rather than to
+   * whichever consumer happened to mount last.
+   */
+  registerSink: (getSink: () => FileDropSink | null, isActive: () => boolean) => () => void;
 }
 
 export const FileDropContext = createContext<FileDropContextValue | null>(null);
