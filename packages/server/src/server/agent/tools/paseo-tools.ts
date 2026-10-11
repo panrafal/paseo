@@ -42,6 +42,7 @@ import {
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
 import { createAgentCommand } from "../create-agent/create.js";
+import { mergeOmittedCreateAgentSettingsFromUniqueProfile } from "../create-agent/profile-settings.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import type { FirstAgentContext } from "../../messages.js";
 import { everyMsToFiveFieldCron } from "@getpaseo/protocol/schedule/cadence";
@@ -1612,7 +1613,14 @@ function createToolCatalog(
       } else {
         notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
       }
-      const selectedProvider = resolveRequiredProviderModel(parsedArgs.provider).provider;
+      const resolvedProviderModel = resolveRequiredProviderModel(parsedArgs.provider);
+      const selectedProvider = resolvedProviderModel.provider;
+      const settings = mergeOmittedCreateAgentSettingsFromUniqueProfile({
+        profiles: daemonConfigStore?.get().agentProfiles ?? [],
+        provider: selectedProvider,
+        model: resolvedProviderModel.model,
+        settings: parsedArgs.settings,
+      });
       const inheritedConfig = resolveInheritedProviderConfig(selectedProvider);
       const { snapshot, initialPromptStarted } = await createAgentCommand(
         {
@@ -1637,15 +1645,15 @@ function createToolCatalog(
           config: inheritedConfig,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,
-          thinking: parsedArgs.settings?.thinkingOptionId,
-          features: parsedArgs.settings?.features,
+          thinking: settings?.thinkingOptionId,
+          features: settings?.features,
           labels: {
             ...parsedArgs.labels,
             ...(callerAgentId && !resolvedArgs.detached && options.serverId
               ? { "paseo.parent-server-id": options.serverId }
               : {}),
           },
-          mode: parsedArgs.settings?.modeId,
+          mode: settings?.modeId,
           promptFailure: "throw",
           notifyOnFinish,
           detached: resolvedArgs.detached,
