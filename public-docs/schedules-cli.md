@@ -62,6 +62,8 @@ paseo schedule create \
   "Review overnight CI failures and summarize anything urgent."
 ```
 
+Add `--workspace-label "Review"` when creating a schedule; repeat the option to select multiple existing labels. `schedule inspect` shows the selection.
+
 ## Heartbeats
 
 Inside a running Paseo agent, create a heartbeat for that same conversation:
@@ -96,6 +98,8 @@ paseo schedule run-once <id>
 paseo schedule update <id> --every 10m --max-runs 6
 paseo schedule delete <id>
 ```
+
+Use `schedule update <id> --workspace-label "Review"` to replace the selection, or `--clear-workspace-labels` to clear it. These options cannot be combined. Omitting both preserves the current selection.
 
 ## Cadence
 

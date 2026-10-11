@@ -64,6 +64,6 @@ export default defineConfig({
     env: {
       PASEO_GIT_MAX_PROCESSES_PER_SECOND: "10000",
     },
-    exclude: [...configDefaults.exclude, "**/.claude/**", "**/.dev/**"],
+    exclude: [...configDefaults.exclude, "**/.claude/**", "**/.dev/**", "**/.vscode-test/**"],
   },
 });

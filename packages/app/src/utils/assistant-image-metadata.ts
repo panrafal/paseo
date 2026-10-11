@@ -20,7 +20,6 @@ const ASSISTANT_IMAGE_PARSE_CACHE_LIMIT = 500;
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*]\((<[^>]+>|[^)\n]+)\)/g;
 export const ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO = 3 / 2;
 const ASSISTANT_IMAGE_INSET = 8;
-const ASSISTANT_IMAGE_MIN_HEIGHT = 160;
 const ASSISTANT_IMAGE_BLOCK_GAP = 24;
 const ASSISTANT_MESSAGE_BASE_HEIGHT = 96;
 const ASSISTANT_MESSAGE_MIN_HEIGHT = 220;
@@ -169,12 +168,17 @@ export function estimateAssistantMessageHeightFromCache({
   }
 
   const imageHeights = parsed.sources.map((source) => {
-    const aspectRatio =
-      getAssistantImageMetadata({ source, ...imageContext })?.aspectRatio ??
-      ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO;
+    const metadata = getAssistantImageMetadata({ source, ...imageContext });
+    if (metadata) {
+      return Math.round(
+        Math.min(contentMaxWidth - ASSISTANT_IMAGE_INSET, metadata.width) / metadata.aspectRatio,
+      );
+    }
     return Math.max(
-      ASSISTANT_IMAGE_MIN_HEIGHT,
-      Math.round((contentMaxWidth - ASSISTANT_IMAGE_INSET) / aspectRatio),
+      160,
+      Math.round(
+        (contentMaxWidth - ASSISTANT_IMAGE_INSET) / ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO,
+      ),
     );
   });
 
