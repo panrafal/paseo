@@ -67,3 +67,4 @@ origin/feat/notify-cli
 origin/vscode
 origin/investigate-ios-message-cropping
 origin/fail-on-unapplied-patches
+origin/fix/early-navigator-polyfill
