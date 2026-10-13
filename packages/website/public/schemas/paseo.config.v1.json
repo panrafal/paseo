@@ -194,6 +194,10 @@
             "enabled": {
               "type": "boolean"
             },
+            "deviceAuth": {
+              "description": "Require relay clients to pair with a one-time link and present a device credential.",
+              "type": "boolean"
+            },
             "endpoint": {
               "type": "string"
             },

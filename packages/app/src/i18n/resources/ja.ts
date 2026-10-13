@@ -695,6 +695,7 @@ export const ja: TranslationResources = {
         reloadedAgent: "エージェントを再読み込みしました",
         failedToReloadAgent: "エージェントの再読み込みに失敗しました",
         failedToCloseAgent: "エージェントを閉じられませんでした",
+        failedToSaveClosePreference: "ターミナルを閉じる設定を保存できませんでした",
       },
       confirmations: {
         unsavedTitle: "未保存の変更",
@@ -707,6 +708,8 @@ export const ja: TranslationResources = {
         archive: "アーカイブ",
         closeTerminalTitle: "ターミナルを閉じますか？",
         closeTerminalMessage: "このターミナルで実行中のプロセスはすぐに停止されます。",
+        rememberChoice: "この選択を記憶する",
+        closeAndDontAskAgain: "閉じて今後確認しない",
         archiveRunningAgentTitle: "実行中のエージェントをアーカイブしますか？",
         archiveRunningAgentMessage:
           "このエージェントはまだ実行中です。アーカイブするとエージェントが停止してタブが閉じられます。",
@@ -792,6 +795,11 @@ export const ja: TranslationResources = {
           pending: "コミット中...",
           success: "コミットしました",
         },
+        commitAndPush: {
+          label: "コミットしてプッシュ",
+          pending: "コミットしてプッシュ中...",
+          success: "コミットしてプッシュしました",
+        },
         pull: {
           label: "プル",
           pending: "プル中...",
@@ -862,6 +870,8 @@ export const ja: TranslationResources = {
           pullUpToDate: "このブランチはすでに最新のため、プルは利用できません",
           pushNoRemote:
             "このブランチはまだリモートに接続されていないため、プッシュはここでは利用できません",
+          commitAndPushNoRemote:
+            "このブランチはまだリモートに接続されていないため、コミットしてプッシュは利用できません",
           pushBehind: "取り込む必要がある新しい変更があるため、まだプッシュは利用できません",
           pushNothing: "プッシュする変更がないため、プッシュは利用できません",
           pullAndPushNoRemote:
@@ -901,6 +911,7 @@ export const ja: TranslationResources = {
         },
         toasts: {
           failedCommit: "コミットに失敗しました",
+          failedCommitAndPush: "コミットとプッシュに失敗しました",
           failedPull: "プルに失敗しました",
           failedPush: "プッシュに失敗しました",
           failedPullAndPush: "プル＆プッシュに失敗しました",
@@ -984,6 +995,11 @@ export const ja: TranslationResources = {
         openIn: "{{target}}でワークスペースを開く",
         openFileIn: "{{target}}で{{fileName}}を開く",
         failedOpen: "ワークスペースを開けませんでした",
+        failedOpenFile: "ファイルを開けませんでした",
+        setUp: "設定…",
+        setUpRemoteHost: "このホストをエディタで開く設定",
+        setUpToast:
+          "{{host}} をエディタで開くには、「エディタで開く」で SSH ホストを設定してください。",
       },
       pr: {
         actions: {
@@ -1102,6 +1118,7 @@ export const ja: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "選択したラベルの一部は存在しません。削除して続行してください。",
     title: "ラベル",
     unlabelled: "ラベルなし",
     create: "ラベルを作成",
@@ -1168,6 +1185,8 @@ export const ja: TranslationResources = {
       heading: "表示",
       grouping: {
         label: "グループ化",
+        currentLabel: "現在のグループ化: {{current}}",
+        toggleLabel: "現在のグループ化: {{current}}。グループ化を切り替え",
         project: "プロジェクト",
         status: "ステータス",
         labels: "ラベル",
@@ -1544,6 +1563,11 @@ export const ja: TranslationResources = {
     errorTitle: "問題が発生しました",
     errorDescription:
       "ローカルサーバーの起動に失敗しました。この問題が続く場合は、以下のログを添えてGitHubでIssueを作成してください。",
+    status: {
+      connecting: "Paseoデーモンに接続中…",
+      loadingWorkspaces: "ワークスペースを読み込み中…",
+      opening: "このフォルダをPaseoで開いています…",
+    },
     logs: {
       loading: "デーモンログを読み込み中...",
       unavailable: "利用可能なデーモンログがありません。",
@@ -1833,6 +1857,15 @@ export const ja: TranslationResources = {
       unableToPair: "ホストをペアリングできません",
       errorTitle: "エラー",
     },
+    relayAuth: {
+      pairAgain:
+        "このデバイスはホストとのペアリングが解除されています。ホストで新しいペアリングコードをスキャンしてください。",
+      passwordChanged:
+        "ホストのパスワードが変更されました。ホストで新しいペアリングコードをスキャンしてください。",
+      linkUsed:
+        "このペアリングリンクは使用済みか期限切れです。ホストで新しいリンクを作成してください。",
+      rateLimited: "サインインの失敗が多すぎます。1 分待ってから再試行してください。",
+    },
     device: {
       loadingOffer: "ペアリングオファーを読み込み中...",
       failedToLoadOffer: "ペアリングオファーの読み込みに失敗しました。",
@@ -1853,6 +1886,10 @@ export const ja: TranslationResources = {
       hint: "スマートフォンのPaseoでこのQRコードをスキャンするか、以下のリンクをコピーしてください。",
       securityWarning:
         "このペアリングリンクはパスワードと同様に扱ってください。リンクを知っている人は誰でもこのデーモンにアクセスできます。",
+      oneTimeWarning:
+        "このリンクでペアリングできるデバイスは 1 台だけで、5 分後に無効になります。共有しないでください。",
+      expiresIn: "残り {{time}} で期限切れ",
+      newLink: "新しいリンクを取得",
       qrUnavailable: "QRコードが利用できません。",
       qrAccessibility: "ペアリング QR コード",
       retry: "再試行",
@@ -1926,6 +1963,8 @@ export const ja: TranslationResources = {
       loading: "ファイルを読み込み中...",
       noPreview: "プレビューが利用できません",
       binaryPreviewUnavailable: "バイナリプレビューが利用できません",
+      videoPlaybackFailed:
+        "この動画を再生できません。ファイルが破損しているか、このデバイスで対応していない形式の可能性があります。",
       tooLargeToDisplay: "このファイルは大きすぎて表示できません",
       failedToLoad: "ファイルの読み込みに失敗しました",
       failedToLoadPreview: "ファイルプレビューの読み込みに失敗しました",
@@ -2175,6 +2214,10 @@ export const ja: TranslationResources = {
         description: "組み込みターミナルバッファに保持する行数",
         accessibilityLabel: "ターミナルスクロールバック行数",
       },
+      confirmTerminalClose: {
+        label: "ターミナルを閉じる前に確認",
+        description: "ターミナルのタブを閉じる前に確認します",
+      },
       autoExpandReasoning: {
         label: "常に思考プロセスを展開",
         description: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
@@ -2369,6 +2412,7 @@ export const ja: TranslationResources = {
         jumpToTab: "タブにジャンプ",
         previousWorkspace: "前のワークスペース",
         nextWorkspace: "次のワークスペース",
+        cycleSidebarGrouping: "グループ化を切り替え",
         previousTab: "前のタブ",
         nextTab: "次のタブ",
         splitPaneRight: "右にペインを分割",
@@ -2384,6 +2428,8 @@ export const ja: TranslationResources = {
         closePane: "ペインを閉じる",
         newTerminal: "新しいターミナル",
         searchFiles: "ファイルを検索",
+        historyBack: "履歴を戻る",
+        historyForward: "履歴を進む",
         toggleCommandCenter: "コマンドセンターを切り替え",
         showKeyboardShortcuts: "キーボードショートカットを表示",
         toggleLeftSidebar: "左サイドバーを切り替え",
@@ -2473,6 +2519,22 @@ export const ja: TranslationResources = {
         },
         preview: {
           workspaceName: "my-workspace",
+        },
+      },
+      openInEditor: {
+        title: "エディタで開く",
+        info: "「エディタで開く」はこのコンピュータにインストールされたエディタを起動します。デーモンが別のマシンで動作している場合、エディタは SSH 経由で接続します。VS Code と Cursor は Remote-SSH、Zed は ssh:// URL を使います。",
+        sshHost: {
+          label: "SSH ホスト",
+          hint: "このコンピュータのエディタが SSH 経由でこのホストのファイルを開けるようにします",
+          notSet: "未設定",
+          editLabel: "SSH ホストを編集",
+          modalTitle: "SSH ホスト",
+          modalHint:
+            "通常は ~/.ssh/config のエイリアス（例: my-dev-host）です。空欄にすると無効になります。",
+          placeholder: "my-dev-host",
+          save: "保存",
+          invalid: "空白やスラッシュを含まない単一の SSH ホストを入力してください。",
         },
       },
       notFound: "ホストが見つかりません",
