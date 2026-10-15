@@ -5,7 +5,7 @@ import type { CommandOptions, ListResult, OutputSchema, CommandError } from "../
 import { collectMultiple } from "../../utils/command-options.js";
 import { isSameOrDescendantPath } from "../../utils/paths.js";
 
-type FetchAgentsOptions = NonNullable<
+export type FetchAgentsOptions = NonNullable<
   Parameters<Awaited<ReturnType<typeof connectToDaemon>>["fetchAgents"]>[0]
 >;
 
@@ -34,6 +34,38 @@ export interface AgentListItem {
   status: string;
   cwd: string;
   created: string;
+  /** Rendered in JSON and YAML output only; the table stays scannable without it. */
+  labels: Record<string, string>;
+}
+
+export type AgentListSource = Pick<
+  AgentSnapshotPayload,
+  | "id"
+  | "title"
+  | "provider"
+  | "model"
+  | "runtimeInfo"
+  | "effectiveThinkingOptionId"
+  | "status"
+  | "cwd"
+  | "createdAt"
+  | "archivedAt"
+  | "labels"
+>;
+
+interface AgentListFetchResult {
+  entries: Array<{ agent: AgentListSource }>;
+  pageInfo: { nextCursor: string | null };
+}
+
+/** The slice of the daemon client used by the listing command. */
+export interface AgentLsClient {
+  fetchAgents(options?: FetchAgentsOptions): Promise<AgentListFetchResult>;
+  close(): Promise<void>;
+}
+
+export interface AgentLsDeps {
+  connectToDaemon(options: Parameters<typeof connectToDaemon>[0]): Promise<AgentLsClient>;
 }
 
 /** Helper to get relative time string */
@@ -89,7 +121,7 @@ export const agentLsSchema: OutputSchema<AgentListItem> = {
 };
 
 /** Transform agent snapshot to AgentListItem */
-function toListItem(agent: AgentSnapshotPayload): AgentListItem {
+function toListItem(agent: AgentListSource): AgentListItem {
   const model = normalizeModelId(agent.runtimeInfo?.model) ?? normalizeModelId(agent.model);
   return {
     id: agent.id,
@@ -100,6 +132,7 @@ function toListItem(agent: AgentSnapshotPayload): AgentListItem {
     status: agent.status,
     cwd: shortenPath(agent.cwd),
     created: relativeTime(agent.createdAt),
+    labels: { ...agent.labels },
   };
 }
 
@@ -165,14 +198,6 @@ export function buildAgentLsFetchOptions(
   return fetchOptions;
 }
 
-interface AgentLsClient {
-  fetchAgents(options?: FetchAgentsOptions): Promise<{
-    entries: { agent: AgentSnapshotPayload }[];
-    pageInfo: { nextCursor: string | null };
-  }>;
-  close(): Promise<void>;
-}
-
 /**
  * Agent ls command semantics:
  * - `paseo agent ls`    → active non-archived agents
@@ -187,11 +212,16 @@ export async function runLsCommand(
   return listAgents(options);
 }
 
+export async function runLsCommandWithDeps(
+  options: AgentLsOptions,
+  deps: AgentLsDeps,
+): Promise<AgentLsResult> {
+  return listAgents(options, deps.connectToDaemon);
+}
+
 export async function listAgents(
   options: AgentLsOptions,
-  connect: (
-    options: Parameters<typeof connectToDaemon>[0],
-  ) => Promise<AgentLsClient> = connectToDaemon,
+  connect: (options: Parameters<typeof connectToDaemon>[0]) => Promise<AgentLsClient> = connectToDaemon,
 ): Promise<AgentLsResult> {
   const client = await connect({ target: options.daemonTarget });
 
@@ -207,7 +237,7 @@ export async function listAgents(
 
     const labelFilters = parseLabelFilters(options.label);
     const fetchOptions = buildAgentLsFetchOptions(options);
-    let agents: AgentSnapshotPayload[] = [];
+    let agents: AgentListSource[] = [];
     let cursor: string | undefined;
     // createdAt never changes, so agents cannot move past the cursor while the pages are read.
     do {

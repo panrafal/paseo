@@ -96,6 +96,7 @@ interface TerminalPaneProps {
   isPaneFocused: boolean;
   onOpenFileExplorer: () => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
+  onOpenUrlInBrowserTab?: (url: string) => void;
 }
 
 const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
@@ -232,6 +233,7 @@ export function TerminalPane({
   isPaneFocused,
   onOpenFileExplorer,
   onOpenWorkspaceFile,
+  onOpenUrlInBrowserTab,
 }: TerminalPaneProps) {
   const { t } = useTranslation();
   const retainedPanelActive = useRetainedPanelActive();
@@ -1094,6 +1096,7 @@ export function TerminalPane({
             onSelectionChange={handleSelectionChange}
             onResolveLocalFileLink={handleResolveLocalFileLink}
             onOpenLocalFileLink={handleOpenLocalFileLink}
+            onOpenUrlInApp={onOpenUrlInBrowserTab}
             onPendingModifiersConsumed={handlePendingModifiersConsumed}
             pendingModifiers={modifiers}
             focusRequestToken={focusRequestToken}

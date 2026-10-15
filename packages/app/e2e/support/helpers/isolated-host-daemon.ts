@@ -157,6 +157,9 @@ export async function startIsolatedHostDaemon(
       cwd: serverDir,
       env: withDisabledE2ESpeechEnv({
         ...process.env,
+        // Keep skill sync out of the developer's agent homes; a spec that sets
+        // HOME gets its skills there.
+        PASEO_SKILLS_HOME: options.environment?.HOME ?? path.join(paseoHome, "skills-home"),
         ...options.environment,
         PASEO_HOME: paseoHome,
         PASEO_SERVER_ID: serverId,

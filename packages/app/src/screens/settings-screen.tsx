@@ -77,6 +77,7 @@ import { AddHostModal } from "@/components/add-host-modal";
 import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
+import { nativeHistoryShortcutsAvailable } from "@/native/history-shortcuts";
 import { EditorSection } from "@/screens/settings/editor-section";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -188,7 +189,7 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     id: "shortcuts",
     labelKey: "settings.sections.shortcuts",
     icon: Keyboard,
-    desktopOnly: true,
+    desktopOnly: !nativeHistoryShortcutsAvailable,
     Content: KeyboardShortcutsSection,
   },
   {
