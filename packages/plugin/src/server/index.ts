@@ -4,6 +4,9 @@ export type {
   UsageWindow,
   UsageBalance,
   UsageDetail,
+  CodexBankedReset,
+  CodexBankedResets,
+  CodexBankedResetOutcome,
 } from "./usage.js";
 export type {
   PluginHandlerContext,
