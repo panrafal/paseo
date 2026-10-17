@@ -495,6 +495,7 @@ function WorkspaceHeaderTitleBar({
             subtitle={subtitle}
             isSubtitleDistinct={isSubtitleDistinct}
             serverId={normalizedServerId}
+            branchName={currentBranchName}
           />
         </View>
       )}
@@ -3431,6 +3432,7 @@ function WorkspaceScreenContent({
           subtitle={workspaceHeaderSubtitle}
           isSubtitleDistinct={isWorkspaceHeaderSubtitleDistinct}
           serverId={normalizedServerId}
+          branchName={currentBranchName}
           onToggleExplorer={handleToggleExplorerSidebar}
           explorerToggleLabel={explorerSidebarToggleLabel}
           explorerToggleAccessibilityState={explorerSidebarToggleAccessibilityState}
