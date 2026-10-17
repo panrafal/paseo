@@ -1195,6 +1195,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         client={client}
         workspaceRoot={workspaceRoot}
         serverId={serverId}
+        preventImageUpscaling
       />
       {revealedMessage.length >= renderedMessage.text.length
         ? videoSources.map((source) => (
