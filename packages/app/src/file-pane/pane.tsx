@@ -30,6 +30,8 @@ import type { LiveFileModel } from "./live-file/model";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import type { Theme } from "@/styles/theme";
+import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import type { ViewportFitOptions } from "@/components/zoomable-viewport/geometry";
 
 // CodeMirror and native source rendering consume appearance as props. Subscribe at the
 // rendering leaf so theme updates reconfigure it without replacing the editor/model.
@@ -51,6 +53,8 @@ const ThemedFileEditorView = withUnistyles(FileEditorView, sourceAppearance);
 const ThemedFileSourceView = withUnistyles(FileSourceView, sourceAppearance);
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+// Show image files at their own size; only oversized images shrink to fit.
+const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -181,6 +185,20 @@ function FilePreviewBody({
     );
   }
 
+  if (preview.kind === "image") {
+    if (!imagePreviewUri) {
+      return (
+        <View style={styles.centerState}>
+          <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
+          <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <ZoomableImage uri={imagePreviewUri} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />
+    );
+  }
   return (
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
