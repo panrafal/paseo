@@ -49,6 +49,17 @@ describe("resolveNotificationTarget", () => {
 });
 
 describe("buildNotificationRoute", () => {
+  it("opens the sending agent for notify pushes, including subagents", () => {
+    expect(
+      buildNotificationRoute({
+        serverId: "srv-1",
+        workspaceId: "ws-main",
+        agentId: "child-agent",
+        reason: "notify",
+      }),
+    ).toBe("/h/srv-1/workspace/ws-main?open=agent%3Achild-agent");
+  });
+
   it("routes to the agent path when workspace id is present", () => {
     expect(
       buildNotificationRoute({

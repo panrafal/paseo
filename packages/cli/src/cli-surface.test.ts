@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { createCli } from "./cli.js";
 
 describe("canonical CLI surface", () => {
+  it("offers notify with agent selection, urgency, JSON and daemon selection", () => {
+    const notify = createCli().commands.find((command) => command.name() === "notify");
+    const help = notify?.helpInformation();
+    expect(help).toContain("<message>");
+    expect(help).toContain("--agent <id>");
+    expect(help).toContain("--title <title>");
+    expect(help).toContain("--urgent");
+    expect(help).toContain("--json");
+    expect(help).toContain("--host <host>");
+  });
+
   it("offers daemon host selection as a global option", () => {
     expect(createCli().helpInformation()).toContain("--host <host>");
   });
