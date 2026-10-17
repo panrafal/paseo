@@ -808,6 +808,11 @@ export const fr: TranslationResources = {
           pending: "Commit en cours…",
           success: "Commité",
         },
+        commitAndPush: {
+          label: "Valider et pousser",
+          pending: "Validation et poussée...",
+          success: "Validé et poussé",
+        },
         pull: {
           label: "Pull",
           pending: "Pull en cours…",
@@ -879,6 +884,8 @@ export const fr: TranslationResources = {
           pullUpToDate: "Pull indisponible : cette branche est déjà à jour",
           pushNoRemote:
             "Push indisponible : cette branche n’est pas encore liée à un dépôt distant",
+          commitAndPushNoRemote:
+            "Commit et push indisponibles : cette branche n’est pas encore liée à un dépôt distant",
           pushBehind:
             "Push indisponible pour l’instant : des modifications plus récentes doivent d’abord être récupérées",
           pushNothing: "Push indisponible : il n’y a rien de nouveau à pousser",
@@ -925,6 +932,7 @@ export const fr: TranslationResources = {
         },
         toasts: {
           failedCommit: "Impossible de commiter",
+          failedCommitAndPush: "Impossible de commiter et pousser",
           failedPull: "Échec du pull",
           failedPush: "Échec du push",
           failedPullAndPush: "Échec du pull et du push",
