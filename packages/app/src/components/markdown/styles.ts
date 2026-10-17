@@ -11,7 +11,8 @@ export function createMarkdownStyles(
     compact = false,
     muted = false,
     blockGap,
-  }: { compact?: boolean; muted?: boolean; blockGap: number },
+    preventImageUpscaling = false,
+  }: { compact?: boolean; muted?: boolean; blockGap: number; preventImageUpscaling?: boolean },
 ): { markdownStyle: MarkdownStyle; selectionColor: string; containerStyle?: typeof WEB_CONTAINER } {
   const fontSize = compact ? theme.fontSize.base : theme.fontSize.content;
   // Every block is followed by the same gap; the library drops it after the last block.
@@ -101,7 +102,12 @@ export function createMarkdownStyles(
         borderColor: theme.colors.foregroundMuted,
       },
       inlineImage: { size: paragraph.lineHeight },
-      image: { ...block, height: 320, resizeMode: "contain", borderRadius: 8 },
+      image: {
+        ...block,
+        height: 320,
+        resizeMode: preventImageUpscaling ? "center" : "contain",
+        borderRadius: 8,
+      },
       thematicBreak: { ...block, color: theme.colors.border, height: 1 },
     },
   };
