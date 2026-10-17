@@ -269,7 +269,14 @@ describe("DaemonSession", () => {
     expect(emitted).toEqual([
       {
         type: "daemon.get_pairing_offer.response",
-        payload: { requestId: "p-1", url: "", qr: null, relayEnabled: false },
+        payload: {
+          requestId: "p-1",
+          url: "",
+          qr: null,
+          relayEnabled: false,
+          expiresAt: null,
+          expiresInMs: null,
+        },
       },
     ]);
   });
