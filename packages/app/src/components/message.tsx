@@ -1260,6 +1260,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         client={client}
         workspaceRoot={workspaceRoot}
         serverId={serverId}
+        preventImageUpscaling
       />
       {fullMessageByteLength !== null ? (
         <Text
