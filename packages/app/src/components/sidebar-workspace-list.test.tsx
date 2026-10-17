@@ -83,6 +83,7 @@ function workspace(input: {
   scripts?: WorkspaceDescriptor["scripts"];
 }): WorkspaceDescriptor {
   return {
+    activityAt: null,
     id: input.id,
     projectId: input.projectId,
     projectDisplayName: input.projectDisplayName,
