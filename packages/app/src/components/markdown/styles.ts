@@ -5,6 +5,7 @@ import { isWeb } from "@/constants/platform";
 export function createMarkdownStyles(
   theme: Theme,
   compact = false,
+  preventImageUpscaling = false,
 ): { markdownStyle: MarkdownStyle; selectionColor: string } {
   const fontSize = compact ? theme.fontSize.base : theme.fontSize.content;
   const paragraph = {
@@ -93,7 +94,11 @@ export function createMarkdownStyles(
         borderColor: theme.colors.foregroundMuted,
       },
       inlineImage: { size: paragraph.lineHeight },
-      image: { height: 320, resizeMode: "contain", borderRadius: 8 },
+      image: {
+        height: 320,
+        resizeMode: preventImageUpscaling ? "center" : "contain",
+        borderRadius: 8,
+      },
       thematicBreak: { color: theme.colors.border, height: 1, marginTop: 12, marginBottom: 12 },
     },
   };

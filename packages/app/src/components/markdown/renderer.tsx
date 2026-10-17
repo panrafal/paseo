@@ -23,12 +23,22 @@ const MD4C_FLAGS = { latexMath: false, hardSoftBreaks: true, admonitions: true }
 
 const regularStyle = (theme: Theme) => createMarkdownStyles(theme);
 const compactStyle = (theme: Theme) => createMarkdownStyles(theme, true);
+const regularNoUpscaleStyle = (theme: Theme) => createMarkdownStyles(theme, false, true);
+const compactNoUpscaleStyle = (theme: Theme) => createMarkdownStyles(theme, true, true);
 const WEB_CONTAINER = { userSelect: "text" as const };
+
+function getMarkdownStyle(compact: boolean, preventImageUpscaling: boolean) {
+  if (preventImageUpscaling && compact) return compactNoUpscaleStyle;
+  if (preventImageUpscaling) return regularNoUpscaleStyle;
+  if (compact) return compactStyle;
+  return regularStyle;
+}
 
 export interface MarkdownRendererProps extends MarkdownImageContext {
   text: string;
   compact?: boolean;
   streaming?: boolean;
+  preventImageUpscaling?: boolean;
   onLinkPress?: (url: string) => unknown;
 }
 
@@ -55,6 +65,7 @@ const MarkdownPart = memo(function MarkdownPart({
   continues = false,
   compact = false,
   streaming = false,
+  preventImageUpscaling = false,
   onLinkPress,
   ...imageContext
 }: MarkdownRendererProps & { continues?: boolean }) {
@@ -96,7 +107,7 @@ const MarkdownPart = memo(function MarkdownPart({
             key={`${segment.kind}:${segment.id}`}
             markdown={segment.source}
             containerStyle={isWeb ? WEB_CONTAINER : undefined}
-            uniProps={compact ? compactStyle : regularStyle}
+            uniProps={getMarkdownStyle(compact, preventImageUpscaling)}
             flavor="github"
             selectable
             allowTrailingMargin={continues && segment === segments[segments.length - 1]}
