@@ -144,6 +144,8 @@ interface TerminalEmulatorProps {
     target: TerminalLocalFileLinkTarget,
     disposition: "main" | "side",
   ) => Promise<void> | void;
+  // Cmd/Ctrl-click on a URL opens it here instead of the external browser.
+  onOpenUrlInApp?: (url: string) => void;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
@@ -190,6 +192,7 @@ export default function TerminalEmulator({
   onInputModeChange,
   onResolveLocalFileLink,
   onOpenLocalFileLink,
+  onOpenUrlInApp,
   onRendererReadyChange,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
@@ -220,6 +223,7 @@ export default function TerminalEmulator({
     onInputModeChange,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onOpenUrlInApp,
   });
   mountCallbacksRef.current = {
     onFindRequest,
@@ -231,6 +235,7 @@ export default function TerminalEmulator({
     onInputModeChange,
     onResolveLocalFileLink,
     onOpenLocalFileLink,
+    onOpenUrlInApp,
   };
   const initialSnapshotRef = useRef(initialSnapshot);
   initialSnapshotRef.current = initialSnapshot;
@@ -507,6 +512,7 @@ export default function TerminalEmulator({
         onResolveLocalFileLink,
         onOpenLocalFileLink,
         onOpenExternalUrl: openExternalUrl,
+        onOpenUrlInApp,
       },
     });
   }, [
@@ -515,6 +521,7 @@ export default function TerminalEmulator({
     onInput,
     onInputModeChange,
     onOpenLocalFileLink,
+    onOpenUrlInApp,
     onPendingModifiersConsumed,
     onResolveLocalFileLink,
     onResize,
