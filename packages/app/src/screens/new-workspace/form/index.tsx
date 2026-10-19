@@ -6,6 +6,7 @@ import type { TerminalProfile } from "@getpaseo/protocol/messages";
 import { Combobox, type ComboboxOption, type ComboboxProps } from "@/components/ui/combobox";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { HostPicker } from "@/components/hosts/host-picker";
+import { hostLabelColorStyle } from "@/hosts/host-badge";
 import type { LaunchTarget } from "@/new-workspace-launch/target";
 import type { HostProjectListItem } from "@/projects/host-projects";
 import type { HostProfile } from "@/types/host-connection";
@@ -80,6 +81,10 @@ export interface NewWorkspaceFormProps {
 
 function hostOptionTestID(serverId: string): string {
   return `new-workspace-host-picker-option-${serverId}`;
+}
+
+function selectedHostValueStyle(host: HostProfile | undefined) {
+  return hostLabelColorStyle(host?.appearance.color ?? "none");
 }
 
 function isProjectSelectable(
@@ -171,8 +176,8 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
   const isolationPicker = useIsolationPicker(isolation, isPending);
   const renderRefOption = useRefRenderOption(base.itemById, isPending);
 
-  const selectedHostLabel =
-    host.allHosts.find((h) => h.serverId === host.selectedServerId)?.label ?? "Host";
+  const selectedHost = host.allHosts.find((h) => h.serverId === host.selectedServerId);
+  const selectedHostLabel = selectedHost?.label ?? "Host";
   const selectedProject = project.selectedProject;
   const selectedProjectIconUri = selectedProject
     ? (project.iconDataByProjectViewKey.get(selectedProject.viewKey) ?? null)
@@ -238,6 +243,7 @@ export function useNewWorkspaceForm(props: NewWorkspaceFormProps): ReactElement 
         tooltip={t("newWorkspace.tooltips.host")}
         icon={hostIcon}
         value={selectedHostLabel}
+        valueStyle={selectedHostValueStyle(selectedHost)}
         onPress={host.open}
         disabled={isPending}
         testID="host-picker-trigger"
