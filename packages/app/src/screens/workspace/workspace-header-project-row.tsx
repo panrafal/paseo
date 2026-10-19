@@ -7,11 +7,9 @@ import { useHostBadges } from "@/hosts/use-host-badges";
 /**
  * Which project the workspace belongs to, and which machine it runs on.
  *
- * Compact gets both, on their own line under the workspace name: this header is the only thing on
- * screen that says where the workspace lives, because the sidebar that normally carries the host
- * badge is closed. It still follows the host's own badge setting, so a purely local setup stays
- * quiet. A project name that only repeats the workspace name is dropped on wide, where the two sit
- * side by side, and kept on compact, where the line exists for the host anyway.
+ * The host badge follows the host's display mode on every layout. The sidebar's display preference
+ * does not apply here. A project name that only repeats the workspace name is dropped on wide,
+ * where the two sit side by side, and kept on compact, where the line exists for the host anyway.
  */
 export function WorkspaceHeaderProjectRow({
   subtitle,
@@ -23,13 +21,13 @@ export function WorkspaceHeaderProjectRow({
   serverId: string;
 }) {
   const isCompact = useIsCompactFormFactor();
-  const hostBadge = useHostBadges({ enabled: isCompact }).get(serverId) ?? null;
+  const hostBadge = useHostBadges({ enabled: true }).get(serverId) ?? null;
   const showProject = isSubtitleDistinct || isCompact;
   if (!showProject && !hostBadge) {
     return null;
   }
   return (
-    <View style={styles.row}>
+    <View style={styles.row} testID="workspace-header-project-row">
       {showProject ? (
         <Text testID="workspace-header-subtitle" style={styles.project} numberOfLines={1}>
           {subtitle}
