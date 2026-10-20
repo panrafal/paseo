@@ -2045,6 +2045,7 @@ export const ru: TranslationResources = {
           markdown: "Markdown",
           html: "HTML",
           image: "Изображение",
+          video: "Видео",
           source: "Исходный текст",
         },
       },
@@ -2052,6 +2053,8 @@ export const ru: TranslationResources = {
       loading: "Загрузка файла...",
       noPreview: "Предварительный просмотр недоступен",
       binaryPreviewUnavailable: "Предварительный просмотр двоичного файла недоступен.",
+      videoPlaybackFailed:
+        "Не удалось воспроизвести видео. Возможно, файл повреждён или его формат не поддерживается на этом устройстве.",
       tooLargeToDisplay: "Этот файл слишком велик для отображения",
       documentUnsupported: "Файлы {{type}} нельзя показать на этом устройстве",
       failedToLoad: "Не удалось загрузить файл",
