@@ -732,3 +732,52 @@ describe("uninstallSkills", () => {
     expect(await installedIn(sandbox.targets, "paseo-chat")).toEqual([false, false, false, false]);
   });
 });
+
+describe("symlinked skill directories", () => {
+  let sandbox: Sandbox;
+
+  beforeEach(async () => {
+    sandbox = await makeSandbox();
+  });
+
+  afterEach(async () => {
+    await fs.rm(sandbox.root, { recursive: true, force: true });
+  });
+
+  it("treats them as the user's own and never writes into their target", async () => {
+    await writeCurrentBundle(sandbox.targets.sourceDir);
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo-loop", { "SKILL.md": "loop-v1" });
+    const outside = path.join(sandbox.root, "custom-skills", "paseo");
+    await writeFiles(outside, { "SKILL.md": "custom paseo" });
+    for (const dir of [sandbox.targets.agentsDir, sandbox.targets.claudeDir]) {
+      await fs.symlink(outside, path.join(dir, "paseo"));
+    }
+
+    const status = await autoUpdateInstalledSkills(sandbox.targets, ALL_SKILLS);
+
+    expect(status.state).toBe("up-to-date");
+    expect(status.ops).toEqual([]);
+    expect(await fs.readdir(outside)).toEqual(["SKILL.md"]);
+    expect(await fs.readFile(path.join(outside, "SKILL.md"), "utf-8")).toBe("custom paseo");
+    await expect(fs.access(path.join(sandbox.targets.codexDir, "paseo"))).rejects.toThrow();
+    expect(await getSkillsStatus(sandbox.targets, ALL_SKILLS)).toMatchObject({
+      state: "up-to-date",
+      ops: [],
+    });
+  });
+
+  it("keeps them on uninstall", async () => {
+    await writeCurrentBundle(sandbox.targets.sourceDir);
+    const outside = path.join(sandbox.root, "custom-skills", "paseo");
+    await writeFiles(outside, { "SKILL.md": "custom paseo" });
+    await fs.mkdir(sandbox.targets.agentsDir, { recursive: true });
+    await fs.symlink(outside, path.join(sandbox.targets.agentsDir, "paseo"));
+
+    await uninstallSkills(sandbox.targets, ALL_SKILLS);
+
+    expect((await fs.lstat(path.join(sandbox.targets.agentsDir, "paseo"))).isSymbolicLink()).toBe(
+      true,
+    );
+    expect(await fs.readFile(path.join(outside, "SKILL.md"), "utf-8")).toBe("custom paseo");
+  });
+});
