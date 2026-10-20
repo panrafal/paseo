@@ -192,7 +192,7 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "image") {
-    if (!imagePreviewUri) {
+    if (!mediaPreviewUri) {
       return (
         <View style={styles.centerState}>
           <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
@@ -202,7 +202,7 @@ function FilePreviewBody({
     }
 
     return (
-      <ZoomableImage uri={imagePreviewUri} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />
+      <ZoomableImage uri={mediaPreviewUri} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />
     );
   }
   return (
