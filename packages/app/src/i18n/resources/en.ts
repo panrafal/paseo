@@ -1977,6 +1977,7 @@ export const en = {
           markdown: "Markdown",
           html: "HTML",
           image: "Image",
+          video: "Video",
           source: "Source",
         },
       },
@@ -1984,6 +1985,8 @@ export const en = {
       loading: "Loading file...",
       noPreview: "No preview available",
       binaryPreviewUnavailable: "Binary preview unavailable",
+      videoPlaybackFailed:
+        "Unable to play this video. The file may be damaged or its format may not be supported on this device.",
       tooLargeToDisplay: "This file is too large to display",
       documentUnsupported: "{{type}} files can't be shown on this device",
       failedToLoad: "Failed to load file",

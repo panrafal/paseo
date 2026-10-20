@@ -1985,6 +1985,7 @@ export const ptBR: TranslationResources = {
           markdown: "Markdown",
           html: "HTML",
           image: "Imagem",
+          video: "Vídeo",
           source: "Fonte",
         },
       },
@@ -1992,6 +1993,8 @@ export const ptBR: TranslationResources = {
       loading: "Carregando arquivo...",
       noPreview: "Nenhuma prévia disponível",
       binaryPreviewUnavailable: "Prévia binária indisponível",
+      videoPlaybackFailed:
+        "Não foi possível reproduzir este vídeo. O arquivo pode estar danificado ou o formato não ser compatível com este dispositivo.",
       tooLargeToDisplay: "Este arquivo é grande demais para exibir",
       documentUnsupported: "Arquivos {{type}} não podem ser exibidos neste dispositivo",
       failedToLoad: "Falha ao carregar arquivo",
