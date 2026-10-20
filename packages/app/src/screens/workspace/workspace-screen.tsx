@@ -110,7 +110,7 @@ import {
   type WorkspaceTab,
   type WorkspaceTabTarget,
 } from "@/workspace-tabs/model";
-import { useSettings } from "@/hooks/use-settings";
+import { persistAppSettings, useSettings } from "@/hooks/use-settings";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { buildWorkspaceKeyboardHandlerId } from "@/keyboard/handler-id";
 import type {
@@ -135,7 +135,8 @@ import {
 } from "@/stores/workspace-setup-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { confirmDialog, confirmDialogWithRemember } from "@/utils/confirm-dialog";
+import { rememberTerminalCloseChoice } from "@/screens/workspace/terminals/remember-close-choice";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useWorkspaceArchiveUndoRunning } from "@/workspace/archive-undo";
 import { useStableEvent } from "@/hooks/use-stable-event";
@@ -1383,6 +1384,7 @@ function WorkspaceScreenContent({
   );
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
   const pullRequestOpenLocation = useSettings((settings) => settings.pullRequestOpenLocation);
+  const confirmTerminalClose = useSettings((settings) => settings.confirmTerminalClose);
   const selectWorkspaceTabInPane = useWorkspaceLayoutStore((state) => state.selectTabInPane);
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const sheets = useWorkspaceLayoutStore((state) =>
@@ -1958,15 +1960,30 @@ function WorkspaceScreenContent({
     async (input: { tabId: string; terminalId: string }) => {
       const { tabId, terminalId } = input;
       await closeTab(tabId, async () => {
-        const confirmed = await confirmDialog({
-          title: t("workspace.tabs.confirmations.closeTerminalTitle"),
-          message: t("workspace.tabs.confirmations.closeTerminalMessage"),
-          confirmLabel: t("workspace.tabs.confirmations.close"),
-          cancelLabel: t("workspace.tabs.confirmations.cancel"),
-          destructive: true,
-        });
-        if (!confirmed) {
-          return;
+        if (confirmTerminalClose) {
+          const { confirmed, remember } = await confirmDialogWithRemember({
+            title: t("workspace.tabs.confirmations.closeTerminalTitle"),
+            message: t("workspace.tabs.confirmations.closeTerminalMessage"),
+            confirmLabel: t("workspace.tabs.confirmations.close"),
+            cancelLabel: t("workspace.tabs.confirmations.cancel"),
+            rememberLabel: t("workspace.tabs.confirmations.rememberChoice"),
+            rememberConfirmLabel: t("workspace.tabs.confirmations.closeAndDontAskAgain"),
+            destructive: true,
+          });
+          if (!confirmed) {
+            return;
+          }
+          if (remember) {
+            await rememberTerminalCloseChoice({
+              persist: () => persistAppSettings({ confirmTerminalClose: false }),
+              onFailure: (error) => {
+                console.error("[WorkspaceScreen] Failed to save terminal close preference", {
+                  error,
+                });
+                toast.error(t("workspace.tabs.toasts.failedToSaveClosePreference"));
+              },
+            });
+          }
         }
 
         removeTerminalFromCache(terminalId);
@@ -1984,11 +2001,13 @@ function WorkspaceScreenContent({
     [
       closeTab,
       closeWorkspaceTabWithCleanup,
+      confirmTerminalClose,
       invalidateTerminals,
       killTerminalAsync,
       persistenceKey,
       removeTerminalFromCache,
       t,
+      toast,
     ],
   );
 
