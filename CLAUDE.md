@@ -13,6 +13,7 @@ This is an npm workspace monorepo:
 - `packages/cli` — Docker-style CLI (`paseo run/ls/logs/wait`)
 - `packages/relay` — E2E encrypted relay for remote access
 - `packages/desktop` — Electron desktop wrapper
+- `packages/vscode` — VS Code extension and webview bridge
 - `packages/website` — Marketing site (paseo.sh)
 
 ## Docs
@@ -43,6 +44,8 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/plugins.md](docs/plugins.md)                                   | Local plugin manifest, directory source config, RPCs, native surfaces, and attachment sources                                  |
 | [docs/service-proxy.md](docs/service-proxy.md)                       | Service proxy: exposing workspace scripts at public URLs, DNS setup, reverse proxy config                                      |
 | [docs/development.md](docs/development.md)                           | Dev server, build sync gotchas, CLI reference, agent state, Playwright MCP                                                     |
+| [docs/vscode-extension.md](docs/vscode-extension.md)                 | VS Code extension install, daemon discovery, bridge security, limitations, and debugging                                       |
+| [docs/vscode-ci.md](docs/vscode-ci.md)                               | VS Code extension CI, smoke tests, bridge round-trip, and CDP tests                                                            |
 | [docs/rpc-namespacing.md](docs/rpc-namespacing.md)                   | WebSocket RPC naming convention — dotted namespaces and `.request`/`.response` pairs                                           |
 | [docs/protocol-compatibility.md](docs/protocol-compatibility.md)     | Why app/daemon versions drift, protocol vs feature contract, capability gating, COMPAT tagging                                 |
 | [docs/protocol-validation.md](docs/protocol-validation.md)           | zod-aot generated inbound WebSocket validation, patched compiler regressions, schema-purity rules                              |
