@@ -21,6 +21,8 @@ import { useLiveFile } from "./live-file/hook";
 import { useFilePreview } from "./preview-lifecycle/hook";
 import { resolveFilePreviewLifecycle } from "./preview-lifecycle/model";
 import { FilePanelBar } from "./bar";
+import { VideoPreview } from "@/components/video-preview";
+import { resolveVideoMimeType } from "@/attachments/file-types";
 import { FileEditorModel, getFileConflictCallout, type FileConflictCallout } from "./editor/model";
 import { createFileObservationSource } from "./editor/observation-source";
 import { FileEditorView } from "./editor/view";
@@ -30,6 +32,8 @@ import type { LiveFileModel } from "./live-file/model";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import type { Theme } from "@/styles/theme";
+import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import type { ViewportFitOptions } from "@/components/zoomable-viewport/geometry";
 
 // CodeMirror and native source rendering consume appearance as props. Subscribe at the
 // rendering leaf so theme updates reconfigure it without replacing the editor/model.
@@ -51,6 +55,8 @@ const ThemedFileEditorView = withUnistyles(FileEditorView, sourceAppearance);
 const ThemedFileSourceView = withUnistyles(FileSourceView, sourceAppearance);
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+// Show image files at their own size; only oversized images shrink to fit.
+const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -63,7 +69,7 @@ interface FilePreviewBodyProps {
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
-  imagePreviewUri: string | null;
+  mediaPreviewUri: string | null;
   workspaceRoot: string;
   client: DaemonClient | null;
   serverId: string;
@@ -131,7 +137,7 @@ function FilePreviewBody({
   isMobile: _isMobile,
   location,
   navigationRevision,
-  imagePreviewUri,
+  mediaPreviewUri,
   workspaceRoot,
   client,
   serverId,
@@ -156,6 +162,10 @@ function FilePreviewBody({
     );
   }
 
+  if (resolveVideoMimeType({ mimeType: preview.mimeType, path: filePath })) {
+    return <VideoPreview key={mediaPreviewUri} uri={mediaPreviewUri} />;
+  }
+
   const showSource = preview.kind === "text" && (Boolean(location.lineStart) || mode === "source");
   if (panel && !showSource) {
     return (
@@ -166,7 +176,7 @@ function FilePreviewBody({
         workspaceRoot={workspaceRoot}
         client={client}
         serverId={serverId}
-        imagePreviewUri={imagePreviewUri}
+        imagePreviewUri={mediaPreviewUri}
       />
     );
   }
@@ -181,6 +191,20 @@ function FilePreviewBody({
     );
   }
 
+  if (preview.kind === "image") {
+    if (!mediaPreviewUri) {
+      return (
+        <View style={styles.centerState}>
+          <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
+          <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <ZoomableImage uri={mediaPreviewUri} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />
+    );
+  }
   return (
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
@@ -249,8 +273,8 @@ export function FilePane({
 
   useEffect(() => setPreviewMode("preview"), [targetKey]);
 
-  const { file: preview, imageAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
-  const imagePreviewUri = useAttachmentPreviewUrl(imageAttachment);
+  const { file: preview, mediaAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
+  const mediaPreviewUri = useAttachmentPreviewUrl(mediaAttachment);
   const panel = resolveFilePreviewPanel({
     preview,
     path: location.path,
@@ -293,7 +317,7 @@ export function FilePane({
       isMobile={isMobile}
       location={location}
       navigationRevision={navigationRevision}
-      imagePreviewUri={imagePreviewUri}
+      mediaPreviewUri={mediaPreviewUri}
     />
   );
 }
@@ -332,7 +356,7 @@ function FilePanePresentation({
   isMobile,
   location,
   navigationRevision,
-  imagePreviewUri,
+  mediaPreviewUri,
 }: {
   panel: FilePanel | null;
   serverId: string;
@@ -355,7 +379,7 @@ function FilePanePresentation({
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
-  imagePreviewUri: string | null;
+  mediaPreviewUri: string | null;
 }) {
   if (!client && readTarget) {
     return (
@@ -430,7 +454,7 @@ function FilePanePresentation({
         isMobile={isMobile}
         location={location}
         navigationRevision={navigationRevision}
-        imagePreviewUri={imagePreviewUri}
+        mediaPreviewUri={mediaPreviewUri}
         workspaceRoot={workspaceRoot}
         client={client}
         serverId={serverId}
@@ -584,7 +608,7 @@ function EditableFilePane({
           isMobile={isMobile}
           location={location}
           navigationRevision={navigationRevision}
-          imagePreviewUri={null}
+          mediaPreviewUri={null}
           workspaceRoot={workspaceRoot}
           client={client}
           serverId={serverId}

@@ -150,6 +150,7 @@ import {
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
+import { ScheduleStore } from "./schedule/store.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { createOrchestrationSkills } from "./orchestration-skills/index.js";
@@ -172,6 +173,8 @@ import { createConfiguredTerminalManager } from "../terminal/terminal-manager-fa
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
+import { createRelayPasswordBinding, RelayAuthenticator } from "./relay-auth/authenticator.js";
+import { RelayDeviceStore } from "./relay-auth/store.js";
 import type { PushNotificationSender } from "./push/index.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
@@ -204,6 +207,7 @@ import {
 import { terminateWithTreeKill } from "../utils/tree-kill.js";
 import { withTimeout } from "../utils/promise-timeout.js";
 import { isHostnameAllowed, type HostnamesConfig } from "./hostnames.js";
+import { isOriginAllowed } from "./origins.js";
 import {
   createRequireBearerMiddleware,
   isAgentMcpRequestAuthorized,
@@ -427,6 +431,7 @@ export interface PaseoDaemonConfig {
   relayPublicEndpoint?: string;
   relayUseTls?: boolean;
   relayPublicUseTls?: boolean;
+  relayDeviceAuth?: boolean;
   serviceProxy?: {
     publicBaseUrl: string | null;
     standaloneListen: string | null;
@@ -758,7 +763,7 @@ export async function createPaseoDaemon(
 
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && (allowedOrigins.has("*") || allowedOrigins.has(origin))) {
+    if (origin && isOriginAllowed(origin, allowedOrigins)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -892,7 +897,10 @@ export async function createPaseoDaemon(
     path.join(config.paseoHome, "projects", "workspaces.json"),
     logger,
   );
+  const scheduleStore = new ScheduleStore(path.join(config.paseoHome, "schedules"), logger);
   const workspaceLabelService = createWorkspaceLabelService({
+    scheduleStore,
+    logger,
     paseoHome: config.paseoHome,
     workspaceRegistry,
   });
@@ -1361,7 +1369,7 @@ export async function createPaseoDaemon(
     );
   };
   const scheduleService = new ScheduleService({
-    paseoHome: config.paseoHome,
+    store: scheduleStore,
     logger,
     agentManager,
     agentStorage,
@@ -1369,6 +1377,7 @@ export async function createPaseoDaemon(
     createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    workspaceLabels: workspaceLabelService,
   });
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
@@ -1735,6 +1744,7 @@ export async function createPaseoDaemon(
                   return appBaseUrl;
                 },
                 desktopManaged: config.desktopManaged === true,
+                relayDeviceAuth: config.relayDeviceAuth === true,
                 getRelayConfig: () =>
                   relayRuntime?.getConfig() ?? {
                     enabled: daemonConfigStore.get().relay?.enabled ?? relayEnabled,
@@ -1771,6 +1781,17 @@ export async function createPaseoDaemon(
               },
               serverId,
               daemonKeyPair: daemonKeyPair.keyPair,
+              // COMPAT(relayDeviceAuth): remove the unauthenticated branch after 2027-03-14.
+              authenticator: config.relayDeviceAuth
+                ? new RelayAuthenticator({
+                    store: new RelayDeviceStore({ paseoHome: config.paseoHome, logger }),
+                    password: createRelayPasswordBinding({
+                      hash: config.auth?.password,
+                      environmentPassword: process.env.PASEO_PASSWORD,
+                      salt: daemonKeyPair.publicKeyB64,
+                    }),
+                  })
+                : null,
             });
             daemonConfigStore.onFieldChange("relay.enabled", (value) => {
               relayRuntime?.setEnabled(value === true);

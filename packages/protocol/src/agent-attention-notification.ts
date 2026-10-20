@@ -1,6 +1,6 @@
 const NOTIFICATION_PREVIEW_LIMIT = 220;
 
-export type AgentAttentionReason = "finished" | "error" | "permission";
+export type AgentAttentionReason = "finished" | "error" | "permission" | "notify";
 
 export interface AgentAttentionNotificationData {
   [key: string]: unknown;
@@ -42,7 +42,10 @@ export type AssistantTimelineItem =
 
 const normalizeNotificationText = (text: string): string => text.replace(/\s+/g, " ").trim();
 
-const truncateNotificationText = (text: string, limit: number): string => {
+export const truncateNotificationText = (
+  text: string,
+  limit = NOTIFICATION_PREVIEW_LIMIT,
+): string => {
   if (text.length <= limit) {
     return text;
   }

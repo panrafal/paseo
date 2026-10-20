@@ -31,12 +31,14 @@ export async function createConnectionOfferV2(args: {
   serverId: string;
   daemonPublicKeyB64: string;
   relay: { endpoint: string; useTls?: boolean };
+  pairing: { token: string; expiresAt: string } | null;
 }): Promise<ConnectionOffer> {
   return ConnectionOfferV2Schema.parse({
     v: 2,
     serverId: args.serverId,
     daemonPublicKeyB64: args.daemonPublicKeyB64,
     relay: args.relay,
+    ...(args.pairing ? { pairing: args.pairing } : {}),
   });
 }
 

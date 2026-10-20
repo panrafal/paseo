@@ -23,15 +23,31 @@ const ThemedMarkdown = withUnistyles(EnrichedMarkdownText);
 const MD4C_FLAGS = { latexMath: false, hardSoftBreaks: true, admonitions: true };
 
 // Reading the breakpoint here makes Unistyles restyle the text when the layout crosses it.
-const markdownStyle = (compact: boolean) => (theme: Theme, rt: { breakpoint?: string }) =>
-  createMarkdownStyles(theme, { compact, blockGap: resolveDensity(rt, density.blockGap) });
+const markdownStyle =
+  (compact: boolean, preventImageUpscaling = false) =>
+  (theme: Theme, rt: { breakpoint?: string }) =>
+    createMarkdownStyles(theme, {
+      compact,
+      blockGap: resolveDensity(rt, density.blockGap),
+      preventImageUpscaling,
+    });
 const regularStyle = markdownStyle(false);
 const compactStyle = markdownStyle(true);
+const regularNoUpscaleStyle = markdownStyle(false, true);
+const compactNoUpscaleStyle = markdownStyle(true, true);
+
+function getMarkdownStyle(compact: boolean, preventImageUpscaling: boolean) {
+  if (preventImageUpscaling && compact) return compactNoUpscaleStyle;
+  if (preventImageUpscaling) return regularNoUpscaleStyle;
+  if (compact) return compactStyle;
+  return regularStyle;
+}
 
 export interface MarkdownRendererProps extends MarkdownImageContext {
   text: string;
   compact?: boolean;
   streaming?: boolean;
+  preventImageUpscaling?: boolean;
   onLinkPress?: (url: string) => unknown;
 }
 
@@ -57,6 +73,7 @@ const MarkdownPart = memo(function MarkdownPart({
   text,
   compact = false,
   streaming = false,
+  preventImageUpscaling = false,
   onLinkPress,
   ...imageContext
 }: MarkdownRendererProps) {
@@ -98,7 +115,7 @@ const MarkdownPart = memo(function MarkdownPart({
             <ThemedMarkdown
               key={`${segment.kind}:${segment.id}`}
               markdown={segment.source}
-              uniProps={compact ? compactStyle : regularStyle}
+              uniProps={getMarkdownStyle(compact, preventImageUpscaling)}
               flavor="github"
               selectable
               md4cFlags={MD4C_FLAGS}
