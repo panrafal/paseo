@@ -3,6 +3,8 @@ import { useCallback, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import type { ViewportFitOptions } from "@/components/zoomable-viewport/geometry";
+import { VideoPreview } from "@/components/video-preview";
 import { useSessionStore } from "@/stores/session-store";
 import { FileHtmlPreview } from "./html-preview";
 import { FilePanelLoading } from "./loading";
@@ -58,11 +60,20 @@ function HtmlPreview({ text }: TextFilePreviewProps) {
   );
 }
 
+const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
+
 function ImagePanel({ file }: PluginFilePanelProps) {
   const url = useFileUrl(file);
   if (url.status === "loading") return <FilePanelLoading />;
   if (url.status === "error") return <FilePanelError message={url.error.message} />;
-  return <ZoomableImage uri={url.url} testID="image-file-preview" />;
+  return <ZoomableImage uri={url.url} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />;
+}
+
+function VideoPanel({ file }: PluginFilePanelProps) {
+  const url = useFileUrl(file);
+  if (url.status === "loading") return <FilePanelLoading />;
+  if (url.status === "error") return <FilePanelError message={url.error.message} />;
+  return <VideoPreview uri={url.url} />;
 }
 
 function FilePanelError({ message }: { message: string }) {
@@ -77,6 +88,7 @@ const components = {
   "builtin:markdown": MarkdownPanel,
   "builtin:html": HtmlPanel,
   "builtin:image": ImagePanel,
+  "builtin:video": VideoPanel,
   "builtin:source": SourcePanel,
 };
 
