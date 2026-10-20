@@ -44,6 +44,7 @@ function HtmlPanel({ content }: FilePanelPreviewProps) {
 }
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
 
