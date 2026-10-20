@@ -15,6 +15,7 @@ interface CompactWorkspaceHeaderProps {
   title: string;
   subtitle: string;
   isSubtitleDistinct: boolean;
+  branchName: string | null;
   onToggleExplorer: () => void;
   explorerToggleLabel: string;
   explorerToggleAccessibilityState: { expanded: boolean };
@@ -28,6 +29,7 @@ export function CompactWorkspaceHeader({
   title,
   subtitle,
   isSubtitleDistinct,
+  branchName,
   onToggleExplorer,
   explorerToggleLabel,
   explorerToggleAccessibilityState,
@@ -41,9 +43,10 @@ export function CompactWorkspaceHeader({
         subtitle={subtitle}
         isSubtitleDistinct={isSubtitleDistinct}
         serverId={serverId}
+        branchName={branchName}
       />
     ),
-    [subtitle, isSubtitleDistinct, serverId],
+    [subtitle, isSubtitleDistinct, serverId, branchName],
   );
   const actions = (
     <>
