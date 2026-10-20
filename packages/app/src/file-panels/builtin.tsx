@@ -4,6 +4,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import type { ViewportFitOptions } from "@/components/zoomable-viewport/geometry";
 import type { Theme } from "@/styles/theme";
 import { FileHtmlPreview } from "./html-preview";
 import { FileMarkdownPreview } from "./markdown-preview";
@@ -44,6 +45,7 @@ function HtmlPanel({ content }: FilePanelPreviewProps) {
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const IMAGE_PREVIEW_FIT: ViewportFitOptions = { allowUpscale: false };
 
 function ImagePanel({ imagePreviewUri }: FilePanelPreviewProps) {
   const { t } = useTranslation();
@@ -55,7 +57,9 @@ function ImagePanel({ imagePreviewUri }: FilePanelPreviewProps) {
       </View>
     );
   }
-  return <ZoomableImage uri={imagePreviewUri} testID="image-file-preview" />;
+  return (
+    <ZoomableImage uri={imagePreviewUri} fit={IMAGE_PREVIEW_FIT} testID="image-file-preview" />
+  );
 }
 
 const components = {
