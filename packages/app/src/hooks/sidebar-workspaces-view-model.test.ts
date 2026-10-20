@@ -20,6 +20,7 @@ import {
 
 function workspaceWithForge(forge: string | undefined, prUrl: string): WorkspaceDescriptor {
   return {
+    activityAt: null,
     id: "ws-1",
     projectId: "proj",
     projectDisplayName: "repo",
@@ -150,6 +151,7 @@ function workspace(input: {
   statusEnteredAt?: Date | null;
 }): WorkspaceDescriptor {
   return {
+    activityAt: null,
     id: input.id,
     projectId: input.projectId,
     projectDisplayName: input.projectDisplayName,

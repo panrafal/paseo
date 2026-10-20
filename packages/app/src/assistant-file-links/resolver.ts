@@ -209,7 +209,12 @@ export function shouldResolveDirectFileThroughSuggestions(input: {
 
   const normalizedRoot = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   const normalizedPath = input.target.path.replace(/\\/g, "/");
-  return normalizedPath.startsWith(`${normalizedRoot}/`);
+  if (!normalizedPath.startsWith(`${normalizedRoot}/`)) {
+    return false;
+  }
+
+  const query = getAmbiguousSuggestionQuery(input.target, normalizedRoot);
+  return query.includes("%") || !query.includes("/");
 }
 
 function isAbsoluteInlineCodeToken(token: string): boolean {

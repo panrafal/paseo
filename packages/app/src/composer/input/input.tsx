@@ -142,6 +142,8 @@ export interface MessageInputProps {
   client: DaemonClient | null;
   /** Dictation start gate from host runtime (socket connected + directory ready). */
   isReadyForDictation?: boolean;
+  /** Hides dictation and realtime voice entry points in hosts that provide native voice surfaces. */
+  showVoice?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
   autoFocusKey?: string;
@@ -436,6 +438,31 @@ function handleDesktopKeyPressImpl(
   if (ctx.isSubmitDisabled || ctx.isSubmitLoading || ctx.disabled) return;
   event.preventDefault();
   ctx.handleDefaultSendAction();
+}
+
+function isVoiceKeyboardAction(action: MessageInputKeyboardActionKind): boolean {
+  return (
+    action === "dictation-confirm" ||
+    action === "dictation-cancel" ||
+    action === "dictation-toggle" ||
+    action === "voice-toggle" ||
+    action === "voice-mute-toggle"
+  );
+}
+
+function runVisibleMessageInputKeyboardAction(
+  action: MessageInputKeyboardActionKind,
+  showVoice: boolean,
+  actions: Parameters<typeof runMessageInputKeyboardAction>[1],
+): boolean {
+  if (!showVoice && isVoiceKeyboardAction(action)) {
+    return false;
+  }
+  return runMessageInputKeyboardAction(action, actions);
+}
+
+function resolveShowVoice(showVoice: boolean, mode: ReturnType<typeof resolveComposerInputMode>) {
+  return showVoice && mode.showVoice;
 }
 
 function getTextInputNativeElement(current: ComposerTextInputHandle | null): HTMLElement | null {
@@ -740,8 +767,8 @@ function VoiceButtonTooltip({
   voiceMuteToggleKeys: ShortcutChord | null | undefined;
   dictationToggleKeys: ShortcutChord | null | undefined;
 }) {
-  const shortcut = isRealtimeVoiceForCurrentAgent ? voiceMuteToggleKeys : dictationToggleKeys;
   if (!visible) return null;
+  const shortcut = isRealtimeVoiceForCurrentAgent ? voiceMuteToggleKeys : dictationToggleKeys;
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
@@ -1007,6 +1034,70 @@ function computeShouldShowDictationOverlay(
   return isDictating || isDictationProcessing || dictationStatus === "failed";
 }
 
+function computeCanStartVisibleDictation(input: {
+  showVoice: boolean;
+  client: DaemonClient | null;
+  isReadyForDictation: boolean | undefined;
+  disabled: boolean;
+  dictationUnavailableMessage: string | null | undefined;
+}): boolean {
+  if (!input.showVoice) return false;
+  return computeCanStartDictation({
+    client: input.client,
+    isReadyForDictation: input.isReadyForDictation,
+    disabled: input.disabled,
+    dictationUnavailableMessage: input.dictationUnavailableMessage,
+  });
+}
+
+function computeIsVisibleDictationStartEnabled(input: {
+  showVoice: boolean;
+  isReadyForDictation: boolean | undefined;
+  isConnected: boolean;
+  disabled: boolean;
+}): boolean {
+  return (
+    input.showVoice &&
+    computeIsDictationStartEnabled(input.isReadyForDictation, input.isConnected, input.disabled)
+  );
+}
+
+function resolveVisibleVoiceState(input: {
+  showVoice: boolean;
+  voice: { isVoiceModeForAgent: (serverId: string, agentId: string) => boolean } | null | undefined;
+  voiceServerId: string | undefined;
+  voiceAgentId: string | undefined;
+  isDictating: boolean;
+  isDictationProcessing: boolean;
+  dictationStatus: string;
+}): {
+  isRealtimeVoiceForCurrentAgent: boolean;
+  showDictationOverlay: boolean;
+  showRealtimeOverlay: boolean;
+} {
+  if (!input.showVoice) {
+    return {
+      isRealtimeVoiceForCurrentAgent: false,
+      showDictationOverlay: false,
+      showRealtimeOverlay: false,
+    };
+  }
+
+  const isRealtimeVoiceForCurrentAgent = computeIsRealtimeVoiceForAgent(
+    input.voice,
+    input.voiceServerId,
+    input.voiceAgentId,
+  );
+  return {
+    isRealtimeVoiceForCurrentAgent,
+    showDictationOverlay: computeShouldShowDictationOverlay(
+      input.isDictating,
+      input.isDictationProcessing,
+      input.dictationStatus,
+    ),
+    showRealtimeOverlay: isRealtimeVoiceForCurrentAgent,
+  };
+}
 function computeIsDictationStartEnabled(
   isReadyForDictation: boolean | undefined,
   isConnected: boolean,
@@ -1092,6 +1183,7 @@ interface ResolvedMessageInputProps {
   onPasteImages: ((files: readonly NativePastedFile[]) => void) | undefined;
   client: DaemonClient | null;
   isReadyForDictation: boolean | undefined;
+  showVoice: boolean;
   placeholder: string | undefined;
   autoFocus: boolean;
   autoFocusKey: string | undefined;
@@ -1139,6 +1231,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     onPasteImages: props.onPasteImages,
     client: props.client,
     isReadyForDictation: props.isReadyForDictation,
+    showVoice: props.showVoice ?? true,
     placeholder: props.placeholder,
     autoFocus: props.autoFocus ?? false,
     autoFocusKey: props.autoFocusKey,
@@ -1216,6 +1309,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onPasteImages,
       client,
       isReadyForDictation,
+      showVoice: showVoiceProp,
       placeholder,
       autoFocus,
       autoFocusKey,
@@ -1243,6 +1337,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     } = resolveMessageInputProps(props);
     const { isPaneFocused } = useComposerKeyboardScope();
     const mode = resolveComposerInputMode(inputMode);
+    const showVoice = resolveShowVoice(showVoiceProp, mode);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
     const { height: windowHeight } = useWindowDimensions();
@@ -1387,8 +1482,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       getInputSnapshot: () =>
         getComposerInputSnapshot(textInputRef.current, valueRef.current, selectionRef.current),
       replaceText,
-      runKeyboardAction: (action) =>
-        runMessageInputKeyboardAction(action, {
+      runKeyboardAction: (action) => {
+        return runVisibleMessageInputKeyboardAction(action, showVoice, {
           focusInput: () => textInputRef.current?.focus(),
           isDictationRecording: isDictationActive,
           markTranscriptForSend: () => {
@@ -1400,7 +1495,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           toggleRealtimeVoice: handleToggleRealtimeVoiceShortcut,
           isRealtimeVoiceActive: isRealtimeVoiceForCurrentAgent,
           toggleRealtimeVoiceMute: () => voice?.toggleMute(),
-        }),
+        });
+      },
       getNativeElement: () => (isWeb ? getTextInputNativeElement(textInputRef.current) : null),
     }));
     const sendAfterTranscriptRef = useRef(false);
@@ -1474,24 +1570,24 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       mode: "dictation",
     });
 
-    const canStartDictation = useCallback(
-      () =>
-        computeCanStartDictation({
-          client,
-          isReadyForDictation,
-          disabled,
-          dictationUnavailableMessage,
-        }),
-      [client, disabled, dictationUnavailableMessage, isReadyForDictation],
-    );
+    const canStartDictation = useCallback(() => {
+      return computeCanStartVisibleDictation({
+        showVoice,
+        client,
+        isReadyForDictation,
+        disabled,
+        dictationUnavailableMessage,
+      });
+    }, [client, disabled, dictationUnavailableMessage, isReadyForDictation, showVoice]);
 
     const canConfirmDictation = useCallback(() => client?.isConnected ?? false, [client]);
     const isConnected = client?.isConnected ?? false;
-    const isDictationStartEnabled = computeIsDictationStartEnabled(
+    const isDictationStartEnabled = computeIsVisibleDictationStartEnabled({
+      showVoice,
       isReadyForDictation,
       isConnected,
       disabled,
-    );
+    });
 
     const {
       isRecording: isDictating,
@@ -1516,17 +1612,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       enableDuration: true,
     });
 
-    const isRealtimeVoiceForCurrentAgent = computeIsRealtimeVoiceForAgent(
-      voice,
-      voiceServerId,
-      voiceAgentId,
-    );
-    const showDictationOverlay = computeShouldShowDictationOverlay(
-      isDictating,
-      isDictationProcessing,
-      dictationStatus,
-    );
-    const showRealtimeOverlay = isRealtimeVoiceForCurrentAgent;
+    const { isRealtimeVoiceForCurrentAgent, showDictationOverlay, showRealtimeOverlay } =
+      resolveVisibleVoiceState({
+        showVoice,
+        voice,
+        voiceServerId,
+        voiceAgentId,
+        isDictating,
+        isDictationProcessing,
+        dictationStatus,
+      });
     const showOverlay = showDictationOverlay || showRealtimeOverlay;
     const surfacePresentation = resolveComposerSurfacePresentation(showOverlay);
 
@@ -2068,7 +2163,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           <View style={styles.rightButtonGroup}>
             {beforeVoiceContent}
             <VoiceButtonTooltip
-              visible={mode.showVoice}
+              visible={showVoice}
               onVoicePress={handleVoicePress}
               isDictationStartEnabled={isDictationStartEnabled}
               voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
@@ -2094,7 +2189,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         t,
         leftContent,
         beforeVoiceContent,
-        mode.showVoice,
+        showVoice,
         handleVoicePress,
         isDictationStartEnabled,
         voiceButtonAccessibilityLabel,
