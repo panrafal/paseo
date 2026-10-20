@@ -17,6 +17,44 @@ function state(overrides: Partial<ClientPresenceState>): ClientPresenceState {
 }
 
 describe("computeNotificationPlan", () => {
+  it("urgent pushes and selects the latest active client even when another client is focused", () => {
+    expect(
+      computeNotificationPlan({
+        allStates: [
+          state({ focusedAgentId: "agent-1", lastActivityAtMs: 199_000 }),
+          state({ lastActivityAtMs: 199_900 }),
+        ],
+        focusTarget: { kind: "agent", id: "agent-1" },
+        pushEligible: true,
+        forcePush: true,
+        nowMs: 200_000,
+      }),
+    ).toEqual({ inAppRecipientIndex: 1, shouldPush: true });
+  });
+
+  it("urgent pushes with no active clients and no in-app recipient", () => {
+    expect(
+      computeNotificationPlan({
+        allStates: [state({ lastActivityAtMs: 19_999 }), state({ lastActivityAtMs: null })],
+        focusTarget: { kind: "agent", id: "agent-1" },
+        pushEligible: true,
+        forcePush: true,
+        nowMs: 200_000,
+      }),
+    ).toEqual({ inAppRecipientIndex: null, shouldPush: true });
+  });
+
+  it("keeps default notifications in-app at the 180-second presence boundary", () => {
+    expect(
+      computeNotificationPlan({
+        allStates: [state({ lastActivityAtMs: 20_000 })],
+        focusTarget: { kind: "agent", id: "agent-1" },
+        pushEligible: true,
+        nowMs: 200_000,
+      }),
+    ).toEqual({ inAppRecipientIndex: 0, shouldPush: false });
+  });
+
   const nowMs = Date.parse("2026-04-19T12:00:00.000Z");
   const staleAtMs = nowMs - PRESENCE_THRESHOLD_MS - 1;
   const presentAtMs = nowMs - PRESENCE_THRESHOLD_MS + 1;
@@ -229,6 +267,7 @@ describe("isPushEligibleAttentionReason", () => {
   it("allows push for finished and permission but not error", () => {
     expect(isPushEligibleAttentionReason("finished")).toBe(true);
     expect(isPushEligibleAttentionReason("permission")).toBe(true);
+    expect(isPushEligibleAttentionReason("notify")).toBe(true);
     expect(isPushEligibleAttentionReason("error")).toBe(false);
   });
 });
