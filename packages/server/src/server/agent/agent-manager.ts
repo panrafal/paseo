@@ -1308,7 +1308,12 @@ export class AgentManager {
       storedConfig.cwd,
       paseoToolPolicy,
       options?.env,
-      { reason: "create", purpose: "interactive", workspaceId: options.workspaceId ?? null },
+      {
+        reason: "create",
+        purpose: "interactive",
+        workspaceId: options.workspaceId ?? null,
+        labels: options.labels,
+      },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
@@ -1430,6 +1435,7 @@ export class AgentManager {
         reason: "resume",
         purpose,
         workspaceId: options?.workspaceId ?? null,
+        labels: record?.labels ?? options?.labels,
       },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
@@ -1487,7 +1493,12 @@ export class AgentManager {
       storedConfig.cwd,
       paseoToolPolicy,
       undefined,
-      { reason: "import", purpose: "interactive", workspaceId: input.workspaceId },
+      {
+        reason: "import",
+        purpose: "interactive",
+        workspaceId: input.workspaceId,
+        labels: input.labels,
+      },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const imported = await client.importSession(
@@ -1582,7 +1593,12 @@ export class AgentManager {
       storedConfig.cwd,
       paseoToolPolicy,
       undefined,
-      { reason: "refresh", purpose: "interactive", workspaceId: existing.workspaceId },
+      {
+        reason: "refresh",
+        purpose: "interactive",
+        workspaceId: existing.workspaceId,
+        labels: existing.labels,
+      },
     );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     if (
@@ -5344,6 +5360,7 @@ export class AgentManager {
       reason: PluginSessionOpenRequest["reason"];
       purpose: PluginSessionOpenRequest["purpose"];
       workspaceId?: string | null;
+      labels?: Record<string, string>;
     },
   ): Promise<AgentLaunchContext> {
     if (this.pluginLifecycle) {
@@ -5354,6 +5371,7 @@ export class AgentManager {
         workspaceId: opening?.workspaceId ?? null,
         reason: opening?.reason ?? "resume",
         purpose: opening?.purpose ?? "interactive",
+        labels: { ...opening?.labels },
         env: { ...env },
       };
       const transformed = await this.pluginLifecycle.before("agent.session_open", request);
