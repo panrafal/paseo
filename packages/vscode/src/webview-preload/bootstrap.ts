@@ -6,6 +6,13 @@ import { installFileDragGuard } from "./file-drag";
 type EventHandler = (payload: unknown) => void;
 type Unsubscribe = () => void;
 
+interface DesktopEditorTargetDescriptor {
+  id: string;
+  label: string;
+  kind: "editor" | "file-manager";
+  [field: string]: unknown;
+}
+
 interface DesktopDialogAskOptions {
   title?: string;
   okLabel?: string;
@@ -84,9 +91,7 @@ interface DesktopHostBridge {
     openUrl?: (url: string) => Promise<void>;
   };
   editor?: {
-    listTargets?: () => Promise<
-      Array<{ id: string; label: string; kind: "editor" | "file-manager" }>
-    >;
+    listTargets?: () => Promise<DesktopEditorTargetDescriptor[]>;
     openTarget?: (input: DesktopEditorOpenTargetInput) => Promise<void>;
   };
   webUtils?: {
@@ -265,31 +270,23 @@ function parseOpenResult(value: unknown): string | string[] | null {
   throw new Error("Unexpected dialog open response.");
 }
 
-function parseEditorTargets(value: unknown): Array<{
-  id: string;
-  label: string;
-  kind: "editor" | "file-manager";
-}> {
+// Validates the fields the preload relies on and passes each target through whole, so fields the
+// app adds to DesktopEditorTargetDescriptor reach it without a change here.
+function parseEditorTargets(value: unknown): DesktopEditorTargetDescriptor[] {
   if (!Array.isArray(value)) {
     throw new Error("Unexpected editor targets response.");
   }
-  const targets: Array<{ id: string; label: string; kind: "editor" | "file-manager" }> = [];
-  for (const entry of value) {
-    if (!isRecord(entry)) {
+  return value.map((entry: unknown) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== "string" ||
+      typeof entry.label !== "string" ||
+      (entry.kind !== "editor" && entry.kind !== "file-manager")
+    ) {
       throw new Error("Unexpected editor target response.");
     }
-    const id = typeof entry.id === "string" ? entry.id : null;
-    const label = typeof entry.label === "string" ? entry.label : null;
-    let kind: "editor" | "file-manager" | null = null;
-    if (entry.kind === "file-manager" || entry.kind === "editor") {
-      kind = entry.kind;
-    }
-    if (!id || !label || !kind) {
-      throw new Error("Unexpected editor target response.");
-    }
-    targets.push({ id, label, kind });
-  }
-  return targets;
+    return entry as DesktopEditorTargetDescriptor;
+  });
 }
 
 window.addEventListener("message", (event) => {

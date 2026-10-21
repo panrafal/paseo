@@ -11,8 +11,17 @@ export interface OpenUrlInput {
   url: string;
 }
 
+// Mirrors DesktopEditorTargetDescriptor in packages/app/src/desktop/host.ts. The app reads every
+// field without a guard, so a field missing here crashes the webview at runtime.
 export const VSCODE_EDITOR_TARGETS = [
-  { id: "vscode-self", label: "VS Code", kind: "editor" as const },
+  {
+    id: "vscode-self",
+    label: "VS Code",
+    kind: "editor" as const,
+    icon: { kind: "symbol" as const, name: "terminal" as const },
+    // This window opens local paths only; remote-daemon workspaces are not reachable from it.
+    remoteDestinationKinds: [],
+  },
 ];
 
 const ALLOWED_OPEN_URL_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
