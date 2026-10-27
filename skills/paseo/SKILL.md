@@ -131,6 +131,19 @@ When you create or prompt a subagent, `notifyOnFinish` defaults to `true` and re
 Finish your turn and wait for that notification instead of polling.
 If you want an explicit reply with `send_agent_prompt`, have the sender check `list_hosts` for the recipient’s server before setting `notifyOnFinish: false`.
 
+## Notify the human
+
+Use the CLI to send a notification whose tap opens your agent:
+
+```bash
+paseo notify "The build is ready to review"
+paseo notify "Production checks failed" --title "Maintenance bot" --urgent
+```
+
+`PASEO_AGENT_ID` identifies you; `--agent <id>` overrides it. Use `--urgent` when
+the phone must receive a push even while a desktop client is active. Repeating
+is your responsibility. There is no notify MCP tool.
+
 ## CLI semantics
 
 The CLI and tools use the same ownership semantics even where their syntax differs:

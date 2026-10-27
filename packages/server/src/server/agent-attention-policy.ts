@@ -23,6 +23,7 @@ interface ComputeNotificationPlanInput {
   focusTarget: AttentionFocusTarget | null;
   // Whether a push notification is allowed when no client is present.
   pushEligible: boolean;
+  forcePush?: boolean;
   nowMs: number;
 }
 
@@ -43,6 +44,7 @@ export function computeNotificationPlan({
   allStates,
   focusTarget,
   pushEligible,
+  forcePush = false,
   nowMs,
 }: ComputeNotificationPlanInput): NotificationPlan {
   let mostRecentPresentIndex: number | null = null;
@@ -58,7 +60,7 @@ export function computeNotificationPlan({
       continue;
     }
 
-    if (state.appVisible && isFocusedOnTarget(state, focusTarget)) {
+    if (!forcePush && state.appVisible && isFocusedOnTarget(state, focusTarget)) {
       return { inAppRecipientIndex: null, shouldPush: false };
     }
 
@@ -69,10 +71,10 @@ export function computeNotificationPlan({
   }
 
   if (mostRecentPresentIndex !== null) {
-    return { inAppRecipientIndex: mostRecentPresentIndex, shouldPush: false };
+    return { inAppRecipientIndex: mostRecentPresentIndex, shouldPush: forcePush };
   }
 
-  return { inAppRecipientIndex: null, shouldPush: pushEligible };
+  return { inAppRecipientIndex: null, shouldPush: forcePush || pushEligible };
 }
 
 export function isPushEligibleAttentionReason(reason: AgentAttentionReason): boolean {
