@@ -71,6 +71,8 @@ export interface TerminalEmulatorProps {
     target: TerminalLocalFileLinkTarget,
     disposition: "main" | "side",
   ) => Promise<void> | void;
+  // Cmd/Ctrl-click on a URL opens it here instead of the external browser.
+  onOpenUrlInApp?: (url: string) => void;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;

@@ -135,6 +135,8 @@ interface TerminalEmulatorProps {
     target: TerminalLocalFileLinkTarget,
     disposition: "main" | "side",
   ) => Promise<void> | void;
+  // Cmd/Ctrl-click on a URL opens it here instead of the external browser.
+  onOpenUrlInApp?: (url: string) => void;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
   onFilePaste?: (file: Promise<TerminalFile | null>) => void;
   pendingModifiers?: PendingTerminalModifiers;
@@ -172,6 +174,7 @@ export default function TerminalEmulator({
   onInputModeChange,
   onResolveLocalFileLink,
   onOpenLocalFileLink,
+  onOpenUrlInApp,
   onRendererReadyChange,
   onFilePaste,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
@@ -206,6 +209,7 @@ export default function TerminalEmulator({
     onResolveLocalFileLink,
     onOpenLocalFileLink,
     onFilePaste,
+    onOpenUrlInApp,
   });
   mountCallbacksRef.current = {
     onFindRequest,
@@ -218,6 +222,7 @@ export default function TerminalEmulator({
     onResolveLocalFileLink,
     onOpenLocalFileLink,
     onFilePaste,
+    onOpenUrlInApp,
   };
   const pendingModifiersRef = useRef(pendingModifiers);
   pendingModifiersRef.current = pendingModifiers;
@@ -490,6 +495,7 @@ export default function TerminalEmulator({
         onOpenLocalFileLink,
         onFilePaste,
         onOpenExternalUrl: openExternalUrl,
+        onOpenUrlInApp,
       },
     });
   }, [
@@ -499,6 +505,7 @@ export default function TerminalEmulator({
     onInput,
     onInputModeChange,
     onOpenLocalFileLink,
+    onOpenUrlInApp,
     onPendingModifiersConsumed,
     onResolveLocalFileLink,
     onResize,
