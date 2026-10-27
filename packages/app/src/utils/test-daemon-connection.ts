@@ -196,6 +196,10 @@ export async function buildClientConfig(
   if (!serverId) {
     throw new Error("serverId is required to probe a relay connection");
   }
+  const [{ createRelayAuthOptions }, { relayDeviceLabel }] = await Promise.all([
+    import("@/runtime/relay-auth"),
+    import("@/runtime/relay-device-label"),
+  ]);
 
   return {
     ...base,
@@ -208,6 +212,10 @@ export async function buildClientConfig(
       enabled: true,
       daemonPublicKeyB64: connection.daemonPublicKeyB64,
       ...(connection.minimumSecurityMode ? { minimumMode: connection.minimumSecurityMode } : {}),
+      auth: createRelayAuthOptions({
+        host: { serverId, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+        label: relayDeviceLabel(deps.resolveAppVersion()),
+      }),
     },
   };
 }

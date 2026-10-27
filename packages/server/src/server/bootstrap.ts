@@ -185,6 +185,8 @@ import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
 import { admitSecuredRelaySocket } from "./websocket/secure-relay-ingress.js";
+import { createRelayPasswordBinding, RelayAuthenticator } from "./relay-auth/authenticator.js";
+import { RelayDeviceStore } from "./relay-auth/store.js";
 import type { PushNotificationSender } from "./push/index.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
@@ -443,6 +445,7 @@ export interface PaseoDaemonConfig {
   relayPublicEndpoint?: string;
   relayUseTls?: boolean;
   relayPublicUseTls?: boolean;
+  relayDeviceAuth?: boolean;
   serviceProxy?: {
     publicBaseUrl: string | null;
     standaloneListen: string | null;
@@ -1840,6 +1843,7 @@ export async function createPaseoDaemon(
                   return appBaseUrl;
                 },
                 desktopManaged: config.desktopManaged === true,
+                relayDeviceAuth: config.relayDeviceAuth === true,
                 getRelayConfig: () => ({
                   ...(relayRuntime?.getConfig() ?? {
                     enabled: daemonConfigStore.get().relay?.enabled ?? relayEnabled,
@@ -1866,6 +1870,16 @@ export async function createPaseoDaemon(
             await finishSubscriptions.start();
             wsServer.beginAcceptingConnections();
             const relaySecurityLogger = logger.child({ module: "relay-security" });
+            const relayAuthenticator = config.relayDeviceAuth
+              ? new RelayAuthenticator({
+                  store: new RelayDeviceStore({ paseoHome: config.paseoHome, logger }),
+                  password: createRelayPasswordBinding({
+                    hash: config.auth?.password,
+                    environmentPassword: process.env.PASEO_PASSWORD,
+                    salt: daemonKeyPair.publicKeyB64,
+                  }),
+                })
+              : undefined;
             relayRuntime = createRelayRuntime({
               config: {
                 enabled: relayEnabled,
@@ -1883,6 +1897,7 @@ export async function createPaseoDaemon(
                     logger: relaySecurityLogger,
                     requireProtectedMode: () =>
                       daemonConfigStore.get().relay?.requireProtectedSecurity === true,
+                    ...(relayAuthenticator ? { authenticator: relayAuthenticator } : {}),
                   },
                   async (secured) => {
                     if (!wsServer) throw new Error("WebSocket server is not ready");

@@ -34,6 +34,7 @@ async function getPairingOfferUrl(args: {
     relayEnabled: args.relayEnabled,
     relayEndpoint: args.relayEndpoint,
     relayPublicEndpoint: args.relayPublicEndpoint,
+    deviceAuth: false,
     appBaseUrl: args.appBaseUrl,
     includeQr: false,
   });

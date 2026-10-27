@@ -18,6 +18,7 @@ export interface DaemonRuntimeConfig {
   worktreesRoot?: string;
   appBaseUrl?: string;
   desktopManaged?: boolean;
+  relayDeviceAuth?: boolean;
   getRelayConfig(): {
     enabled: boolean;
     endpoint: string;
@@ -226,6 +227,7 @@ export class DaemonSession {
         relayUseTls: relay?.useTls,
         relayPublicUseTls: relay?.publicUseTls,
         relayRequireProtectedSecurity: relay?.requireProtectedSecurity ?? false,
+        deviceAuth: this.daemonRuntimeConfig?.relayDeviceAuth === true,
         appBaseUrl: this.daemonRuntimeConfig?.appBaseUrl,
         includeQr: true,
         logger: this.logger,
@@ -237,6 +239,9 @@ export class DaemonSession {
           url: pairing.url ?? "",
           qr: pairing.qr ?? null,
           relayEnabled: pairing.relayEnabled,
+          expiresAt: pairing.expiresAt,
+          expiresInMs:
+            pairing.expiresAt === null ? null : Date.parse(pairing.expiresAt) - Date.now(),
         },
       });
     } catch (error) {
