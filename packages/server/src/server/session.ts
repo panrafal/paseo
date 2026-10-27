@@ -3,6 +3,7 @@ import type { AgentMessageDelivery } from "./agent/agent-messages/index.js";
 import { AgentDirectory } from "./agent/directory.js";
 import { ConnectedHostSession } from "./connected-hosts/index.js";
 import type { ConnectedHosts } from "./connected-hosts/index.js";
+import type { NotifyHandler } from "./notify.js";
 import { searchTimeline } from "./agent/chat-search/index.js";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { BrowserAutomationHostCapabilitySchema } from "@getpaseo/protocol/browser-automation/capabilities";
@@ -444,6 +445,7 @@ export interface SessionOptions {
   connectedHosts?: ConnectedHosts;
   sourceId?: string;
   routed?: boolean;
+  onNotify?: NotifyHandler;
   browserToolsBroker?: BrowserToolsBroker | null;
   clientId: string;
   permissions: readonly DaemonPermission[];
@@ -827,7 +829,10 @@ export class Session {
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
   private readonly creationService: Pick<CreationService, "create" | "subscribe">;
 
+  private readonly onNotify: NotifyHandler | undefined;
+
   constructor(options: SessionOptions) {
+    this.onNotify = options.onNotify;
     const {
       clientId,
       permissions,
@@ -3208,6 +3213,10 @@ export class Session {
 
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {
     switch (msg.type) {
+      case "agent.notify.request":
+        if (!this.onNotify) throw new Error("Notifications are unavailable");
+        this.emit({ type: "agent.notify.response", payload: await this.onNotify(msg) });
+        return;
       case "list_commands_request":
         await this.handleListCommandsRequest(msg);
         return;
