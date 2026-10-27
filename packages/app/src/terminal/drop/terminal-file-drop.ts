@@ -51,7 +51,7 @@ export function routeTerminalDrop(
   item: DroppedItem,
   input: { hostIsLocal: boolean; bridge: DesktopHostBridge | null },
 ): TerminalDropDelivery {
-  if (item.kind === "desktop-path") {
+  if (item.kind === "desktop-path" || item.kind === "file-uri") {
     return input.hostIsLocal
       ? { kind: "path", path: item.path }
       : { kind: "upload", read: () => readDesktopFile(item.path) };

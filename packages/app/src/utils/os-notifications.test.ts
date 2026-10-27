@@ -1,5 +1,38 @@
 import { WEB_NOTIFICATION_CLICK_EVENT } from "@/notification-open";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { foregroundNotificationBehavior } from "../push-notifications/foreground";
+
+describe("foreground push notifications", () => {
+  it("shows notify banners and enables sound for Android heads-up alerts", () => {
+    expect(foregroundNotificationBehavior({ reason: "notify" })).toEqual({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    });
+  });
+
+  it("keeps pushes without data in Notification Center without an alert", () => {
+    expect(foregroundNotificationBehavior(undefined)).toEqual({
+      shouldShowAlert: false,
+      shouldShowBanner: false,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+  });
+
+  it.each(["finished", "permission", "error", undefined])("keeps %s pushes silent", (reason) => {
+    expect(foregroundNotificationBehavior({ reason })).toEqual({
+      shouldShowAlert: false,
+      shouldShowBanner: false,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+  });
+});
 
 interface MockNotificationOptions {
   body?: string;
@@ -69,6 +102,23 @@ function restoreGlobals(): void {
 }
 
 describe("sendOsNotification", () => {
+  it("renders the notify title and body through the desktop notification bridge", async () => {
+    const sendNotification = vi.fn(async () => true);
+    const { sendOsNotification } = await loadModuleForPlatform("web", {
+      desktopHost: { notification: { sendNotification } },
+    });
+    await sendOsNotification({
+      title: "Maintenance bot",
+      body: "Build failed\nPlease review",
+      data: { serverId: "srv-1", workspaceId: "ws-1", agentId: "agent-1", reason: "notify" },
+    });
+    expect(sendNotification).toHaveBeenCalledWith({
+      title: "Maintenance bot",
+      body: "Build failed\nPlease review",
+      data: { serverId: "srv-1", workspaceId: "ws-1", agentId: "agent-1", reason: "notify" },
+    });
+  });
+
   beforeEach(() => {
     class MockCustomEvent<T = unknown> {
       type: string;

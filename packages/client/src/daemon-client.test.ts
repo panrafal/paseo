@@ -135,6 +135,47 @@ function wrapSessionMessage(message: unknown): string {
   });
 }
 
+test("notify sends a correlated request and receives the daemon result", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "notify-test",
+    logger: createMockLogger(),
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen();
+  await connected;
+  const result = client.notify({
+    agentId: "agent-1",
+    message: "Review needed",
+    title: "Bot",
+    urgent: true,
+  });
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toEqual({
+    type: "agent.notify.request",
+    requestId: expect.any(String),
+    agentId: "agent-1",
+    message: "Review needed",
+    title: "Bot",
+    urgent: true,
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.notify.response",
+      payload: { requestId: request.requestId, agentId: "agent-1", error: null },
+    }),
+  );
+  await expect(result).resolves.toEqual({
+    requestId: request.requestId,
+    agentId: "agent-1",
+    error: null,
+  });
+});
+
 function assertStr(data: string | Uint8Array | ArrayBuffer | undefined): string {
   if (typeof data !== "string") throw new Error("Expected string frame");
   return data;
@@ -8286,4 +8327,39 @@ test("closes before admission when a protected-capable daemon is reached in lega
   // Only the application hello reached the daemon; the queued command never did.
   expect(daemonReceived).toHaveLength(1);
   expect(JSON.parse(daemonReceived[0] as string)).toMatchObject({ type: "hello" });
+});
+test("correlates banked reset redemption and preserves the idempotency key", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger: createMockLogger(),
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen();
+  await connected;
+  const result = client.consumeCodexBankedReset({
+    requestId: "reset-request",
+    creditId: "reset-1",
+    idempotencyKey: "attempt-1",
+  });
+  expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
+    type: "session",
+    message: {
+      type: "provider.codex.consume_banked_reset.request",
+      requestId: "reset-request",
+      creditId: "reset-1",
+      idempotencyKey: "attempt-1",
+    },
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "provider.codex.consume_banked_reset.response",
+      payload: { requestId: "reset-request", outcome: "reset" },
+    }),
+  );
+  await expect(result).resolves.toEqual({ requestId: "reset-request", outcome: "reset" });
 });

@@ -1046,7 +1046,7 @@ type PluginTurnOutcome =
   "provider": "codex",
   "cwd": "/projects/shop",
   "title": "Workspace notes",
-  "labels": { "notes/enabled": "true" },
+  "labels": { "paseo.schedule-id": "sched-1" },
   "tools": [],
   "mcpServers": {},
   "reason": "resume",
@@ -1059,7 +1059,7 @@ type PluginTurnOutcome =
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `workspaceId` | String or `null`                                                                                                        |
 | `title`       | Read-only string or `null`; creation title on create, stored title on resume.                                           |
-| `labels`      | Read-only string map; creation labels on create, stored labels on resume.                                               |
+| `labels`      | Read-only string map; creation labels on create, stored labels on resume. Empty when there are none. Older daemons omit the field; raise `requirements.paseo` when you read it. |
 | `tools`       | Editable `AgentToolDefinition[]`, local to this plugin. See [Attach tools to agents](#attach-tools-to-agents).          |
 | `mcpServers`  | Editable launch-only server map, local to this plugin. See [Inject MCP servers](#inject-mcp-servers).                   |
 | `reason`      | `create`, `resume`, `refresh`, `import`                                                                                 |

@@ -5,6 +5,7 @@ import type {
   RecentProviderSessionDescriptorPayload,
 } from "../messages.js";
 import type { SerializableAgentConfig, StoredAgentRecord } from "./agent-storage.js";
+import { settleStoredAgentStatus } from "./agent-archive.js";
 import type {
   AgentCapabilityFlags,
   AgentFeature,
@@ -246,7 +247,7 @@ export function buildStoredAgentPayload(
     createdAt: createdAt.toISOString(),
     updatedAt: updatedAt.toISOString(),
     lastUserMessageAt: lastUserMessageAt ? lastUserMessageAt.toISOString() : null,
-    status: record.lastStatus,
+    status: settleStoredAgentStatus(record.lastStatus),
     capabilities: defaultCapabilities,
     currentModeId: record.lastModeId ?? null,
     availableModes: [],

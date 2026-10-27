@@ -173,6 +173,11 @@ export default defineConfig({
       "react-native-reanimated",
       "react-native-gesture-handler",
       "react-native-keyboard-controller",
+      // Prebundling Query embeds a second React beside the renderer's aliased copy.
+      "@tanstack/react-query",
+      // The attachment store's lazy native branch must resolve through the web extensions below.
+      "expo-file-system",
+      "expo-modules-core",
     ],
   },
   // babel-preset-expo compiles JSX with the automatic runtime, so app modules don't import React.

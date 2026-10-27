@@ -32,6 +32,7 @@ export async function createConnectionOfferV2(args: {
   daemonPublicKeyB64: string;
   relay: { endpoint: string; useTls?: boolean };
   minimumSecurityMode?: "protected";
+  pairing: { token: string; expiresAt: string } | null;
 }): Promise<ConnectionOffer> {
   return ConnectionOfferV2Schema.parse({
     v: 2,
@@ -39,6 +40,7 @@ export async function createConnectionOfferV2(args: {
     daemonPublicKeyB64: args.daemonPublicKeyB64,
     relay: args.relay,
     ...(args.minimumSecurityMode ? { minimumSecurityMode: args.minimumSecurityMode } : {}),
+    ...(args.pairing ? { pairing: args.pairing } : {}),
   });
 }
 

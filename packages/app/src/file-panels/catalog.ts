@@ -1,3 +1,4 @@
+import { VIDEO_FILE_EXTENSIONS } from "@/attachments/file-types";
 import type { FilePanelCandidate } from "./resolve";
 
 const renderingPanels = [
@@ -18,6 +19,12 @@ const renderingPanels = [
     builtin: true,
     files: { extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"] },
     fileKind: "image",
+  },
+  {
+    id: "builtin:video",
+    builtin: true,
+    files: { extensions: VIDEO_FILE_EXTENSIONS },
+    fileKind: "binary",
   },
 ] as const satisfies readonly FilePanelCandidate[];
 

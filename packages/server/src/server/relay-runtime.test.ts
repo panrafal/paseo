@@ -1,8 +1,18 @@
 import { describe, expect, test, vi } from "vitest";
+import { tmpdir } from "node:os";
 import pino from "pino";
 import { generateKeyPair } from "@getpaseo/relay";
+import { RelayAuthenticator } from "./relay-auth/authenticator.js";
+import { RelayDeviceStore } from "./relay-auth/store.js";
 import { createRelayRuntime } from "./relay-runtime.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
+
+function createAuthenticator(): RelayAuthenticator {
+  return new RelayAuthenticator({
+    store: new RelayDeviceStore({ paseoHome: tmpdir() }),
+    password: null,
+  });
+}
 
 describe("RelayRuntime", () => {
   test("starts and stops transport as enabled state changes", async () => {
@@ -26,6 +36,7 @@ describe("RelayRuntime", () => {
       attachSocket: async () => undefined,
       serverId: "relay-runtime-test",
       daemonKeyPair: generateKeyPair(),
+      authenticator: createAuthenticator(),
       startTransport,
     });
 
@@ -53,6 +64,7 @@ describe("RelayRuntime", () => {
       attachSocket: async () => undefined,
       serverId: "relay-runtime-test",
       daemonKeyPair: generateKeyPair(),
+      authenticator: createAuthenticator(),
       startTransport: () => {
         throw new Error("Invalid relay endpoint");
       },

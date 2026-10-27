@@ -38,6 +38,7 @@ export interface BuildWorkspacePaneContentModelInput {
   onRetargetCurrentTab: (target: WorkspaceTabDescriptor["target"]) => void;
   onSetCurrentTabState: (state: WorkspaceTabDescriptor["state"]) => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
+  onOpenUrlInBrowserTab?: (url: string) => void;
   onOpenImportSheet: () => void;
 }
 
@@ -54,6 +55,7 @@ export function buildWorkspacePaneContentModel({
   onRetargetCurrentTab,
   onSetCurrentTabState,
   onOpenWorkspaceFile,
+  onOpenUrlInBrowserTab,
   onOpenImportSheet,
 }: BuildWorkspacePaneContentModelInput): WorkspacePaneContentModel {
   ensurePanelsRegistered();
@@ -77,6 +79,7 @@ export function buildWorkspacePaneContentModel({
       retargetCurrentTab: onRetargetCurrentTab,
       setCurrentTabState: onSetCurrentTabState,
       openFileInWorkspace: onOpenWorkspaceFile,
+      openUrlInBrowserTab: onOpenUrlInBrowserTab,
       openImportSheet: onOpenImportSheet,
     },
   };
@@ -103,6 +106,9 @@ export function WorkspacePaneContent({
   const retargetCurrentTab = useStableEvent(paneContextValue.retargetCurrentTab);
   const setCurrentTabState = useStableEvent(paneContextValue.setCurrentTabState);
   const openFileInWorkspace = useStableEvent(paneContextValue.openFileInWorkspace);
+  const openUrlInBrowserTab = useStableEvent(
+    paneContextValue.openUrlInBrowserTab ?? (() => undefined),
+  );
   const openImportSheet = useStableEvent(paneContextValue.openImportSheet);
   const stablePaneContextValue = useMemo(
     () => ({
@@ -120,11 +126,13 @@ export function WorkspacePaneContent({
       retargetCurrentTab,
       setCurrentTabState,
       openFileInWorkspace,
+      openUrlInBrowserTab: paneContextValue.openUrlInBrowserTab ? openUrlInBrowserTab : undefined,
       openImportSheet,
     }),
     [
       closeCurrentTab,
       openFileInWorkspace,
+      openUrlInBrowserTab,
       openImportSheet,
       openTab,
       openPreferredTarget,
@@ -137,6 +145,7 @@ export function WorkspacePaneContent({
       paneContextValue.workspaceId,
       paneContextValue.host,
       paneContextValue.openTargetToSide,
+      paneContextValue.openUrlInBrowserTab,
       retargetCurrentTab,
       setCurrentTabState,
     ],

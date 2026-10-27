@@ -62,6 +62,7 @@ function findXcodeDocument(workspacePath: string, runtime: EditorTargetRuntime):
 
 export const xcodeTarget: EditorTarget = {
   id: "xcode",
+  remoteDestinationKinds: () => [],
   async describe(runtime) {
     return {
       id: this.id,
