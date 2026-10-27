@@ -1186,6 +1186,8 @@ export const en = {
       },
       grouping: {
         label: "Grouping",
+        currentLabel: "Current grouping: {{current}}",
+        toggleLabel: "Current grouping: {{current}}. Switch grouping",
         project: "Project",
         status: "Status",
         labels: "Labels",
@@ -2679,6 +2681,7 @@ export const en = {
         jumpToTab: "Jump to tab",
         previousWorkspace: "Previous workspace",
         nextWorkspace: "Next workspace",
+        cycleSidebarGrouping: "Cycle grouping",
         previousTab: "Previous tab",
         nextTab: "Next tab",
         splitPaneRight: "Split pane right",
