@@ -995,8 +995,11 @@ stamp() {
 # tree. Its message says what went in. It is a rewrite every time, so it is
 # always force-pushed; consumers reset to it, never pull.
 publish_target() {
-  local tip="$1" base tree sha
+  local tip="$1" base tree sha workflow
   base="$(git merge-base "$BASE" "$tip")"
+  while read -r workflow; do
+    warn "upstream's $workflow is live on $TARGET — move it into .github/workflows/disabled/ on $TOOLING_REF"
+  done < <(live_upstream_workflows "$tip" "$base")
   tree="$(git rev-parse "$tip^{tree}")"
   if git show-ref --verify -q "refs/heads/$TARGET" &&
     [ "$(git rev-parse "$TARGET^{tree}")" = "$tree" ] &&
@@ -1005,6 +1008,15 @@ publish_target() {
   fi
   sha="$(target_message "$tip" "$base" | git commit-tree "$tree" -p "$base")"
   move_branch "$TARGET" "$sha"
+}
+
+# Workflows upstream has at the top level that the integration still has there
+# too. fork-base moved every one it knew about into disabled/; one upstream adds
+# later arrives live, and most fire on a push to main.
+live_upstream_workflows() {
+  comm -12 \
+    <(git ls-tree --name-only "$1" .github/workflows/ | grep -E '\.ya?ml$' | sort) \
+    <(git ls-tree --name-only "$2" .github/workflows/ | grep -E '\.ya?ml$' | sort)
 }
 
 # Full ids, not short ones: ensure_integration reads them back to rebuild the
