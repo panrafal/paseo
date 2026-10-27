@@ -56,8 +56,11 @@ describe("notification open", () => {
     expect(parseNotificationOpenTarget(data)).toEqual(expected);
   });
 
-  function setup(whenReadyToNavigate = () => Promise.resolve()) {
-    const source = new FakeSource(launch);
+  function setup(
+    whenReadyToNavigate = () => Promise.resolve(),
+    launchTap: NotificationTap | null = launch,
+  ) {
+    const source = new FakeSource(launchTap);
     const agents: unknown[] = [];
     const routes: string[] = [];
     const terminals: unknown[] = [];
@@ -76,6 +79,24 @@ describe("notification open", () => {
     });
     return { source, agents, routes, terminals, router };
   }
+
+  it("opens notify taps on the sending subagent without using its workspace hint", async () => {
+    const { source, agents, routes, router } = setup(() => Promise.resolve(), null);
+    const stop = router.start();
+    source.tap({
+      id: "notify",
+      data: {
+        serverId: "host",
+        workspaceId: "parent-workspace",
+        agentId: "child-agent",
+        reason: "notify",
+      },
+    });
+    await flush();
+    expect(agents).toEqual([{ serverId: "host", agentId: "child-agent" }]);
+    expect(routes).toEqual([]);
+    stop();
+  });
 
   it("takes the launch tap once across remounts", async () => {
     const { source, agents, router } = setup();
