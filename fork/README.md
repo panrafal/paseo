@@ -710,7 +710,10 @@ does not recurse, so nothing there can trigger — which is what lets `main` be
 the published integration at all, since `ci.yml` fires on
 `push: branches: [main]` and force-pushes land there on every run. The files
 are unchanged and still runnable by hand: point the Actions tab at a branch
-that has them at the top level, or copy one back temporarily. Fork Desktop
+that has them at the top level, or copy one back temporarily. A workflow
+upstream adds later lands at the top level, live; `fork/integrate.sh` warns
+about it when it publishes `main`, and the fix is the same move on `fork-base`.
+Fork Desktop
 triggers on its own, on `fork-v*` tags. Patch branches can bring workflows of
 their own: `vscode` adds `vscode.yml`, which runs on every push to `main`, so
 each `--push` also costs a VS Code Extension CI run.
