@@ -1957,6 +1957,7 @@ export const ar: TranslationResources = {
           markdown: "Markdown",
           html: "HTML",
           image: "صورة",
+          video: "فيديو",
           source: "المصدر",
         },
       },
@@ -1964,6 +1965,8 @@ export const ar: TranslationResources = {
       loading: "جارٍ تحميل الملف...",
       noPreview: "لا تتوفر معاينة",
       binaryPreviewUnavailable: "المعاينة الثنائية غير متاحة",
+      videoPlaybackFailed:
+        "تعذر تشغيل هذا الفيديو. قد يكون الملف تالفًا أو تنسيقه غير مدعوم على هذا الجهاز.",
       tooLargeToDisplay: "هذا الملف كبير جدًا بحيث لا يمكن عرضه",
       documentUnsupported: "لا يمكن عرض ملفات {{type}} على هذا الجهاز",
       failedToLoad: "فشل تحميل الملف",

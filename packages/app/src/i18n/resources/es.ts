@@ -2005,6 +2005,7 @@ export const es: TranslationResources = {
           markdown: "Markdown",
           html: "HTML",
           image: "Imagen",
+          video: "Vídeo",
           source: "Código fuente",
         },
       },
@@ -2012,6 +2013,8 @@ export const es: TranslationResources = {
       loading: "Cargando archivo...",
       noPreview: "No hay vista previa disponible",
       binaryPreviewUnavailable: "Vista previa binaria no disponible",
+      videoPlaybackFailed:
+        "No se puede reproducir este vídeo. El archivo puede estar dañado o su formato no ser compatible con este dispositivo.",
       tooLargeToDisplay: "Este archivo es demasiado grande para mostrarlo",
       documentUnsupported: "Los archivos {{type}} no se pueden mostrar en este dispositivo",
       failedToLoad: "No se pudo cargar el archivo",
