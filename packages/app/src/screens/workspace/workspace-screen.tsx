@@ -3016,11 +3016,14 @@ function WorkspaceScreenContent({
             focusPaneBeforeOpen: input.focusPaneBeforeOpen,
           });
         },
+        // Only desktop has in-app browser tabs; elsewhere Cmd/Ctrl-click opens externally.
+        onOpenUrlInBrowserTab: getIsElectron() ? handleOpenUrlInBrowserTab : undefined,
         onOpenImportSheet: openImportSheet,
       }),
     [
       handleCloseTabById,
       panelRevisions,
+      handleOpenUrlInBrowserTab,
       handleOpenWorkspaceFileFromPane,
       navigateToTabId,
       normalizedServerId,
