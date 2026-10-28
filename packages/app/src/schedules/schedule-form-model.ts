@@ -8,6 +8,7 @@ import type {
 } from "@getpaseo/protocol/agent-types";
 import type { ScheduleCadence, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
+import type { MaterializedAgentProfile } from "@/agent-profiles";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import {
   buildSelectableProviderSelectorProviders,
@@ -139,6 +140,12 @@ export interface ScheduleFormModel {
   setHost: (serverId: string | null) => void;
   setProject: (optionId: string, display: ScheduleFormDisplay) => void;
   setModel: (provider: AgentProvider, modelId: string) => void;
+  /**
+   * Copies a profile's provider, model, mode and thinking option into the form
+   * in one publish. The profile itself is not remembered: the schedule stores
+   * the resolved values, same as if the user had picked each one by hand.
+   */
+  applyAgentProfile: (profile: MaterializedAgentProfile) => void;
   setThinking: (thinkingOptionId: string) => void;
   setSessionMode: (modeId: string) => void;
   setName: (value: string) => void;
@@ -1139,6 +1146,54 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
           currentProvider: state.selectedProvider,
           currentMode: state.selectedMode,
         }),
+        selectedThinkingOptionId,
+      });
+    },
+    applyAgentProfile(profile) {
+      if (closed) {
+        return;
+      }
+      const provider = profile.provider as AgentProvider;
+      if (!state.modelSelectorProviders.some((entry) => entry.id === provider)) {
+        return;
+      }
+      const selectedModel = pickModelForProvider({
+        entries: providerEntries,
+        provider,
+        modelId: profile.modelId,
+      });
+      const availableModels = resolveAvailableModels(providerEntries, provider);
+      const selectedThinkingOptionId = resolveThinkingOptionId({
+        availableModels,
+        modelId: selectedModel,
+        requestedThinkingOptionId:
+          profile.thinkingOptionId ||
+          (thinkingDrafts.get(thinkingDraftKey(provider, selectedModel)) ?? ""),
+      });
+      if (selectedModel && selectedThinkingOptionId) {
+        thinkingDrafts.set(thinkingDraftKey(provider, selectedModel), selectedThinkingOptionId);
+      }
+      const availableModeIds = resolveModeOptions(providerEntries, provider).map((mode) => mode.id);
+      const selectedMode = availableModeIds.includes(profile.modeId)
+        ? profile.modeId
+        : pickModeForProvider({
+            entries: providerEntries,
+            provider,
+            currentProvider: null,
+            currentMode: "",
+          });
+      userModified = {
+        ...userModified,
+        provider: true,
+        model: true,
+        modeId: true,
+        thinkingOptionId: true,
+      };
+      publish({
+        ...state,
+        selectedProvider: provider,
+        selectedModel,
+        selectedMode,
         selectedThinkingOptionId,
       });
     },
