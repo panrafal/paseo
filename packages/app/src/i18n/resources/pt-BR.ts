@@ -1208,6 +1208,8 @@ export const ptBR: TranslationResources = {
       },
       grouping: {
         label: "Agrupamento",
+        currentLabel: "Agrupamento atual: {{current}}",
+        toggleLabel: "Agrupamento atual: {{current}}. Alternar agrupamento",
         project: "Projeto",
         status: "Status",
         labels: "Etiquetas",
@@ -2600,6 +2602,7 @@ export const ptBR: TranslationResources = {
         jumpToTab: "Ir para aba",
         previousWorkspace: "Workspace anterior",
         nextWorkspace: "Próximo workspace",
+        cycleSidebarGrouping: "Alternar agrupamento",
         previousTab: "Aba anterior",
         nextTab: "Próxima aba",
         splitPaneRight: "Dividir painel à direita",

@@ -1173,6 +1173,8 @@ export const zhCN: TranslationResources = {
       },
       grouping: {
         label: "分组",
+        currentLabel: "当前分组：{{current}}",
+        toggleLabel: "当前分组：{{current}}。切换分组方式",
         project: "项目",
         status: "状态",
         labels: "标签",
@@ -2533,6 +2535,7 @@ export const zhCN: TranslationResources = {
         jumpToTab: "跳转到标签",
         previousWorkspace: "上一个 workspace",
         nextWorkspace: "下一个 workspace",
+        cycleSidebarGrouping: "切换分组方式",
         previousTab: "上一个标签",
         nextTab: "下一个标签",
         splitPaneRight: "向右拆分窗格",
