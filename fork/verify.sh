@@ -21,7 +21,8 @@
 #   4. npm run lint, all of it: oxlint takes seconds
 #   5. vitest on every test file the fork changes in a checked workspace,
 #      plus the test next to every source file it changes there. Browser and
-#      e2e tests are skipped.
+#      e2e tests are skipped. HOME links to the real one's contents minus the
+#      agent skill folders, which test daemons would overwrite.
 #
 # Every step after the install runs even when an earlier one fails, so the log
 # shows every failure at once. Tracked files the steps rewrite (the lockfile,
@@ -111,6 +112,30 @@ done
 step "npm run lint"
 npm run lint || failures+=("npm run lint")
 
+# Every daemon a test boots brings the Paseo skills in ~/.agents, ~/.claude,
+# ~/.codex and ~/.kilo up to its bundle, writing through the symlinks there
+# into the checkout the user's own versions live in. Upstream has no switch
+# for it, and the fork's guard sits on a patch branch most trees checked here
+# do not carry, so vitest gets a HOME that links to everything in the real one
+# except those skill folders.
+test_home="$dir/node_modules/.fork-verify-home"
+link_children() {
+  local src="$1" dst="$2" skip="${3:-}" entry
+  mkdir -p "$dst"
+  for entry in "$src"/* "$src"/.[!.]* "$src"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    [ "${entry##*/}" = "$skip" ] && continue
+    ln -s "$entry" "$dst/${entry##*/}"
+  done
+}
+rm -rf "$test_home"
+link_children "$HOME" "$test_home"
+for agent_home in .agents .claude .codex .kilo; do
+  [ -d "$HOME/$agent_home" ] || continue
+  rm "$test_home/$agent_home"
+  link_children "$HOME/$agent_home" "$test_home/$agent_home" skills
+done
+
 packages=()
 for line in ${tests[@]+"${tests[@]}"}; do
   pkg="${line%% *}"
@@ -121,8 +146,8 @@ for pkg in ${packages[@]+"${packages[@]}"}; do
   for line in "${tests[@]}"; do
     [ "${line%% *}" = "$pkg" ] && files+=("${line#* }")
   done
-  step "vitest: $pkg (${#files[@]} files)"
-  (cd "$pkg" && "$dir/node_modules/.bin/vitest" run --maxWorkers=2 "${files[@]}") ||
+  step "vitest: $pkg (${#files[@]} files), run with HOME=$test_home"
+  (cd "$pkg" && HOME="$test_home" "$dir/node_modules/.bin/vitest" run --maxWorkers=2 "${files[@]}") ||
     failures+=("vitest in $pkg")
 done
 [ "${#packages[@]}" -gt 0 ] || say "no fork-touched tests to run"
