@@ -1129,6 +1129,7 @@ export const ru: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "Некоторые выбранные метки больше не существуют. Удалите их, чтобы продолжить.",
     title: "Метки",
     unlabelled: "Без метки",
     create: "Создать метку",
