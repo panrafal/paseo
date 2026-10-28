@@ -239,3 +239,42 @@ test("a waiting after hook propagates failures and stops later handlers", async 
   ).rejects.toThrow("cannot initialize worktree");
   expect(received).toEqual(["/worktree"]);
 });
+
+test("session-open hooks expose labels and still allow env changes", async () => {
+  const hooks = new PluginHookHandlers(() => {});
+  hooks.addHook("agent.open.before", async ({ request }) => {
+    return { ...request, env: { ...request.env, REGION: "eu" } };
+  });
+  await expect(
+    hooks.invoke(
+      "operation",
+      "agent.open.before",
+      {
+        agentId: "agent",
+        workspaceId: "workspace",
+        provider: "claude",
+        cwd: "/project",
+        title: "Original",
+        reason: "create",
+        purpose: "interactive",
+        labels: { "paseo.schedule-id": "sched-1" },
+        tools: [],
+        env: { EXISTING: "yes" },
+        mcpServers: {},
+      },
+      paseo,
+    ),
+  ).resolves.toEqual({
+    agentId: "agent",
+    workspaceId: "workspace",
+    provider: "claude",
+    cwd: "/project",
+    title: "Original",
+    reason: "create",
+    purpose: "interactive",
+    labels: { "paseo.schedule-id": "sched-1" },
+    tools: [],
+    env: { EXISTING: "yes", REGION: "eu" },
+    mcpServers: {},
+  });
+});
