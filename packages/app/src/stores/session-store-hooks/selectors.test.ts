@@ -36,6 +36,7 @@ function createWorkspace(
 ): WorkspaceDescriptor {
   return {
     createdAt: null,
+    activityAt: null,
     lastUserMessageAt: null,
     id: input.id,
     projectId: input.projectId ?? "project-1",
