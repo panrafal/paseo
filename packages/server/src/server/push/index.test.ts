@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type pino from "pino";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createPushNotifications } from "./index.js";
 
@@ -21,9 +21,51 @@ describe("push notifications", () => {
   const homes: string[] = [];
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     for (const home of homes.splice(0)) {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  test.each([
+    { urgent: false, fields: {} },
+    {
+      urgent: true,
+      fields: { priority: "high", channelId: "urgent", interruptionLevel: "time-sensitive" },
+    },
+  ])("passes push delivery fields to Expo (urgent: $urgent)", async ({ urgent, fields }) => {
+    const home = mkdtempSync(path.join(tmpdir(), "paseo-push-notifications-"));
+    homes.push(home);
+    const requests: unknown[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      requests.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify({ data: [{ status: "ok", id: "ticket-1" }] }));
+    });
+    const notifications = createPushNotifications({
+      logger: createLogger(),
+      filePath: path.join(home, "push-tokens.json"),
+    });
+    notifications.renew("ExponentPushToken[phone]");
+    await notifications.send({
+      title: "Maintenance",
+      body: "Build failed",
+      data: { serverId: "srv-1", workspaceId: "ws-1", agentId: "agent-1", reason: "notify" },
+      ...(urgent
+        ? ({ priority: "high", channelId: "urgent", interruptionLevel: "time-sensitive" } as const)
+        : {}),
+    });
+    expect(requests).toEqual([
+      [
+        {
+          to: "ExponentPushToken[phone]",
+          title: "Maintenance",
+          body: "Build failed",
+          sound: "default",
+          data: { serverId: "srv-1", workspaceId: "ws-1", agentId: "agent-1", reason: "notify" },
+          ...fields,
+        },
+      ],
+    ]);
   });
 
   test("an offline device stops receiving notifications after 48 hours", async () => {
