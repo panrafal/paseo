@@ -276,7 +276,11 @@ workspaces it builds the workspace dependencies they read from `dist/`, runs
 each one's typecheck, runs `npm run lint` over the whole repo (oxlint takes
 seconds), and runs vitest on the test files the tree changes plus the test
 beside each source file it changes. Browser and e2e tests are skipped, and the
-full suite never runs; it is too heavy for the devbox. A change outside the
+full suite never runs; it is too heavy for the devbox. vitest runs with a
+HOME that links to the real one except the `skills` folders of `~/.agents`,
+`~/.claude`, `~/.codex` and `~/.kilo`: every daemon a test boots syncs Paseo's
+skills there, and upstream's sync writes through the symlinks into the
+user's own skills. A change outside the
 workspaces that they all read (`package-lock.json`, the root `package.json`,
 a root `tsconfig`) puts every workspace in scope. Every step runs even after
 one fails, so the log (`~/.paseo-fork/verify.log` for the integration) lists all failures, and
