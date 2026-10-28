@@ -8,6 +8,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import type { BarcodeScanningResult, BarcodeSettings } from "expo-camera";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { openPairScan } from "@/hosts/pair-scan-model";
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
 import { isWeb } from "@/constants/platform";
 import { BackHeader } from "@/components/headers/back-header";
@@ -138,11 +139,18 @@ export default function PairScanScreen() {
 
   const [scan] = useState(() =>
     openPairScan({
-      importConnectionLink: (link) =>
-        getHostRuntimeStore().importConnectionLink(
-          link,
-          source === "onboarding" ? "hostRoot" : "hostSettings",
-        ),
+      importConnectionLink: async (link) => {
+        try {
+          return await getHostRuntimeStore().importConnectionLink(
+            link,
+            source === "onboarding" ? "hostRoot" : "hostSettings",
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? formatHostConnectionError(error.message, t) : String(error);
+          throw new Error(message, { cause: error });
+        }
+      },
       onConnected: navigateToPairedHost,
     }),
   );

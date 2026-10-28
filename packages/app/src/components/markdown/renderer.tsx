@@ -24,20 +24,25 @@ const MD4C_FLAGS = { latexMath: false, hardSoftBreaks: true, admonitions: true }
 
 // Reading the breakpoint here makes Unistyles restyle the text when the layout crosses it.
 const markdownStyle =
-  (compact: boolean, muted = false) =>
+  (compact: boolean, muted = false, preventImageUpscaling = false) =>
   (theme: Theme, rt: { breakpoint?: string }) =>
     createMarkdownStyles(theme, {
       compact,
       muted,
       blockGap: resolveDensity(rt, density.blockGap),
+      preventImageUpscaling,
     });
 const regularStyle = markdownStyle(false);
 const compactStyle = markdownStyle(true);
 const compactMutedStyle = markdownStyle(true, true);
+const regularNoUpscaleStyle = markdownStyle(false, false, true);
+const compactNoUpscaleStyle = markdownStyle(true, false, true);
+const compactMutedNoUpscaleStyle = markdownStyle(true, true, true);
 
-function pickMarkdownStyle(compact: boolean, muted: boolean) {
-  if (!compact) return regularStyle;
-  return muted ? compactMutedStyle : compactStyle;
+function pickMarkdownStyle(compact: boolean, muted: boolean, preventImageUpscaling: boolean) {
+  if (!compact) return preventImageUpscaling ? regularNoUpscaleStyle : regularStyle;
+  if (muted) return preventImageUpscaling ? compactMutedNoUpscaleStyle : compactMutedStyle;
+  return preventImageUpscaling ? compactNoUpscaleStyle : compactStyle;
 }
 
 export interface MarkdownRendererProps extends MarkdownImageContext {
@@ -47,6 +52,7 @@ export interface MarkdownRendererProps extends MarkdownImageContext {
   muted?: boolean;
   selectable?: boolean;
   streaming?: boolean;
+  preventImageUpscaling?: boolean;
   onLinkPress?: (url: string) => unknown;
 }
 
@@ -74,6 +80,7 @@ const MarkdownPart = memo(function MarkdownPart({
   muted = false,
   selectable = true,
   streaming = false,
+  preventImageUpscaling = false,
   onLinkPress,
   ...imageContext
 }: MarkdownRendererProps) {
@@ -115,7 +122,7 @@ const MarkdownPart = memo(function MarkdownPart({
             <ThemedMarkdown
               key={`${segment.kind}:${segment.id}`}
               markdown={segment.source}
-              uniProps={pickMarkdownStyle(compact, muted)}
+              uniProps={pickMarkdownStyle(compact, muted, preventImageUpscaling)}
               flavor="github"
               selectable={selectable}
               md4cFlags={MD4C_FLAGS}

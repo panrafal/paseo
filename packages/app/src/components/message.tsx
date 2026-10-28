@@ -84,6 +84,8 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { capAssistantMessageForRender, getUtf8ByteLength } from "./assistant-message-render-limit";
 import { getTurnDurationLabel } from "./assistant-turn-footer-label";
 import { getCompactionMarkerLabel } from "./message-compaction-label";
+import { AssistantVideo } from "@/assistant-video";
+import { extractAssistantVideoSources } from "@/assistant-video/markdown";
 import { PlanCard } from "./plan-card";
 import { ToolCallDetailsContent } from "./tool-call-details";
 import { useToolCallSheet } from "./tool-call-sheet";
@@ -1160,6 +1162,10 @@ export const AssistantMessage = memo(function AssistantMessage({
   );
   const revealedText = useRevealedText(renderedMessage.text, phase);
   const revealedMessage = renderFullContent ? renderedMessage.text : revealedText;
+  const videoSources = useMemo(
+    () => extractAssistantVideoSources(renderedMessage.text),
+    [renderedMessage.text],
+  );
   const fullMessageByteLength = useMemo(
     () => (renderedMessage.capped && phase === "complete" ? getUtf8ByteLength(message) : null),
     [message, phase, renderedMessage.capped],
@@ -1203,7 +1209,19 @@ export const AssistantMessage = memo(function AssistantMessage({
         client={client}
         workspaceRoot={workspaceRoot}
         serverId={serverId}
+        preventImageUpscaling
       />
+      {revealedMessage.length >= renderedMessage.text.length
+        ? videoSources.map((source) => (
+            <AssistantVideo
+              key={source}
+              source={source}
+              client={client}
+              workspaceRoot={workspaceRoot}
+              serverId={serverId}
+            />
+          ))
+        : null}
       {fullMessageByteLength !== null ? (
         <Text
           testID="assistant-message-capped-notice"

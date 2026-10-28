@@ -60,6 +60,8 @@ export interface SecureChannel {
   close(code?: number, reason?: string): void;
   isOpen(): boolean;
   securityMode(): SecurityMode;
+  /** Capabilities advertised by the peer in its ready envelope. */
+  peerCapabilities(): { relayAuth?: boolean };
   /** Bytes the transport will carry for `data`, including protection overhead. */
   outboundWireByteLength(data: string | ArrayBuffer): number;
   onTransitionToOpen(cb: () => void): void;
@@ -81,6 +83,8 @@ export interface DaemonSecureChannelOptions {
    * change applies to every admission from that moment on.
    */
   minimumMode?: SecurityMode | (() => SecurityMode);
+  /** Announce that the daemon requires a relay_auth frame before application traffic. */
+  relayAuth?: boolean;
   events?: SecureChannelEvents;
 }
 
@@ -127,13 +131,13 @@ interface ProtectedEnvelope {
 interface HelloEnvelope {
   type: "e2ee_hello";
   key: string;
-  capabilities?: { binaryCiphertext?: boolean };
+  capabilities?: { binaryCiphertext?: boolean; relayAuth?: boolean };
   protected?: ProtectedEnvelope;
 }
 
 interface ReadyEnvelope {
   type: "e2ee_ready";
-  capabilities?: { binaryCiphertext?: boolean };
+  capabilities?: { binaryCiphertext?: boolean; relayAuth?: boolean };
   protected?: ProtectedEnvelope;
 }
 
@@ -234,6 +238,7 @@ class ClientSecureChannel implements SecureChannel {
   private readonly onOpenCallbacks: Array<() => void> = [];
   private readonly onCloseCallbacks: Array<() => void> = [];
   private handshake: ClientHandshakeState | null;
+  private peerCapabilitiesValue: { relayAuth?: boolean } = {};
 
   constructor(
     private readonly transport: Transport,
@@ -265,7 +270,7 @@ class ClientSecureChannel implements SecureChannel {
       if (!isReadyEnvelope(parsed)) throw new NoiseProtocolError("malformed ready envelope");
       const ready: ReadyEnvelope = parsed;
       if (ready.protected !== undefined) {
-        this.openProtected(ready.protected);
+        this.openProtected(ready);
       } else {
         this.openLegacy(ready);
       }
@@ -276,8 +281,9 @@ class ClientSecureChannel implements SecureChannel {
     }
   }
 
-  private openProtected(envelope: ProtectedEnvelope): void {
+  private openProtected(ready: ReadyEnvelope): void {
     const handshake = this.handshake!;
+    const envelope = ready.protected!;
     if (envelope.v !== PROTECTED_ENVELOPE_VERSION) {
       throw new NoiseProtocolError("unsupported protected envelope version");
     }
@@ -287,6 +293,7 @@ class ClientSecureChannel implements SecureChannel {
       throw new NoiseProtocolError("daemon selected an unoffered parameter");
     }
     const keys = handshake.noise.split();
+    this.peerCapabilitiesValue = ready.capabilities ?? {};
     this.becomeOpen(
       new ProtectedChannel(this.transport, this.events, keys.send, keys.receive, selected, {
         retry: null,
@@ -303,6 +310,7 @@ class ClientSecureChannel implements SecureChannel {
     const legacy = new EncryptedChannel(this.transport, handshake.legacySharedKey, this.events, {
       binaryCiphertext: ready.capabilities?.binaryCiphertext === true,
     });
+    this.peerCapabilitiesValue = ready.capabilities ?? {};
     legacy.setState("open");
     this.becomeOpen(new LegacyInner(legacy));
   }
@@ -382,6 +390,10 @@ class ClientSecureChannel implements SecureChannel {
     return this.inner.mode;
   }
 
+  peerCapabilities(): { relayAuth?: boolean } {
+    return this.peerCapabilitiesValue;
+  }
+
   outboundWireByteLength(data: string | ArrayBuffer): number {
     if (this.inner) return this.inner.outboundWireByteLength(data);
     // Mode unknown while handshaking: report the larger of the two so callers stay within limits.
@@ -448,6 +460,7 @@ export async function openDaemonSecureChannel(
                 options.daemonKeyPair,
                 parsed,
                 helloText,
+                options.relayAuth === true,
               )
             : await acceptLegacyHello(
                 transport,
@@ -455,6 +468,7 @@ export async function openDaemonSecureChannel(
                 options.daemonKeyPair,
                 parsed,
                 minimumMode(),
+                options.relayAuth === true,
               );
 
         events.onopen?.();
@@ -482,6 +496,7 @@ async function acceptProtectedHello(
   daemonKeyPair: KeyPair,
   hello: HelloEnvelope,
   helloText: string,
+  relayAuth: boolean,
 ): Promise<SecureChannel> {
   const envelope = hello.protected!;
   if (envelope.v !== PROTECTED_ENVELOPE_VERSION) {
@@ -494,6 +509,7 @@ async function acceptProtectedHello(
   const msg2 = noise.writeMessage(encodeParams(selected));
   const ready: ReadyEnvelope = {
     type: "e2ee_ready",
+    ...(relayAuth ? { capabilities: { relayAuth: true } } : {}),
     protected: { v: PROTECTED_ENVELOPE_VERSION, message: arrayBufferToBase64(toArrayBuffer(msg2)) },
   };
   const readyText = JSON.stringify(ready);
@@ -511,6 +527,7 @@ async function acceptLegacyHello(
   daemonKeyPair: KeyPair,
   hello: HelloEnvelope,
   minimumMode: SecurityMode,
+  relayAuth: boolean,
 ): Promise<SecureChannel> {
   if (minimumMode === "protected") {
     throw new SecureChannelRejectedError(
@@ -525,7 +542,14 @@ async function acceptLegacyHello(
   await transport.send(
     JSON.stringify({
       type: "e2ee_ready",
-      ...(binaryCiphertext ? { capabilities: { binaryCiphertext: true } } : {}),
+      ...(binaryCiphertext || relayAuth
+        ? {
+            capabilities: {
+              ...(binaryCiphertext ? { binaryCiphertext: true } : {}),
+              ...(relayAuth ? { relayAuth: true } : {}),
+            },
+          }
+        : {}),
     } satisfies ReadyEnvelope),
   );
   const legacy = new EncryptedChannel(transport, sharedKey, events, {
@@ -558,6 +582,9 @@ class LegacyInner implements InnerChannel {
   }
   securityMode(): SecurityMode {
     return this.mode;
+  }
+  peerCapabilities(): { relayAuth?: boolean } {
+    return {};
   }
   outboundWireByteLength(data: string | ArrayBuffer): number {
     return this.legacy.outboundWireByteLength(data);
@@ -699,6 +726,9 @@ class ProtectedChannel implements InnerChannel {
   securityMode(): SecurityMode {
     return this.mode;
   }
+  peerCapabilities(): { relayAuth?: boolean } {
+    return {};
+  }
 
   onTransitionToOpen(cb: () => void): void {
     cb();
@@ -731,11 +761,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isCapabilities(value: unknown): value is { binaryCiphertext?: boolean } {
+function isCapabilities(
+  value: unknown,
+): value is { binaryCiphertext?: boolean; relayAuth?: boolean } {
   return (
     value === undefined ||
     (isRecord(value) &&
-      (value.binaryCiphertext === undefined || typeof value.binaryCiphertext === "boolean"))
+      (value.binaryCiphertext === undefined || typeof value.binaryCiphertext === "boolean") &&
+      (value.relayAuth === undefined || typeof value.relayAuth === "boolean"))
   );
 }
 

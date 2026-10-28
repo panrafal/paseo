@@ -49,6 +49,7 @@ function discoverAgentRoutes(): string[] {
     "download_.thanks",
     "hub",
     "index",
+    "new",
     "sponsor",
     "privacy",
     "terms",

@@ -4,6 +4,7 @@ interface PairingInstructions {
   url: string;
   qr: string | null;
   connectionUri?: string | null;
+  expiresAt?: string | null;
   columns?: number;
 }
 
@@ -45,11 +46,20 @@ function redactConnectionUri(uri: string): string {
   }
 }
 
+function formatLinkWarning(expiresAt: string | null | undefined): string {
+  if (expiresAt === undefined || expiresAt === null) {
+    return "Treat this pairing link like a password. Anyone with it can access this daemon.";
+  }
+  const time = new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `This link pairs one device and stops working at ${time}. Don't share it.`;
+}
+
 export function formatPairingInstructions({
   url,
   qr,
   columns,
   connectionUri,
+  expiresAt,
 }: PairingInstructions): string {
-  return `\nScan to pair:\n${formatQr(qr, columns)}\n\nPairing link:\n${url}${connectionUri ? `\n\nConnection URI:\n${redactConnectionUri(connectionUri)}` : ""}\n\nTreat this pairing link like a password. Anyone with it can access this daemon.\n`;
+  return `\nScan to pair:\n${formatQr(qr, columns)}\n\nPairing link:\n${url}${connectionUri ? `\n\nConnection URI:\n${redactConnectionUri(connectionUri)}` : ""}\n\n${formatLinkWarning(expiresAt)}\n`;
 }

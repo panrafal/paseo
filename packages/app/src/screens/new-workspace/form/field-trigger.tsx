@@ -1,5 +1,11 @@
 import { forwardRef, useCallback, type ReactElement, type ReactNode } from "react";
-import { Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  Text,
+  View,
+  type PressableStateCallbackType,
+  type StyleProp,
+  type TextStyle,
+} from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown } from "lucide-react-native";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -34,6 +40,7 @@ export interface FieldTriggerContentProps {
   label: string;
   icon: ReactNode;
   value: string;
+  valueStyle?: StyleProp<TextStyle>;
   /** Secondary text after the value, such as a terminal profile's name. */
   detail?: string;
 }
@@ -43,12 +50,16 @@ export function FieldTriggerContent({
   label,
   icon,
   value,
+  valueStyle,
   detail,
 }: FieldTriggerContentProps): ReactElement {
   const valueLine = (
     <>
       <View style={styles.iconBox}>{icon}</View>
-      <Text style={variant === "field" ? styles.fieldValue : styles.value} numberOfLines={1}>
+      <Text
+        style={[variant === "field" ? styles.fieldValue : styles.value, valueStyle]}
+        numberOfLines={1}
+      >
         {value}
         {detail ? <Text style={styles.detail}> {detail}</Text> : null}
       </Text>
