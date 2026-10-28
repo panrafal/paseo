@@ -14,7 +14,8 @@
 # is upstream's CI's job, and the full suite is too heavy to run here.
 #
 #   1. npm install, skipped when the manifests and lockfile match the last
-#      install in <dir>
+#      install in <dir>; a failed one is run again, then once more from no
+#      node_modules (npm_install_retrying in fork/config.sh)
 #   2. npm run build of each workspace a checked one reads from dist/, skipped
 #      when its output in <dir> was built from the same inputs
 #   3. npm run typecheck of each checked workspace
@@ -71,7 +72,7 @@ if [ "$(cat "$INSTALL_STAMP" 2>/dev/null || true)" = "$key" ]; then
   say "manifests and lockfile unchanged since the last install here — skipped"
 else
   rm -f "$INSTALL_STAMP"
-  npm install --no-audit --no-fund
+  npm_install_retrying || die "npm install failed three times, the last from no node_modules"
   echo "$key" >"$INSTALL_STAMP"
 fi
 
