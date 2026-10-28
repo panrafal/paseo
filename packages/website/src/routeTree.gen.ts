@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
+import { Route as NewRouteImport } from "./routes/new";
 import { Route as Char123LocaleChar125RouteRouteImport } from "./routes/{-$locale}/route";
 import { Route as Char123LocaleChar125IndexRouteImport } from "./routes/{-$locale}/index";
 import { Route as Char123LocaleChar125VtcodeRouteImport } from "./routes/{-$locale}/vtcode";
@@ -496,7 +497,14 @@ const Char123LocaleChar125PluginsOwnerSlugRoute =
     getParentRoute: () => Char123LocaleChar125RouteRoute,
   } as any);
 
+const NewRoute = NewRouteImport.update({
+  id: "/new",
+  path: "/new",
+  getParentRoute: () => rootRouteImport,
+} as any);
+
 export interface FileRoutesByFullPath {
+  "/new": typeof NewRoute;
   "/{-$locale}": typeof Char123LocaleChar125RouteRouteWithChildren;
   "/{-$locale}/agents": typeof Char123LocaleChar125AgentsRoute;
   "/{-$locale}/agoragentic": typeof Char123LocaleChar125AgoragenticRoute;
@@ -569,6 +577,7 @@ export interface FileRoutesByFullPath {
   "/{-$locale}/plugins/category/$slug": typeof Char123LocaleChar125PluginsCategorySlugRoute;
 }
 export interface FileRoutesByTo {
+  "/new": typeof NewRoute;
   "/{-$locale}/agents": typeof Char123LocaleChar125AgentsRoute;
   "/{-$locale}/agoragentic": typeof Char123LocaleChar125AgoragenticRoute;
   "/{-$locale}/amp": typeof Char123LocaleChar125AmpRoute;
@@ -639,6 +648,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
+  "/new": typeof NewRoute;
   "/{-$locale}": typeof Char123LocaleChar125RouteRouteWithChildren;
   "/{-$locale}/agents": typeof Char123LocaleChar125AgentsRoute;
   "/{-$locale}/agoragentic": typeof Char123LocaleChar125AgoragenticRoute;
@@ -713,6 +723,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
+    | "/new"
     | "/{-$locale}"
     | "/{-$locale}/agents"
     | "/{-$locale}/agoragentic"
@@ -785,6 +796,7 @@ export interface FileRouteTypes {
     | "/{-$locale}/plugins/category/$slug";
   fileRoutesByTo: FileRoutesByTo;
   to:
+    | "/new"
     | "/{-$locale}/agents"
     | "/{-$locale}/agoragentic"
     | "/{-$locale}/amp"
@@ -853,6 +865,7 @@ export interface FileRouteTypes {
     | "/{-$locale}/plugins/$owner/$slug"
     | "/{-$locale}/plugins/category/$slug";
   id:
+    | "/new"
     | "__root__"
     | "/{-$locale}"
     | "/{-$locale}/agents"
@@ -927,11 +940,19 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
+  NewRoute: typeof NewRoute;
   Char123LocaleChar125RouteRoute: typeof Char123LocaleChar125RouteRouteWithChildren;
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
+    "/new": {
+      id: "/new";
+      path: "/new";
+      fullPath: "/new";
+      preLoaderRoute: typeof NewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/{-$locale}": {
       id: "/{-$locale}";
       path: "/{-$locale}";
@@ -1614,6 +1635,7 @@ const Char123LocaleChar125RouteRouteWithChildren =
   );
 
 const rootRouteChildren: RootRouteChildren = {
+  NewRoute: NewRoute,
   Char123LocaleChar125RouteRoute: Char123LocaleChar125RouteRouteWithChildren,
 };
 export const routeTree = rootRouteImport
