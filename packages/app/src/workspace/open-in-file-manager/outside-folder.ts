@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/contexts/toast-context";
-import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
+import { useDesktopOpenExecution } from "@/workspace/open-in-editor/remote-destination";
 
 /**
  * Opens a folder outside the workspace in the system file manager. The Files
@@ -12,8 +12,11 @@ import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-op
 export function useOpenOutsideWorkspaceFolder(serverId: string): (folderPath: string) => void {
   const { t } = useTranslation();
   const toast = useToast();
-  const isLocalExecution = useIsLocalDaemon(serverId);
-  const { targets } = useDesktopOpenTargets({ isLocalExecution });
+  const desktopOpenExecution = useDesktopOpenExecution(serverId);
+  const execution =
+    desktopOpenExecution?.kind === "remote-unconfigured" ? null : desktopOpenExecution;
+  const remoteDestination = execution?.kind === "remote" ? execution.destination : undefined;
+  const { targets } = useDesktopOpenTargets({ execution });
   const fileManagerTarget = targets.find((target) => target.kind === "file-manager");
 
   return useCallback(
@@ -24,13 +27,17 @@ export function useOpenOutsideWorkspaceFolder(serverId: string): (folderPath: st
         showOutsideWorkspace();
         return;
       }
-      void openDesktopTarget({ editorId: fileManagerTarget.id, workspacePath: folderPath }).catch(
+      void openDesktopTarget({
+        editorId: fileManagerTarget.id,
+        workspacePath: folderPath,
+        remoteDestination,
+      }).catch(
         (error: unknown) => {
           console.warn("[open-outside-workspace-folder] open failed", error);
           showOutsideWorkspace();
         },
       );
     },
-    [fileManagerTarget, t, toast],
+    [fileManagerTarget, remoteDestination, t, toast],
   );
 }
