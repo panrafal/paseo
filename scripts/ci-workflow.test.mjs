@@ -8,9 +8,12 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 
 const repoRoot = new URL("../", import.meta.url);
-const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
-const dockerWorkflowPath = new URL(".github/workflows/docker.yml", repoRoot);
-const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
+// Disabled on this fork: the upstream workflows live under workflows/disabled/
+// so GitHub never scans them. Their contents are unchanged, so these checks
+// still mean what they meant upstream.
+const ciWorkflowPath = new URL(".github/workflows/disabled/ci.yml", repoRoot);
+const dockerWorkflowPath = new URL(".github/workflows/disabled/docker.yml", repoRoot);
+const nixWorkflowPath = new URL(".github/workflows/disabled/nix.yml", repoRoot);
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
