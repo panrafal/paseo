@@ -13,12 +13,25 @@ const EditorTargetListInputSchema = z.object({
   workspacePath: z.string().trim().min(1).optional(),
 });
 
+/** An SSH destination: `[user@]host[:port]`, with nothing that would break a URI authority. */
+const SSH_DESTINATION_PATTERN = /^[A-Za-z0-9._@:-]+$/u;
+
+const RemoteDestinationSchema = z.object({
+  kind: z.literal("ssh"),
+  host: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(SSH_DESTINATION_PATTERN, "SSH host must not contain spaces or slashes"),
+});
+
 const EditorTargetLaunchInputSchema = z.object({
   editorId: z.string().trim().min(1),
   workspacePath: z.string().trim().min(1),
   filePath: z.string().trim().min(1).optional(),
   line: z.number().int().positive().optional(),
   column: z.number().int().positive().optional(),
+  remoteDestination: RemoteDestinationSchema.optional(),
 });
 
 export function registerEditorTargetHandlers(
@@ -32,8 +45,8 @@ export function registerEditorTargetHandlers(
   const runtime = options.runtime ?? createEditorTargetRuntime();
 
   ipc.handle("paseo:editor:listTargets", (_event, payload: unknown) => {
-    const { workspacePath } = EditorTargetListInputSchema.parse(payload ?? {});
-    return listAvailableEditorTargets(runtime, options.targets, { workspacePath });
+    const input = EditorTargetListInputSchema.parse(payload ?? {});
+    return listAvailableEditorTargets(runtime, options.targets, input);
   });
   ipc.handle("paseo:editor:openTarget", async (_event, payload: unknown) => {
     const input = EditorTargetLaunchInputSchema.parse(payload);

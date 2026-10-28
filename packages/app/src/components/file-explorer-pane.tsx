@@ -60,7 +60,6 @@ import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { ContextMenu, ContextMenuTrigger, useContextMenu } from "@/components/ui/context-menu";
 import { useFileDownload } from "@/hooks/use-file-download";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
-import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
 import { usePanelStore, type ExpandedPathsUpdate, type SortOption } from "@/stores/panel-store";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
@@ -78,6 +77,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
+import { useDesktopOpenExecution } from "@/workspace/open-in-editor/remote-destination";
 import { useOpenDirectoryInEditor } from "@/workspace/open-in-editor/directory";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
@@ -446,9 +446,10 @@ export function FileExplorerPane({
     workspaceRoot: normalizedWorkspaceRoot,
   });
   const toast = useToast();
-  const isLocalDaemon = useIsLocalDaemon(serverId);
+  const desktopOpenExecution = useDesktopOpenExecution(serverId);
   const { targets: desktopOpenTargets } = useDesktopOpenTargets({
-    isLocalExecution: isLocalDaemon,
+    execution: desktopOpenExecution,
+    workspacePath: normalizedWorkspaceRoot,
   });
   const fileManagerTarget = desktopOpenTargets.find((target) => target.kind === "file-manager");
   const projectId = useWorkspaceFields(
