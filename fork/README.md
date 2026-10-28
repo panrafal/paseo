@@ -290,8 +290,11 @@ Every verify runs in a checkout that keeps `node_modules` and build outputs
 between runs: `~/.paseo-fork/verify` for the integration, and the job's slot
 for a branch in `rebase-branches`. `npm install` is skipped while
 every `package.json`, the lockfile and `patches/` match the last install
-there, and a library build is skipped while the library, its workspace
-dependencies and the root files match its last build. Branches rebased onto
+there. A failed install is run again, and then once more after removing
+every `node_modules`: when a patch in `patches/` does not apply to the copy
+already installed, the postinstall step removes that package and fails, and
+the next install fetches it clean. A library build is skipped while the
+library, its workspace dependencies and the root files match its last build. Branches rebased onto
 the same upstream share their library builds, so after the first one each
 branch costs its typecheck, lint and tests.
 
@@ -428,8 +431,8 @@ they do not fetch — in the build checkout, which is a detached worktree so
 `fork/integrate.sh` can move `main` underneath it. `prepare` happens once per
 `main` commit and is remembered in `.fork-prepared`; after that the three can
 run at the same time, and a lock keeps two of them from both running
-`npm install` into the checkout. `--clean` wipes `node_modules` and `dist`
-first.
+`npm install` into the checkout; a failed install is retried as in
+[verify](#build-and-test-failures). `--clean` wipes `node_modules` and `dist` first.
 
 `desktop` builds nothing here. It pushes the local `main` to the fork when
 that is a fast-forward — a `main` behind the published one stops it, so a

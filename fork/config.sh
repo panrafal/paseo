@@ -95,6 +95,27 @@ die() {
 # script can skip checking a commit again.
 verify_passed_file() { git -C "$1" rev-parse --path-format=absolute --git-path fork-verify-passed; }
 
+# Every node_modules in the checkout in the current directory: the root's and
+# each workspace's.
+clear_node_modules() {
+  find . -maxdepth 3 -name node_modules -type d -prune -exec rm -rf {} + 2>/dev/null || true
+}
+
+# npm install in the current directory, tried three times. When a patch does
+# not apply, scripts/postinstall-patches.mjs removes the package and fails the
+# install, and a second install fetches it clean; a third starts from no
+# node_modules at all. TMPDIR is recreated after the wipe, since verify.sh
+# keeps it in node_modules.
+npm_install_retrying() {
+  npm install --no-audit --no-fund && return 0
+  warn "npm install failed — running it again"
+  npm install --no-audit --no-fund && return 0
+  warn "npm install failed twice — removing node_modules and installing from scratch"
+  clear_node_modules
+  [ -z "${TMPDIR:-}" ] || mkdir -p "$TMPDIR"
+  npm install --no-audit --no-fund
+}
+
 # ------------------------------------------------------------- secrets ----
 # The fork's own secrets — today just EXPO_TOKEN, which fork/ios.sh hands to
 # `eas` — live encrypted in fork/.env.fork, committed on the tooling branch.
