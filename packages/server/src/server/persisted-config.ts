@@ -292,6 +292,8 @@ export const PersistedConfigSchema = z
               .describe(
                 "Admit only relay clients that negotiate protected endpoint security (replay protection). Defaults to false; older clients still connect while it is off.",
               ),
+            /** Require relay clients to pair with a one-time link and present a device credential. */
+            deviceAuth: z.boolean().optional(),
             endpoint: z.string().optional(),
             publicEndpoint: z.string().optional(),
             useTls: z.boolean().optional(),

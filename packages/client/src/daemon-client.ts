@@ -164,6 +164,7 @@ import {
 import {
   createRelayE2eeTransportFactory,
   createRelayUpgradeTransportFactory,
+  type RelayAuthOptions,
   createWebSocketTransportFactory,
   decodeMessageData,
   defaultWebSocketFactory,
@@ -337,6 +338,17 @@ export type {
 } from "./daemon-client-transport.js";
 
 export type { TerminalStreamEvent };
+export { parseRelayAuthFailure, RelayAuthError } from "./daemon-client-transport.js";
+export type { RelayAuthOptions } from "./daemon-client-transport.js";
+export type {
+  RelayAuthFailureReason,
+  RelayAuthProof,
+  RelayDeviceCredential,
+} from "@getpaseo/relay/e2ee";
+
+function relayAuthOptions(config: DaemonClientConfig): RelayAuthOptions | undefined {
+  return config.e2ee?.auth;
+}
 
 export type ConnectionState =
   | { status: "idle" }
@@ -437,6 +449,7 @@ export interface DaemonClientConfig {
     minimumMode?: RelaySecurityMode;
     /** Called with the negotiated mode after each authenticated relay handshake. */
     onSecurityMode?: (mode: RelaySecurityMode) => void;
+    auth?: RelayAuthOptions;
   };
   reconnect?: {
     enabled?: boolean;
@@ -1523,6 +1536,7 @@ export class DaemonClient {
             if (mode === "protected") this.relaySecurityFloorValue = "protected";
             this.config.e2ee?.onSecurityMode?.(mode);
           },
+          auth: relayAuthOptions(this.config),
         });
       }
       const transportUrl = this.resolveTransportUrlForAttempt();

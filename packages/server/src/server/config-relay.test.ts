@@ -92,6 +92,17 @@ describe("daemon relay config", () => {
     },
   );
 
+  test("leaves relay device authentication off unless config.json turns it on", async () => {
+    const defaultHome = await createPaseoHome({ version: 1, daemon: { relay: {} } });
+    expect(loadConfig(defaultHome, { env: {} }).relayDeviceAuth).toBe(false);
+
+    const enabledHome = await createPaseoHome({
+      version: 1,
+      daemon: { relay: { deviceAuth: true } },
+    });
+    expect(loadConfig(enabledHome, { env: {} }).relayDeviceAuth).toBe(true);
+  });
+
   test("loads relay TLS from env, persisted config, and hosted relay fallback", async () => {
     const persistedHome = await createPaseoHome({
       version: 1,

@@ -31,6 +31,7 @@ interface TestPaseoDaemonOptions {
   relayUseTls?: boolean;
   relayPublicUseTls?: boolean;
   relayRequireProtectedSecurity?: boolean;
+  relayDeviceAuth?: boolean;
   daemonStatusRpcCapability?: boolean;
   relayConfigCapability?: boolean;
   agentClients?: Partial<Record<AgentProvider, AgentClient>>;
@@ -203,6 +204,7 @@ async function prepareTestDaemonConfig(
     relayUseTls: options.relayUseTls,
     relayPublicUseTls: options.relayPublicUseTls,
     relayRequireProtectedSecurity: options.relayRequireProtectedSecurity,
+    relayDeviceAuth: options.relayDeviceAuth,
     appBaseUrl: "https://app.paseo.sh",
     auth: options.auth,
     pushNotificationSender: options.pushNotificationSender,
