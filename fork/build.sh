@@ -91,12 +91,13 @@ prepare_checkout() {
     if [ "$do_clean" -eq 1 ]; then
       say "Cleaning node_modules and dist"
       (cd "$BUILD_DIR" &&
-        find . -maxdepth 3 -name node_modules -type d -prune -exec rm -rf {} + 2>/dev/null || true
+        clear_node_modules
         find packages -maxdepth 2 -name dist -type d -prune -exec rm -rf {} + 2>/dev/null || true)
     fi
 
     say "Preparing $(git -C "$BUILD_DIR" log -1 --format='%h %s')"
-    (cd "$BUILD_DIR" && npm install --no-audit --no-fund)
+    (cd "$BUILD_DIR" && npm_install_retrying) ||
+      die "npm install in $BUILD_DIR failed three times, the last from no node_modules"
     echo "$sha" >"$PREPARED_MARKER"
   fi
   stamp_version
