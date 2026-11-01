@@ -21,9 +21,10 @@
 #   3. npm run typecheck of each checked workspace
 #   4. npm run lint, all of it: oxlint takes seconds
 #   5. vitest on every test file the fork changes in a checked workspace,
-#      plus the test next to every source file it changes there. Browser and
-#      e2e tests are skipped. HOME links to the real one's contents minus the
-#      agent skill folders, which test daemons would overwrite.
+#      plus the test next to every source file it changes there, retrying a
+#      failed test once. Browser and e2e tests are skipped. HOME links to the
+#      real one's contents minus the agent skill folders, which test daemons
+#      would overwrite.
 #
 # Every step after the install runs even when an earlier one fails, so the log
 # shows every failure at once. Tracked files the steps rewrite (the lockfile,
@@ -148,7 +149,10 @@ for pkg in ${packages[@]+"${packages[@]}"}; do
     [ "${line%% *}" = "$pkg" ] && files+=("${line#* }")
   done
   step "vitest: $pkg (${#files[@]} files), run with HOME=$test_home"
-  (cd "$pkg" && HOME="$test_home" "$dir/node_modules/.bin/vitest" run --maxWorkers=2 "${files[@]}") ||
+  # A failed test runs once more. Several checks share the devbox, and a test
+  # whose first import is cold can outrun its fixed timeout under that load;
+  # the retry has the modules loaded. Upstream CI still runs each test once.
+  (cd "$pkg" && HOME="$test_home" "$dir/node_modules/.bin/vitest" run --maxWorkers=2 --retry=1 "${files[@]}") ||
     failures+=("vitest in $pkg")
 done
 [ "${#packages[@]}" -gt 0 ] || say "no fork-touched tests to run"
