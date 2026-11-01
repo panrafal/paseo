@@ -77,13 +77,20 @@ fixture() {
   git -C "$R" push -q -u origin fork-base 2>/dev/null
   export FORK_WORK_ROOT="$F/work" FORK_PUSH_RETRY_DELAY=0
   # Stands in for fork/verify.sh: the tree "fails to build" while it holds a
-  # broken*.txt. Every call is logged as "<dir> <base> <since>".
+  # broken*.txt, and the first check of a tree holding a flaky*.txt fails
+  # once until $FORK_WORK_ROOT/flaked is removed. Every call is logged as
+  # "<dir> <base> <since>".
   cat >"$F/verify" <<'VERIFY'
 #!/usr/bin/env bash
 echo "$1 $2 ${3:-}" >>"$FORK_WORK_ROOT/verify-calls"
 git -C "$1" log -1 --format=%s >>"$FORK_WORK_ROOT/verify-subjects"
 if compgen -G "$1/broken*.txt" >/dev/null; then
   echo "error TS2554: Expected 2 arguments, but got 1."
+  exit 1
+fi
+if compgen -G "$1/flaky*.txt" >/dev/null && [ ! -e "$FORK_WORK_ROOT/flaked" ]; then
+  touch "$FORK_WORK_ROOT/flaked"
+  echo "Error: Test timed out in 5000ms."
   exit 1
 fi
 # Like fork/verify.sh, a pass on a committed tree is recorded against HEAD.
@@ -772,6 +779,7 @@ AGENT
   upstream_commit broken2.txt 'y' "upstream: change another signature"
   export TEST_AGENT_MODE=giveup
   assert_fails "agent that commits nothing stops the run" run rebase --agent --push
+  assert_log "the agent committed no fix — checking again"
   assert_log "does not build"
   git -C "$R" worktree remove --force "$wt"
   unset TEST_AGENT_MODE
@@ -781,6 +789,15 @@ AGENT
   assert_log "the fix lives only in fork-integration"
   assert_fails "agent fix is in main" git -C "$R" cat-file -e main:broken2.txt
   assert_eq "pushed" "$(at origin/main)" "$(at main)"
+  # A failure that does not come back passes on the run's second check, with
+  # nothing to move.
+  upstream_commit flaky.txt 'f' "upstream: add a flaky test"
+  export TEST_AGENT_MODE=giveup
+  assert "a failure that does not come back passes" run rebase --agent --push
+  assert_log "the agent committed no fix — checking again"
+  assert_fails "no fix to move" grep -q "the fix lives only" "$F/last.log"
+  assert "flaky test is in main" git -C "$R" cat-file -e origin/main:flaky.txt
+  unset TEST_AGENT_MODE
   export PATH="$original_path"
   # The next verify checks only what changed since the last one that passed:
   # the integration before its build stamp.
@@ -836,7 +853,10 @@ scenario_verify_branches() {
   local original_path="$PATH"
   mkdir -p "$F/bin"
   agent_stub "$F/bin/paseo" <<'AGENT'
-[ "${TEST_AGENT_MODE:-}" != giveup ] || exit 0
+case "${TEST_AGENT_MODE:-}" in
+  giveup) exit 0 ;;
+  rechecks) "$FORK_VERIFY_CMD" "$PWD" upstream/main && exit 0 ;;
+esac
 git rm -q broken*.txt
 git commit -q -m "fork: fix after upstream change"
 AGENT
@@ -846,6 +866,7 @@ AGENT
   tip_c="$(at feat-c)"
   export TEST_AGENT_MODE=giveup
   assert_fails "agent that commits nothing stops the run" run rebase-branches --agent --push
+  assert_log "feat-c.* the agent committed no fix — checking again"
   assert_log "feat-c does not build"
   assert_eq "feat-c not pushed" "$(at origin/feat-c)" "$tip_c"
   unset TEST_AGENT_MODE
@@ -862,6 +883,26 @@ AGENT
   assert "squashed tip counts as verified" grep -qx "$(at feat-c)" "$FORK_WORK_ROOT/verified"
   assert "feat-c on upstream" git -C "$R" merge-base --is-ancestor upstream/main origin/feat-c
   assert_fails "fix is in main" git -C "$R" cat-file -e main:broken-c.txt
+  # A failure that does not come back is pushed as it is: checked again by the
+  # run when the agent commits nothing, or not when the agent's check passed.
+  patch_branch feat-d flaky-d.txt 'd'
+  list_branch origin/feat-d
+  upstream_commit c5.txt 'c5' "upstream: add c5"
+  export TEST_AGENT_MODE=giveup
+  assert "flaky feat-d passes on the run's second check" run rebase-branches --agent --push
+  assert_log "feat-d.* the agent committed no fix — checking again"
+  assert_log "feat-d.* passes without a fix"
+  assert_eq "feat-d pushed" "$(at origin/feat-d)" "$(at feat-d)"
+  assert_eq "feat-d unchanged by the agent" "$(git -C "$R" log -1 --format=%s feat-d)" "patch: feat-d"
+  assert "feat-d in main" git -C "$R" cat-file -e origin/main:flaky-d.txt
+  rm "$FORK_WORK_ROOT/flaked" "$FORK_WORK_ROOT/verify-subjects"
+  upstream_commit c6.txt 'c6' "upstream: add c6"
+  export TEST_AGENT_MODE=rechecks
+  assert "flaky feat-d passes on the agent's check" run rebase-branches --agent --push
+  assert_log "feat-d.* the agent's check passed without a fix"
+  assert_eq "feat-d checked by the run, then the agent" "$(grep -cx "patch: feat-d" "$FORK_WORK_ROOT/verify-subjects")" 2
+  assert_eq "feat-d pushed again" "$(at origin/feat-d)" "$(at feat-d)"
+  unset TEST_AGENT_MODE
   export PATH="$original_path"
   # A branch that passed before its rebase is checked for what changed since.
   local old_a
