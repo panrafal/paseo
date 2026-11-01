@@ -1,7 +1,7 @@
 import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTabSnapshot } from "@/stores/workspace-layout-actions";
 import { isWorkspaceRootAgent } from "@/subagents/policies";
-import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
+import { normalizeWorkspaceOpaqueId, normalizeWorkspacePath } from "@/utils/workspace-identity";
 
 export interface WorkspaceAgentVisibility {
   activeAgentIds: Set<string>;
@@ -9,14 +9,69 @@ export interface WorkspaceAgentVisibility {
   foreignAgentIds: Set<string>;
 }
 
+function agentBelongsToWorkspace(input: {
+  agent: Agent;
+  workspaceId: string;
+  workspaceDirectory: string | null;
+}): boolean {
+  const agentWorkspaceId = normalizeWorkspaceOpaqueId(input.agent.workspaceId);
+  if (agentWorkspaceId) {
+    return agentWorkspaceId === input.workspaceId;
+  }
+
+  // COMPAT(legacyAgentWorkspaceId): added 2026-06-18, remove after 2026-12-18 once daemon/storage floor always stamps workspaceId.
+  return normalizeWorkspacePath(input.agent.cwd) === input.workspaceDirectory;
+}
+
+function addForeignAgent(input: {
+  agent: Agent;
+  workspaceId: string;
+  foreignAgentIds: Set<string>;
+}): void {
+  const ownerId = normalizeWorkspaceOpaqueId(input.agent.workspaceId);
+  if (ownerId && ownerId !== input.workspaceId) {
+    input.foreignAgentIds.add(input.agent.id);
+  }
+}
+
+function addSessionAgentVisibility(input: {
+  agent: Agent;
+  sessionAgents: Map<string, Agent> | undefined;
+  agentDetails: Map<string, Agent> | undefined;
+  workspaceId: string;
+  workspaceDirectory: string | null;
+  activeAgentIds: Set<string>;
+  autoOpenAgentIds: Set<string>;
+  foreignAgentIds: Set<string>;
+}): void {
+  if (!agentBelongsToWorkspace(input)) {
+    addForeignAgent(input);
+    return;
+  }
+  if (input.agent.archivedAt) {
+    return;
+  }
+
+  input.activeAgentIds.add(input.agent.id);
+  const parentAgent = input.agent.parentAgentId
+    ? (input.sessionAgents?.get(input.agent.parentAgentId) ??
+      input.agentDetails?.get(input.agent.parentAgentId))
+    : undefined;
+  if (isWorkspaceRootAgent(input.agent, parentAgent)) {
+    input.autoOpenAgentIds.add(input.agent.id);
+  }
+}
+
 export function deriveWorkspaceAgentVisibility(input: {
   sessionAgents: Map<string, Agent> | undefined;
   agentDetails?: Map<string, Agent> | undefined;
   workspaceId: string | null | undefined;
+  workspaceDirectory?: string | null | undefined;
 }): WorkspaceAgentVisibility {
   const { sessionAgents, agentDetails } = input;
   const workspaceId = normalizeWorkspaceOpaqueId(input.workspaceId);
-  if (!workspaceId) {
+  const workspaceDirectory = normalizeWorkspacePath(input.workspaceDirectory);
+  if ((!sessionAgents && !agentDetails) || !workspaceId) {
     return {
       activeAgentIds: new Set<string>(),
       autoOpenAgentIds: new Set<string>(),
@@ -28,30 +83,20 @@ export function deriveWorkspaceAgentVisibility(input: {
   const autoOpenAgentIds = new Set<string>();
   const foreignAgentIds = new Set<string>();
   for (const agent of sessionAgents?.values() ?? []) {
-    const ownerId = normalizeWorkspaceOpaqueId(agent.workspaceId);
-    if (ownerId !== workspaceId) {
-      if (ownerId) {
-        foreignAgentIds.add(agent.id);
-      }
-      continue;
-    }
-    if (!agent.archivedAt) {
-      activeAgentIds.add(agent.id);
-      const parentAgent = agent.parentAgentId
-        ? (sessionAgents?.get(agent.parentAgentId) ?? agentDetails?.get(agent.parentAgentId))
-        : undefined;
-      if (isWorkspaceRootAgent(agent, parentAgent)) {
-        autoOpenAgentIds.add(agent.id);
-      }
-    }
+    addSessionAgentVisibility({
+      agent,
+      sessionAgents,
+      agentDetails,
+      workspaceId,
+      workspaceDirectory,
+      activeAgentIds,
+      autoOpenAgentIds,
+      foreignAgentIds,
+    });
   }
   for (const agent of agentDetails?.values() ?? []) {
-    if (sessionAgents?.has(agent.id)) {
-      continue;
-    }
-    const ownerId = normalizeWorkspaceOpaqueId(agent.workspaceId);
-    if (ownerId && ownerId !== workspaceId) {
-      foreignAgentIds.add(agent.id);
+    if (!sessionAgents?.has(agent.id)) {
+      addForeignAgent({ agent, workspaceId, foreignAgentIds });
     }
   }
   return { activeAgentIds, autoOpenAgentIds, foreignAgentIds };
@@ -70,6 +115,7 @@ interface AgentMapsSnapshot {
 export function createWorkspaceAgentVisibilitySelector(input: {
   serverId: string;
   workspaceId: string | null | undefined;
+  workspaceDirectory?: string | null | undefined;
 }): (state: AgentMapsSnapshot) => WorkspaceAgentVisibility {
   let previousAgents: Map<string, Agent> | undefined;
   let previousAgentDetails: Map<string, Agent> | undefined;
@@ -87,6 +133,7 @@ export function createWorkspaceAgentVisibilitySelector(input: {
       sessionAgents: agents,
       agentDetails,
       workspaceId: input.workspaceId,
+      workspaceDirectory: input.workspaceDirectory,
     });
     previousAgents = agents;
     previousAgentDetails = agentDetails;

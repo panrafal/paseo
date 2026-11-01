@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { VIDEO_FILE_EXTENSIONS } from "@/attachments/file-types";
 import { filePanelCatalog } from "./catalog";
 import { resolveFilePanel, type FilePanelCandidate, type FilePanelFile } from "./resolve";
 
@@ -65,6 +66,10 @@ describe("built-in file panels", () => {
 
   it("has no Source for files that are not text", () => {
     expect(candidateIds({ path: "archive.zip", kind: "binary" })).toEqual([]);
+  });
+
+  it.each(VIDEO_FILE_EXTENSIONS)("registers the video extension %s", (extension) => {
+    expect(panelId({ path: `recording.${extension}`, kind: "binary" })).toBe("builtin:video");
   });
 
   it.each(["png", "jpg", "jpeg", "gif", "webp", "svg"])(

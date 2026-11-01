@@ -10,6 +10,11 @@ import { FileDropBackdrop } from "./file-drop-backdrop";
 import { useDropListeners } from "./use-drop-listeners";
 import type { FileDropSink } from "./types";
 
+interface FileDropRegistration {
+  getSink: () => FileDropSink | null;
+  isActive: () => boolean;
+}
+
 interface FileDropZoneProps {
   children: ReactNode;
   /** When true, no drops are accepted and the backdrop stays hidden. */
@@ -27,23 +32,34 @@ export function FileDropZone({ children, disabled = false, style }: FileDropZone
   const isDragging = useSharedValue(false);
   const suppressed = useSharedValue(false);
   const hasSink = useSharedValue(false);
-  const activeGetSink = useRef<(() => FileDropSink | null) | null>(null);
+  const registrations = useRef<FileDropRegistration[]>([]);
 
   const registerSink = useCallback(
-    (getSink: () => FileDropSink | null) => {
-      activeGetSink.current = getSink;
+    (getSink: () => FileDropSink | null, isActive: () => boolean) => {
+      const registration: FileDropRegistration = { getSink, isActive };
+      registrations.current = [...registrations.current, registration];
       hasSink.value = true;
       return () => {
-        if (activeGetSink.current === getSink) {
-          activeGetSink.current = null;
-          hasSink.value = false;
-        }
+        registrations.current = registrations.current.filter((entry) => entry !== registration);
+        hasSink.value = registrations.current.length > 0;
       };
     },
     [hasSink],
   );
 
-  const getSink = useCallback(() => activeGetSink.current?.() ?? null, []);
+  // Several consumers can be mounted at once — a focused pane's composer, the draft composer
+  // behind it, a composer in a background tab. The focused one takes the drop; only when none
+  // claims focus does the most recent registration win.
+  const getSink = useCallback(() => {
+    const entries = registrations.current;
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry?.isActive()) {
+        return entry.getSink();
+      }
+    }
+    return entries[entries.length - 1]?.getSink() ?? null;
+  }, []);
 
   const ctx = useMemo<FileDropContextValue>(
     () => ({ isDragging, suppressed, hasSink, registerSink }),

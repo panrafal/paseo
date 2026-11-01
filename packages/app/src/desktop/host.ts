@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
 import type { BrowserKeyboardPolicy } from "@/desktop/browser/shortcuts";
+import { getVscodeHost, isVscodeRuntime } from "@/desktop/vscode/host";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -69,6 +70,7 @@ export interface DesktopEditorTargetDescriptor {
   label: string;
   kind: "editor" | "file-manager";
   icon: { kind: "image"; dataUrl: string } | { kind: "symbol"; name: "folder" | "terminal" };
+  remoteDestinationKinds: readonly "ssh"[];
 }
 
 export interface DesktopEditorOpenTargetInput {
@@ -77,6 +79,15 @@ export interface DesktopEditorOpenTargetInput {
   filePath?: string;
   line?: number;
   column?: number;
+  lineEnd?: number;
+  remoteDestination?: { kind: "ssh"; host: string };
+}
+
+export interface VscodeRuntimeConfig {
+  endpoint: string | null;
+  hasPassword: boolean;
+  bridgeProtocol: number;
+  workspaceFolders: string[];
 }
 
 export interface DesktopEditorBridge {
@@ -125,8 +136,9 @@ export interface DesktopEventsBridge {
   on?: (event: string, handler: (payload: unknown) => void) => Promise<() => void> | (() => void);
 }
 
-export interface DesktopAgentNavigationBridge {
-  ready?: () => Promise<{ serverId: string; agentId: string } | null>;
+export interface DesktopNavigationBridge {
+  /** Marks this window ready and returns the deep link queued while it loaded. */
+  ready?: () => Promise<unknown>;
 }
 
 export type DesktopBrowserShortcutEvent =
@@ -177,7 +189,7 @@ export interface DesktopHostBridge {
   windowChromeMode?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
-  agentNavigation?: DesktopAgentNavigationBridge;
+  navigation?: DesktopNavigationBridge;
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;
@@ -192,6 +204,7 @@ export interface DesktopHostBridge {
 declare global {
   interface Window {
     paseoDesktop?: DesktopHostBridge;
+    paseoVscode?: VscodeRuntimeConfig;
   }
 }
 
@@ -199,11 +212,11 @@ export function getDesktopHost(): DesktopHostBridge | null {
   if (Platform.OS !== "web") {
     return null;
   }
-  return getElectronHost();
+  return getVscodeHost() ?? getElectronHost();
 }
 
 export function isElectronRuntime(): boolean {
-  return getDesktopHost() !== null;
+  return getElectronHost() !== null && !isVscodeRuntime();
 }
 
 export function isElectronRuntimeMac(): boolean {
