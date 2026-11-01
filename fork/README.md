@@ -129,11 +129,11 @@ the next rebase replays one commit and meets each conflict once. The squash
 keeps the first commit's subject and lists every commit it replaced, flattening
 the list of an earlier squash. `fork-base` keeps its history, and nothing is
 squashed under `--no-verify`. Each branch is a job
-that rebases, verifies and pushes it, `FORK_JOBS` (6) at a time, in a slot of
+that rebases, verifies and pushes it, `FORK_JOBS` (10) at a time, in a slot of
 its own: `~/.paseo-fork/verify`, `verify-2`, `verify-3`, … Every slot keeps
 its own `node_modules`, so the first run pays one `npm install` per slot. Only
-`FORK_VERIFY_JOBS` (4) of the script's own checks run at once; one per job,
-next to agents doing the same, freezes the devbox. An agent's check does not
+`FORK_VERIFY_JOBS` (6) of the script's own checks run at once; at 8, next to
+agents' checks, app tests time out on the devbox. An agent's check does not
 wait for that limit, so at most `FORK_JOBS` checks run at once. The terminal prints the `tail -f` command
 for each branch's log, `~/.paseo-fork/rebase-branches/<branch>.log` (`/`
 becomes `__`), which also carries the branch's build and test output. It
@@ -275,7 +275,9 @@ that depend on them. Upstream's own code is upstream CI's job. For those
 workspaces it builds the workspace dependencies they read from `dist/`, runs
 each one's typecheck, runs `npm run lint` over the whole repo (oxlint takes
 seconds), and runs vitest on the test files the tree changes plus the test
-beside each source file it changes. Browser and e2e tests are skipped, and the
+beside each source file it changes. A failed test runs once more: a test whose
+first import is cold can outrun its timeout while other checks load the
+devbox. Browser and e2e tests are skipped, and the
 full suite never runs; it is too heavy for the devbox. vitest runs with a
 HOME that links to the real one except the `skills` folders of `~/.agents`,
 `~/.claude`, `~/.codex` and `~/.kilo`: every daemon a test boots syncs Paseo's
@@ -312,10 +314,12 @@ rebuild, so the integration's own check rarely has anything left to find. A
 tip that passed before is skipped, so a re-run after a failure verifies only
 what is left. With `--agent`, a failure goes to the agent that resolved the
 branch's conflicts, or to a new one, which commits its fix on top of the
-branch; the run moves the branch to it, verifying again first unless the
-agent's own check passed on that commit. That pass also keeps the fix of an
-agent that timed out or stopped on a question: nobody answers one, so the
-script stops the agent and takes its last commit. The agent gets the exact
+branch. Whatever the agent reports, the run then checks again, unless the
+agent's own check passed on the commit it left, and a pass moves the branch
+there. That keeps the fix of an agent that timed out or stopped on a question
+(nobody answers one, so the script stops it), and it pushes a branch whose
+agent committed nothing because the failure did not come back or its sandbox
+could not run the check. The agent gets the exact
 `fork/verify.sh` command the run used and is told to check with it alone, not
 with the repo-wide typecheck and tests the repo's agent instructions ask for.
 `fork/verify.sh` records each pass on a tree with nothing uncommitted against
@@ -326,7 +330,7 @@ edits that were there before it started. A failure of the tooling inside the
 agent's sandbox (`ENOENT` under `node_modules/.tmp`, vitest dying before it
 loads a test) is not upstream's: the agent keeps its fix and says so, and the
 script's own check decides. Without `--agent`,
-or when the fix still fails, that branch is not pushed and the run stops
+or when that check still fails, that branch is not pushed and the run stops
 before rebuilding. Fix the branch, commit, and re-run. When upstream itself fails, the agent stops without committing; run
 with `--no-verify` until upstream is fixed.
 
@@ -334,7 +338,8 @@ with `--no-verify` until upstream is fixed.
 merged integration before the build number is stamped. With `--agent`, a
 failure is handed to the same agent as conflicts, with the log and the files
 each patch branch changes. It commits its fix in the verify checkout, the run
-verifies again and moves the integration to it. The fix lives only in
+verifies again and moves the integration to it; as for a branch, the run
+checks again when the agent commits nothing. The fix lives only in
 `fork-integration`, so the run warns you to move it to the patch branch that
 owns it; the next `rebuild` needs it again otherwise.
 

@@ -784,8 +784,9 @@ verify_integration() {
       "6. In your final message, name the patch branch that should carry the fix,
    so the owner can move it there." &&
     { passed_here "$VERIFY_DIR" || run_verify "$VERIFY_DIR" "$since"; }; then
-    git -C "$INTEGRATE_DIR" checkout -q --detach "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
     record_verified
+    [ "$(git -C "$VERIFY_DIR" rev-parse HEAD)" != "$head" ] || return 0
+    git -C "$INTEGRATE_DIR" checkout -q --detach "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
     warn "the fix lives only in $INTEGRATION_REF — move it to the patch branch it belongs to, or the next rebuild needs it again"
     return 0
   fi
@@ -857,7 +858,8 @@ and generated files you did not mean to change), then commit each fix:
   git add <files> && git -c core.hooksPath=/dev/null commit -m 'Fix <what> after <upstream change>'
 Hooks are off because the check runs what they run. A pass is recorded
 against the commit it checked: end on a passing run of your last commit and
-the script does not check again.
+the script does not check again. A failure that does not come back when you
+run the check needs no fix: commit nothing.
 
 A failure of the tooling rather than the code comes from your sandbox, not
 from upstream: ENOENT, EACCES or EROFS under node_modules/.tmp or /tmp, a
@@ -895,9 +897,11 @@ CONTEXT
 
 # Hand the failure in $VERIFY_LOG, verified in $1, to an agent that commits a
 # fix on top of $1's HEAD. $2 names the job, $3 says what the tree is, $4 is an
-# extra last step. Returns non-zero if the agent did not commit a fix.
+# extra last step. Returns non-zero if the agent left a result the script
+# cannot check: a merge in progress or rewritten history. Whether the result
+# passes is for the caller's check to say, whatever the agent reported.
 fix_with_agent() {
-  local dir="$1" what="$2" context="$3" last_step="${4:-}" before agent_status=0
+  local dir="$1" what="$2" context="$3" last_step="${4:-}" before head
   before="$(git -C "$dir" rev-parse HEAD)"
   section "🤖" "Fix $what"
   ask_agent "$dir" "fix $what" "You are fixing a failed build, lint or test run in a throwaway worktree at $dir.
@@ -922,17 +926,29 @@ $last_step
 $(check_guide)
 
 If the failure cannot be fixed without a decision only the repo owner can
-make, stop without committing and explain why." || agent_status=$?
+make, stop without committing and explain why." || true
 
-  # An agent that timed out or stopped on a question after its own check
-  # passed on its last commit has done the job; add-devin-usage-skills lost a
-  # working fix to a question about where the branch was checked out.
-  [ "$agent_status" -eq 0 ] || passed_here "$dir" || return 1
+  # The agent's outcome does not decide; the check does. One that timed out
+  # or stopped on a question may have committed a working fix:
+  # add-devin-usage-skills lost one to a question about where the branch was
+  # checked out. One that committed nothing may have seen the failure go
+  # away, or been unable to run the check in its sandbox:
+  # plan-relay-shortlived-tokens failed twice on an app test that timed out
+  # under load and passed on its own, while its fixer's vitest could not start.
   ! git -C "$dir" rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1 || return 1
-  [ "$(git -C "$dir" rev-parse HEAD)" != "$before" ] || return 1
-  git merge-base --is-ancestor "$before" "$(git -C "$dir" rev-parse HEAD)" || return 1
-  say "agent committed:"
-  git -C "$dir" log --oneline "$before..HEAD" | sed 's/^/    /'
+  head="$(git -C "$dir" rev-parse HEAD)"
+  git merge-base --is-ancestor "$before" "$head" || return 1
+  # Only what it committed is its result.
+  git -C "$dir" reset -q --hard
+  git -C "$dir" clean -q -fdx -e node_modules -e dist -e build
+  if [ "$head" != "$before" ]; then
+    say "agent committed:"
+    git -C "$dir" log --oneline "$before..HEAD" | sed 's/^/    /'
+  elif passed_here "$dir"; then
+    progress "🔁" "the agent's check passed without a fix"
+  else
+    progress "🔁" "the agent committed no fix — checking again"
+  fi
 }
 
 # Every listed branch and the files it changes relative to upstream.
@@ -1495,8 +1511,12 @@ verify_branch() {
       ! { passed_here "$VERIFY_DIR" || run_verify "$VERIFY_DIR" "$since"; }; then
       stop_on_branch_failure "$branch"
     fi
-    move_branch "$branch" "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
-    progress "🩹" "the fix is committed on the branch"
+    if [ "$(git -C "$VERIFY_DIR" rev-parse HEAD)" = "$sha" ]; then
+      progress "✅" "passes without a fix"
+    else
+      move_branch "$branch" "$(git -C "$VERIFY_DIR" rev-parse HEAD)"
+      progress "🩹" "the fix is committed on the branch"
+    fi
   fi
   record_verified
 }
