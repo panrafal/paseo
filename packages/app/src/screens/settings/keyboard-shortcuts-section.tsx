@@ -38,7 +38,15 @@ import {
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
+import { isNative } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
+import { formatShortcut } from "@/utils/format-shortcut";
+import { buildNativeShortcutCaptureCommands } from "@/keyboard/native-history-shortcuts";
+import {
+  addNativeHistoryShortcutListener,
+  nativeHistoryShortcutsAvailable,
+  setNativeShortcutCaptureCommands,
+} from "@/native/history-shortcuts";
 
 const EMPTY_CAPTURED_COMBOS: string[] = [];
 
@@ -74,6 +82,13 @@ function ShortcutSequence({
     return <Text style={styles.capturingText}>{t("settings.shortcuts.capturePrompt")}</Text>;
   }
 
+  if (isNative) {
+    return (
+      <Text style={styles.capturingText}>
+        {displayChord.map((keys) => formatShortcut(keys, getShortcutOs())).join(" ")}
+      </Text>
+    );
+  }
   return <Shortcut chord={displayChord} />;
 }
 
@@ -346,7 +361,17 @@ export function KeyboardShortcutsSection() {
 
   const isFocused = useIsFocused();
   const isMac = getShortcutOs() === "mac";
-  const sections = buildKeyboardShortcutHelpSections({ isMac, usesDesktopBindings });
+  const allSections = buildKeyboardShortcutHelpSections({ isMac, usesDesktopBindings });
+  const sections = nativeHistoryShortcutsAvailable
+    ? allSections
+        .map((section) => ({
+          ...section,
+          rows: section.rows.filter(
+            (row) => row.id === "history-back" || row.id === "history-forward",
+          ),
+        }))
+        .filter((section) => section.rows.length > 0)
+    : allSections;
 
   const cancelCapture = useCallback(() => {
     setCapturedCombos([]);
@@ -383,7 +408,7 @@ export function KeyboardShortcutsSection() {
   }, [isFocused, capturingBindingId, cancelCapture]);
 
   useOverlayRegistration({
-    active: capturingBindingId !== null,
+    active: capturingBindingId !== null && !nativeHistoryShortcutsAvailable,
     layer: 0,
     keys: [],
     manageFocus: false,
@@ -405,6 +430,23 @@ export function KeyboardShortcutsSection() {
       return true;
     },
   });
+
+  useEffect(() => {
+    if (!nativeHistoryShortcutsAvailable || capturingBindingId === null) return;
+    const listener = addNativeHistoryShortcutListener((event) => {
+      if (event.key === "Backspace") {
+        setCapturedCombos((current) => current.slice(0, -1));
+        return;
+      }
+      const combo = keyboardEventToComboString(event);
+      if (combo !== null) setCapturedCombos((current) => [...current, combo]);
+    });
+    setNativeShortcutCaptureCommands(buildNativeShortcutCaptureCommands());
+    return () => {
+      listener.remove();
+      setNativeShortcutCaptureCommands(null);
+    };
+  }, [capturingBindingId]);
 
   useEffect(() => {
     return () => {
@@ -435,11 +477,22 @@ export function KeyboardShortcutsSection() {
 
   if (!hardwareKeyboardPresent) return null;
 
-  const resetAllButton = hasOverrides ? (
-    <Button variant="ghost" onPress={handleResetAll}>
-      {t("settings.shortcuts.actions.resetAll")}
-    </Button>
-  ) : undefined;
+  if (isNative && !nativeHistoryShortcutsAvailable) {
+    return (
+      <SettingsSection title={t("settings.sections.shortcuts")}>
+        <View style={[settingsStyles.card, styles.mobileCard]}>
+          <Text style={styles.mobileText}>{t("settings.shortcuts.unavailableOnMobile")}</Text>
+        </View>
+      </SettingsSection>
+    );
+  }
+
+  const resetAllButton =
+    hasOverrides && !isNative ? (
+      <Button variant="ghost" size="sm" onPress={handleResetAll}>
+        {t("settings.shortcuts.actions.resetAll")}
+      </Button>
+    ) : undefined;
 
   return (
     <>
@@ -544,5 +597,12 @@ const styles = StyleSheet.create((theme) => ({
   separator: {
     height: 1,
     backgroundColor: theme.colors.border,
+  },
+  mobileCard: {
+    padding: theme.spacing[4],
+  },
+  mobileText: {
+    fontSize: theme.fontSize.base,
+    color: theme.colors.foregroundMuted,
   },
 }));
