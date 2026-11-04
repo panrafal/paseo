@@ -116,7 +116,8 @@ function resolveScheduleTarget(args: {
   if (hasExplicitNewAgentOption) {
     throw {
       code: "INVALID_TARGET",
-      message: "--provider/--mode/--thinking can only be used with a new-agent target",
+      message:
+        "--provider/--mode/--thinking/--workspace-label can only be used with a new-agent target",
       details: "Use --target new-agent or omit --target to create a new agent schedule",
     } satisfies CommandError;
   }
@@ -147,6 +148,7 @@ export function parseScheduleCreateInput(options: {
   provider?: string;
   mode?: string;
   thinking?: string;
+  workspaceLabel?: string[];
   cwd?: string;
   host?: string;
   daemonTarget: import("../../utils/daemon-target.js").DaemonTarget;
@@ -191,7 +193,10 @@ export function parseScheduleCreateInput(options: {
     } satisfies CommandError;
   }
   const hasExplicitNewAgentOption =
-    options.provider !== undefined || options.mode !== undefined || options.thinking !== undefined;
+    options.provider !== undefined ||
+    options.mode !== undefined ||
+    options.thinking !== undefined ||
+    options.workspaceLabel !== undefined;
   const createNewAgentTarget = (): ScheduleTarget => {
     const resolvedProviderModel = resolveProviderAndModel({
       provider: options.provider,
@@ -204,6 +209,9 @@ export function parseScheduleCreateInput(options: {
         ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
         ...(modeId ? { modeId } : {}),
         ...(thinkingOptionId ? { thinkingOptionId } : {}),
+        ...(options.workspaceLabel !== undefined
+          ? { workspaceLabels: options.workspaceLabel }
+          : {}),
       },
     };
   };
@@ -239,6 +247,8 @@ function resolveRunOnCreate(
 }
 
 export interface ScheduleUpdateOptionsInput {
+  workspaceLabel?: string[];
+  clearWorkspaceLabels?: boolean;
   id: string;
   every?: string;
   cron?: string;
@@ -437,6 +447,14 @@ function buildNewAgentConfigPatch(
     }
     patch.cwd = trimmed;
   }
+  if (options.workspaceLabel !== undefined && options.clearWorkspaceLabels) {
+    throw {
+      code: "CONFLICTING_WORKSPACE_LABELS",
+      message: "Use either --workspace-label or --clear-workspace-labels, not both",
+    } satisfies CommandError;
+  }
+  if (options.workspaceLabel !== undefined) patch.workspaceLabels = options.workspaceLabel;
+  if (options.clearWorkspaceLabels) patch.workspaceLabels = [];
   return Object.keys(patch).length > 0 ? patch : undefined;
 }
 
