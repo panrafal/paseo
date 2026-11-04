@@ -2037,6 +2037,7 @@ export const ja: TranslationResources = {
           markdown: "Markdown",
           html: "HTML",
           image: "画像",
+          video: "動画",
           source: "ソース",
         },
       },
@@ -2044,6 +2045,8 @@ export const ja: TranslationResources = {
       loading: "ファイルを読み込み中...",
       noPreview: "プレビューが利用できません",
       binaryPreviewUnavailable: "バイナリプレビューが利用できません",
+      videoPlaybackFailed:
+        "この動画を再生できません。ファイルが破損しているか、このデバイスで対応していない形式の可能性があります。",
       tooLargeToDisplay: "このファイルは大きすぎて表示できません",
       documentUnsupported: "{{type}} ファイルはこのデバイスでは表示できません",
       failedToLoad: "ファイルの読み込みに失敗しました",
