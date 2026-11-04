@@ -36,6 +36,7 @@ Relay is off on new installations. When you pair a device from `paseo`, `paseo d
 3. Your phone sends a handshake message with its own public key. The daemon will not accept any commands until this handshake completes.
 4. Each side combines its Curve25519 key with the peer public key, then uses the resulting NaCl
    `box` channel for XSalsa20-Poly1305 protected payloads.
+5. With [device authentication](/docs/configuration#device-authentication) on, your phone then proves inside that channel that it was paired: the first time with the one-time token from the link, afterwards with a device credential the daemon issued. The daemon attaches nothing until this check passes.
 
 The relay sees only: IP addresses, timing, message sizes, and session IDs. It cannot read message contents, forge messages, or derive encryption keys from observing the handshake.
 
@@ -50,7 +51,17 @@ The daemon requires a valid cryptographic handshake before processing any comman
 
 ### Trust model
 
-The QR code or pairing link is the trust anchor. It contains the daemon's public key, which is required to establish the encrypted connection. Treat it like a password, don't share it publicly.
+By default, the pairing link or QR code is a standing secret. Anyone who has it can connect, so treat it like a password. Turn on [device authentication](/docs/configuration#device-authentication) to make links one-time.
+
+With device authentication on, a pairing link or QR code pairs one device and stops working after 5 minutes. Once your device has paired, the link is worthless to anyone who finds it. Until then, whoever uses it first gets access, even to a password-protected daemon, so don't share it.
+
+A paired device does not send the daemon password. Its device credential is tied to the password it was paired under, so setting, changing, or removing the password signs out every paired device. To remove a single device:
+
+```bash
+paseo daemon devices                   # list paired devices
+paseo daemon devices revoke <id>       # disconnect that device within 15 seconds
+paseo daemon devices revoke --all
+```
 
 ## Direct connections
 
@@ -103,7 +114,7 @@ Prefer entries with a scheme. Without one, `.example.com` also admits plain `htt
 
 By default, anyone who can reach the daemon's listening address can connect. On localhost this is fine, only local processes have access. But if you bind to a network interface (e.g. your LAN IP or `0.0.0.0`), or if you don't fully trust your local network, you can require a password.
 
-When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header, and every WebSocket client, including relay clients, must send the password when it connects. Relay clients send it inside the end-to-end encrypted channel, so the relay never sees it. Unauthenticated HTTP requests receive a `401 Unauthorized` response. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
+When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header, and every WebSocket client must send the password when it connects. Relay clients send it inside the end-to-end encrypted channel, so the relay never sees it. With [device authentication](/docs/configuration#device-authentication) on, a paired relay device signs in with its device credential instead and is not asked for the password. Direct connections, including the bundled web UI, still need it. Unauthenticated HTTP requests receive a `401 Unauthorized` response. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
 
 If you enable the [bundled web UI](/docs/web-ui), its static files are also served without the password so the login screen can render. This is by design, the API and WebSocket still require authentication before any agent data is returned or any command runs. Set a password before binding the daemon to a network so the data behind the page stays protected.
 

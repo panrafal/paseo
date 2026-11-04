@@ -184,7 +184,7 @@ Legacy fields `log.level` and `log.format` are still supported and map to the ne
 
 ## Password authentication
 
-You can require a password to connect to the daemon. When set, all HTTP and WebSocket clients must authenticate. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
+You can require a password to connect to the daemon. When set, all HTTP and WebSocket clients must authenticate. Relay devices paired with [device authentication](#device-authentication) authenticate with their device credential instead. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
 
 The easiest way to set a password is with the CLI:
 
@@ -250,6 +250,23 @@ Set the persisted value in `config.json`:
   }
 }
 ```
+
+### Device authentication
+
+Set `daemon.relay.deviceAuth` to `true` to require every relay client to pair with a one-time link and then present a device credential:
+
+```json
+{
+  "daemon": {
+    "relay": {
+      "enabled": true,
+      "deviceAuth": true
+    }
+  }
+}
+```
+
+Pairing links then work once and expire after 5 minutes. A paired device connects with its device credential and is not asked for the [daemon password](#password-authentication); changing the password signs it out. Direct connections still require the password. The setting is off by default, is read only from `config.json`, and takes effect when the daemon restarts. Devices paired before you turn it on must pair again, and apps released before it can't connect. See [Security](/docs/security#trust-model).
 
 `PASEO_RELAY_ENABLED=true|false` overrides the file for a foreground deployment. Managed `start` uses the file. End and relaunch a deployment to remove its override before changing relay from the app or `paseo daemon pair --relay`.
 

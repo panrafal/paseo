@@ -51,6 +51,12 @@ interface EncryptedChannelOptions {
    */
   daemonKeyPair?: KeyPair;
   binaryCiphertext?: boolean;
+  relayAuth?: boolean;
+}
+
+export interface DaemonChannelOptions {
+  /** Announce that the daemon expects a relay_auth frame before application traffic. */
+  relayAuth?: boolean;
 }
 
 interface E2EEHelloMessage {
@@ -64,8 +70,9 @@ interface E2EEReadyMessage {
   capabilities?: E2EECapabilities;
 }
 
-interface E2EECapabilities {
+export interface E2EECapabilities {
   binaryCiphertext?: boolean;
+  relayAuth?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -76,7 +83,8 @@ function isE2EECapabilities(value: unknown): value is E2EECapabilities {
   return (
     value === undefined ||
     (isRecord(value) &&
-      (value.binaryCiphertext === undefined || typeof value.binaryCiphertext === "boolean"))
+      (value.binaryCiphertext === undefined || typeof value.binaryCiphertext === "boolean") &&
+      (value.relayAuth === undefined || typeof value.relayAuth === "boolean"))
   );
 }
 
@@ -96,6 +104,18 @@ function isE2EEReadyMessage(value: unknown): value is E2EEReadyMessage {
 
 function supportsBinaryCiphertext(message: E2EEHelloMessage | E2EEReadyMessage): boolean {
   return message.capabilities?.binaryCiphertext === true;
+}
+
+function buildReadyText(options: { binaryCiphertext: boolean; relayAuth: boolean }): string {
+  const capabilities: E2EECapabilities = {
+    ...(options.binaryCiphertext ? { binaryCiphertext: true } : {}),
+    ...(options.relayAuth ? { relayAuth: true } : {}),
+  };
+  const hasCapabilities = options.binaryCiphertext || options.relayAuth;
+  return JSON.stringify({
+    type: "e2ee_ready",
+    ...(hasCapabilities ? { capabilities } : {}),
+  } satisfies E2EEReadyMessage);
 }
 
 function buildInvalidHelloError(rawText: string, parsed?: unknown): Error {
@@ -228,7 +248,9 @@ export async function createDaemonChannel(
   transport: Transport,
   daemonKeyPair: KeyPair,
   events: EncryptedChannelEvents = {},
+  daemonOptions: DaemonChannelOptions = {},
 ): Promise<EncryptedChannel> {
+  const relayAuth = daemonOptions.relayAuth === true;
   return new Promise((resolve, reject) => {
     const bufferedMessages: TransportMessage[] = [];
     const shouldIgnorePostHelloPlaintext = (message: TransportMessage): boolean => {
@@ -275,18 +297,12 @@ export async function createDaemonChannel(
         const sharedKey = deriveSharedKey(daemonKeyPair.secretKey, clientPublicKey);
 
         const binaryCiphertext = supportsBinaryCiphertext(msg);
-        await transport.send(
-          JSON.stringify({
-            type: "e2ee_ready",
-            ...(binaryCiphertext
-              ? { capabilities: { binaryCiphertext: true } satisfies E2EECapabilities }
-              : {}),
-          } satisfies E2EEReadyMessage),
-        );
+        await transport.send(buildReadyText({ binaryCiphertext, relayAuth }));
 
         const channel = new EncryptedChannel(transport, sharedKey, events, {
           daemonKeyPair,
           binaryCiphertext,
+          relayAuth,
         });
         channel.setState("open");
         events.onopen?.();
@@ -326,6 +342,7 @@ export class EncryptedChannel {
   private pendingSends: Array<string | ArrayBuffer> = [];
   private onOpenCallbacks: Array<() => void> = [];
   private onCloseCallbacks: Array<() => void> = [];
+  private peerCapabilitiesValue: E2EECapabilities = {};
 
   constructor(
     transport: Transport,
@@ -363,6 +380,7 @@ export class EncryptedChannel {
         const parsed: unknown = JSON.parse(text);
         if (isE2EEReadyMessage(parsed)) {
           this.options.binaryCiphertext = supportsBinaryCiphertext(parsed);
+          this.peerCapabilitiesValue = parsed.capabilities ?? {};
           this.state = "open";
           this.events.onopen?.();
           for (const cb of this.onOpenCallbacks) cb();
@@ -510,12 +528,10 @@ export class EncryptedChannel {
 
   private async sendReadyForRetry(): Promise<void> {
     await this.transport.send(
-      JSON.stringify({
-        type: "e2ee_ready",
-        ...(this.options.binaryCiphertext
-          ? { capabilities: { binaryCiphertext: true } satisfies E2EECapabilities }
-          : {}),
-      } satisfies E2EEReadyMessage),
+      buildReadyText({
+        binaryCiphertext: this.options.binaryCiphertext === true,
+        relayAuth: this.options.relayAuth === true,
+      }),
     );
   }
 
@@ -527,6 +543,11 @@ export class EncryptedChannel {
   close(code = 1000, reason = "Normal closure"): void {
     this.state = "closed";
     this.transport.close(code, reason);
+  }
+
+  /** Capabilities the daemon announced in e2ee_ready. Empty on the daemon side. */
+  peerCapabilities(): E2EECapabilities {
+    return this.peerCapabilitiesValue;
   }
 
   isOpen(): boolean {

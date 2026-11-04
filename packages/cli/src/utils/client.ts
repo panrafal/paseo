@@ -9,12 +9,24 @@ import { describeDaemonTarget, type DaemonTarget } from "./daemon-target.js";
 export type { DaemonTarget } from "./daemon-target.js";
 import {
   buildDaemonWebSocketUrl,
+  buildRelayWebSocketUrl,
   normalizeHostPort,
   parseConnectionUri,
+  shouldUseTlsForDefaultHostedRelay,
 } from "@getpaseo/protocol/daemon-endpoints";
-import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import {
+  parseConnectionOfferFromUrl,
+  type ConnectionOffer,
+} from "@getpaseo/protocol/connection-offer";
+import {
+  DaemonClient,
+  type RelayAuthProof,
+  type WebSocketLike,
+} from "@getpaseo/client/internal/daemon-client";
+import { WebSocket } from "ws";
 import { getOrCreateCliClientId } from "./client-id.js";
 import { resolveCliVersion } from "../version.js";
+import { describeRelayOfferFailure } from "./relay-offer-failure.js";
 
 export interface ConnectOptions {
   target: DaemonTarget;
@@ -42,6 +54,8 @@ export function buildDaemonConnectionCommandError(options: ConnectOptions & { er
   if (error && typeof error === "object" && "message" in error) message = String(error.message);
   if (options.target.kind === "endpoint")
     message = message.replaceAll(options.target.host, describeDaemonTarget(options.target));
+  if (message.startsWith("Cannot connect to daemon at "))
+    return error as { code: string; message: string; details: string };
   let code = "DAEMON_UNREACHABLE";
   if (typeof error === "object" && error !== null && "code" in error) code = String(error.code);
   else if (message === "Password required") code = "AUTH_REQUIRED";
@@ -178,6 +192,94 @@ export function resolveDaemonCredential(
   return token ? { kind: "localCredential", token } : null;
 }
 
+/**
+ * Create a WebSocket factory that works in Node.js
+ */
+function createNodeWebSocketFactory() {
+  return (
+    url: string,
+    options?: { headers?: Record<string, string>; protocols?: string[]; socketPath?: string },
+  ): WebSocketLike => {
+    return new WebSocket(url, options?.protocols, {
+      headers: options?.headers,
+      ...(options?.socketPath ? { socketPath: options.socketPath } : {}),
+    }) as unknown as WebSocketLike;
+  };
+}
+
+async function connectViaRelayOffer(
+  offer: ConnectionOffer,
+  clientId: string,
+  timeout: number,
+  nodeWebSocketFactory: ReturnType<typeof createNodeWebSocketFactory>,
+): Promise<DaemonClient> {
+  const url = buildRelayWebSocketUrl({
+    endpoint: offer.relay.endpoint,
+    serverId: offer.serverId,
+    role: "client",
+    useTls: offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint),
+  });
+
+  const client = new DaemonClient({
+    url,
+    clientId,
+    clientType: "cli",
+    appVersion: resolveCliVersion(),
+    ...(process.env.PASEO_PASSWORD ? { password: process.env.PASEO_PASSWORD } : {}),
+    connectTimeoutMs: timeout,
+    webSocketFactory: (
+      target: string,
+      config?: { headers?: Record<string, string>; protocols?: string[] },
+    ) => nodeWebSocketFactory(target, { headers: config?.headers, protocols: config?.protocols }),
+    e2ee: {
+      enabled: true,
+      daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      ...(offer.minimumSecurityMode ? { minimumMode: offer.minimumSecurityMode } : {}),
+      auth: {
+        resolveProof: async () => resolveRelayOfferProof(offer),
+        label: "Paseo CLI",
+        issueCredential: false,
+      },
+    },
+    reconnect: { enabled: false },
+  });
+
+  try {
+    await client.connect();
+    return client;
+  } catch (error) {
+    await client.close().catch(() => {});
+    const message = error instanceof Error ? error.message : String(error);
+    const guidance = describeRelayOfferFailure([message, client.lastError]);
+    if (guidance) {
+      throw new Error(`Failed to connect via relay offer: ${guidance}`, { cause: error });
+    }
+    const lastError =
+      client.lastError && client.lastError !== message ? ` (${client.lastError})` : "";
+    throw new Error(`Failed to connect via relay offer: ${message}${lastError}`, { cause: error });
+  }
+}
+
+/**
+ * The CLI keeps no device credential, so each run proves itself again. A daemon
+ * password is preferred: it does not use up the link's one-time token and, with
+ * issueCredential false, adds no row to the host's device list.
+ */
+function resolveRelayOfferProof(offer: ConnectionOffer): RelayAuthProof | null {
+  const password = process.env.PASEO_PASSWORD;
+  if (password) return { method: "password", password };
+  return offer.pairing ? { method: "token", token: offer.pairing.token } : null;
+}
+
+function parseHostOfferOrNull(host: string | undefined): ConnectionOffer | null {
+  if (!host) return null;
+  try {
+    return parseConnectionOfferFromUrl(host);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid pairing offer URL: ${message}`, { cause: error });
+  }
+}
 async function connectSelectedDaemon(options: ConnectOptions): Promise<DaemonClient> {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
   const host =
@@ -190,6 +292,15 @@ async function connectSelectedDaemon(options: ConnectOptions): Promise<DaemonCli
           })
         ).listen;
   const home = resolveClientPaseoHome(options.target);
+  const offer = parseHostOfferOrNull(host);
+  if (offer) {
+    return connectViaRelayOffer(
+      offer,
+      await getOrCreateCliClientId(home),
+      timeout,
+      createNodeWebSocketFactory(),
+    );
+  }
   const credential = resolveDaemonCredential(host, home);
   const client = createHostClient(host, {
     clientId: await getOrCreateCliClientId(home),

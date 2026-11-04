@@ -37,6 +37,8 @@ import {
 import { resolveAppVersion } from "@/utils/app-version";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@getpaseo/protocol/connection-offer";
 import { HostConfirmations, type HostConfirmationRequest } from "./host-confirmation";
+import { createRelayAuthOptions, importRelayOffer } from "@/runtime/relay-auth";
+import { relayDeviceLabel } from "@/runtime/relay-device-label";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { isWeb } from "@/constants/platform";
 import { connectToDaemon, getConnectionAuthFailureReason } from "@/utils/test-daemon-connection";
@@ -651,6 +653,10 @@ function createDefaultDeps(
           ...(connection.minimumSecurityMode
             ? { minimumMode: connection.minimumSecurityMode }
             : {}),
+          auth: createRelayAuthOptions({
+            host: { serverId: host.serverId, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+            label: relayDeviceLabel(resolveAppVersion() ?? null),
+          }),
         },
       });
     },
@@ -2125,6 +2131,7 @@ export class HostRuntimeStore {
     label?: string,
     password?: string,
   ): Promise<HostProfile> {
+    await importRelayOffer(offer);
     const connection = relayConnectionFromOffer(offer);
     if (!connection.daemonPublicKeyB64) {
       throw new Error("daemonPublicKeyB64 is required");
@@ -2145,6 +2152,7 @@ export class HostRuntimeStore {
     offer: ConnectionOffer,
     password: string | undefined,
   ): Promise<{ profile: HostProfile; serverId: string; hostname: string | null }> {
+    await importRelayOffer(offer);
     const connection = relayConnectionFromOffer(offer);
     const probeHost: HostProfile = {
       serverId: offer.serverId,
