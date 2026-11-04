@@ -1,8 +1,27 @@
 name: Nix
 
 on:
-  push:
+  pull_request:
     branches: [main]
+    paths:
+      - "nix/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "package.json"
+      - "package-lock.json"
+      - "packages/app/**"
+      - "packages/expo-two-way-audio/**"
+      - "packages/highlight/**"
+      - "packages/plugin/**"
+      - "packages/protocol/**"
+      - "packages/client/**"
+      - "packages/server/**"
+      - "packages/relay/**"
+      - "packages/cli/**"
+      - "scripts/build-daemon-web-ui.mjs"
+      - "scripts/update-nix.sh"
+      - "scripts/fix-lockfile.mjs"
+      - ".github/workflows/nix.yml"
 
 permissions:
   contents: read
