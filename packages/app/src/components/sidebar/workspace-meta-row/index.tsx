@@ -323,11 +323,15 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexShrink: 0,
   },
+  // Capped rather than weighted: flex shrink is proportional to length, so an uncapped branch
+  // name kept most of the line and squeezed the host and labels after it down to an ellipsis.
+  // A percentage leaves short names at their own width and still hints at long ones.
   identityItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
     minWidth: 0,
+    maxWidth: "45%",
     flexShrink: 1,
   },
   identityIcon: {

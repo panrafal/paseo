@@ -24,6 +24,7 @@ import { createControlGeometry, type ControlSize } from "@/components/ui/control
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { useProviderIcon } from "@/components/provider-icons";
+import { ScheduleWorkspaceLabelsField } from "./schedule-workspace-labels-field";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
 import {
   SelectField,
@@ -33,6 +34,7 @@ import {
   type SelectFieldRenderOptionInput,
 } from "@/components/ui/select-field";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
+import { useAgentProfilePicker, type AgentProfileApplyTarget } from "@/agent-profiles";
 import {
   mergeProviderPreferences,
   useFormPreferences,
@@ -118,6 +120,10 @@ function selectScheduleHosts(
     hosts.map((host) => ({
       serverId: host.serverId,
       label: host.label,
+      supportsWorkspaceLabelCreation:
+        state.sessions[host.serverId]?.serverInfo?.features?.workspaceLabelCreation === true,
+      supportsScheduleWorkspaceLabels:
+        state.sessions[host.serverId]?.serverInfo?.features?.scheduleWorkspaceLabels === true,
       supportsWorkspaceMultiplicity:
         state.sessions[host.serverId]?.serverInfo?.features?.workspaceMultiplicity === true,
     }));
@@ -333,6 +339,15 @@ function OpenScheduleFormSheet({
 
     await persistPreferences();
     const maxRuns = parseMaxRuns(state.maxRuns);
+    const workspaceConfig = {
+      ...(state.submitArchiveOnFinish !== undefined
+        ? { archiveOnFinish: state.submitArchiveOnFinish }
+        : {}),
+      ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+      ...(state.submitWorkspaceLabels !== undefined
+        ? { workspaceLabels: state.submitWorkspaceLabels }
+        : {}),
+    };
     if (mode === "edit" && schedule) {
       await updateSchedule({
         id: schedule.id,
@@ -345,10 +360,7 @@ function OpenScheduleFormSheet({
           modeId: state.selectedMode || null,
           thinkingOptionId: state.selectedThinkingOptionId || null,
           cwd,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+          ...workspaceConfig,
         },
         maxRuns,
       });
@@ -367,10 +379,7 @@ function OpenScheduleFormSheet({
           model: state.selectedModel || undefined,
           modeId: state.selectedMode || undefined,
           thinkingOptionId: state.selectedThinkingOptionId || undefined,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+          ...workspaceConfig,
           title: state.name.trim() || undefined,
         },
       },
@@ -638,6 +647,21 @@ function ScheduleTargetFields({
     },
     [model],
   );
+  // Every provider the host can run is offered, since the schedule form picks
+  // the provider itself. The picked profile is applied and then forgotten.
+  const profileProviders = useMemo(
+    () => state.modelSelectorProviders.map((entry) => entry.id),
+    [state.modelSelectorProviders],
+  );
+  const profileTarget = useMemo<AgentProfileApplyTarget>(
+    () => ({ kind: "draft", controls: { applyProfile: model.applyAgentProfile } }),
+    [model],
+  );
+  const agentProfiles = useAgentProfilePicker({
+    serverId: state.selectedServerId,
+    availableProviders: profileProviders,
+    target: profileTarget,
+  });
   const handleModelOpen = useCallback(() => {
     providerSnapshot.refetchIfStale(state.selectedProvider);
   }, [providerSnapshot, state.selectedProvider]);
@@ -747,6 +771,8 @@ function ScheduleTargetFields({
             selectedModel={state.selectedModel}
             onSelect={handleSelectModel}
             isLoading={providerSnapshot.isLoading || providerSnapshot.isFetching}
+            profiles={agentProfiles}
+            onApplyProfile={agentProfiles?.applyProfile}
             renderTrigger={renderModelTrigger}
             triggerFill
             serverId={mutationServerId}
@@ -795,6 +821,10 @@ function ScheduleTargetFields({
 
       {state.disclosure.showIsolationField ? (
         <ScheduleIsolationField model={model} state={state} size={controlSize} />
+      ) : null}
+
+      {state.disclosure.showModelField ? (
+        <ScheduleWorkspaceLabelsField model={model} state={state} size={controlSize} />
       ) : null}
 
       {state.disclosure.showArchiveOnFinishField ? (

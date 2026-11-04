@@ -15,6 +15,14 @@ import { createToolHosts } from "./agent/host-operations/index.js";
 import { HOST_ROUTE_OPCODE } from "@getpaseo/protocol/binary-frames/index";
 import { DaemonLinkEndpoint, VirtualHostSocket } from "./connected-hosts/index.js";
 import { ConnectedHosts } from "./connected-hosts/index.js";
+import {
+  notifyAgent,
+  buildAttentionPushPayload,
+  computeAgentNotificationPlan,
+  resolveAgentAttentionNotification,
+  type AgentAttentionParams,
+  type NotificationClientState,
+} from "./notify.js";
 import { stat } from "node:fs/promises";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
 import { CreationService } from "./creation/index.js";
@@ -52,6 +60,8 @@ import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import { MAX_WEBSOCKET_MESSAGE_BYTES } from "@getpaseo/protocol/websocket-message-limit";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
+import { defaultPortForProtocol, parseHostAuthority, stripIpv6Brackets } from "./host-patterns.js";
+import { isOriginAllowed } from "./origins.js";
 import {
   Session,
   type SessionLifecycleIntent,
@@ -62,7 +72,6 @@ import type { HubRelationshipManagement } from "./hub/relationship-controller.js
 import { WorkspaceSetupObservation } from "./workspace-setup-observation.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
-import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { attachMutableProviderConfigOwner } from "./agent/mutable-provider-config-owner.js";
 import type {
@@ -85,15 +94,7 @@ import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
-import {
-  computeNotificationPlan,
-  isPushEligibleAttentionReason,
-  type ClientPresenceState,
-} from "./agent-attention-policy.js";
-import {
-  buildAgentAttentionNotificationPayload,
-  findLatestPermissionRequest,
-} from "@getpaseo/protocol/agent-attention-notification";
+import { computeNotificationPlan, type ClientPresenceState } from "./agent-attention-policy.js";
 import { createGitHubService } from "../services/github-service.js";
 import type { ForgeService } from "../services/forge-service.js";
 import {
@@ -515,7 +516,7 @@ const WS_CLOSE_INCOMPATIBLE_PROTOCOL = 4003;
 const WS_CLOSE_SERVER_SHUTDOWN = 1001;
 const WS_PROTOCOL_VERSION = 1;
 const WS_RUNTIME_METRICS_FLUSH_MS = 30_000;
-const OWNER_SESSION_ADMISSION: SessionAdmission = {
+export const OWNER_SESSION_ADMISSION: SessionAdmission = {
   principalId: "owner",
   permissions: OWNER_PERMISSIONS,
 };
@@ -964,7 +965,7 @@ export class VoiceAssistantWebSocketServer {
     }
     const sameOrigin = isWebSocketSameOrigin(origin, requestHost);
 
-    if (!origin || allowedOrigins.has("*") || allowedOrigins.has(origin) || sameOrigin) {
+    if (!origin || sameOrigin || isOriginAllowed(origin, allowedOrigins)) {
       callback(true);
     } else {
       this.incrementRuntimeCounter("originRejected");
@@ -1630,6 +1631,14 @@ export class VoiceAssistantWebSocketServer {
         return total;
       },
       sourceId: options.sourceId,
+      onNotify: (request) =>
+        notifyAgent({
+          request,
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          serverId: this.serverId,
+          broadcastAttention: (params) => this.broadcastAgentAttention(params),
+        }),
       browserToolsBroker: this.browserToolsBroker,
       clientId: options.clientId,
       appVersion: options.appVersion,
@@ -2019,7 +2028,12 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(directorySync): added in v0.3.x, remove gate after 2027-02-12.
         directorySync: true,
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
-        ...(this.workspaceLabelService ? { workspaceLabels: true } : {}),
+        ...(this.workspaceLabelService
+          ? { workspaceLabels: true, workspaceLabelCreation: true }
+          : {}),
+        ...(this.workspaceLabelService && this.scheduleService
+          ? { scheduleWorkspaceLabels: true }
+          : {}),
         // COMPAT(workspaceSetupRun): added in v0.7.3, remove gate after 2027-09-02.
         workspaceSetupRun: true,
         workspaceSetupObservation: true,
@@ -2113,6 +2127,8 @@ export class VoiceAssistantWebSocketServer {
         fileByteWrites: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: true,
+        // COMPAT(codexBankedResets): added in v0.7.3, remove after 2027-03-06.
+        codexBankedResets: this.pluginRuntime?.supportsCodexBankedResets?.() ?? false,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.
@@ -2840,10 +2856,11 @@ export class VoiceAssistantWebSocketServer {
     this.logger.info(loggedMetrics, "ws_runtime_metrics");
   }
 
-  private getClientActivityState(session: Session, source: object): ClientPresenceState {
+  private getClientActivityState(session: Session, source: object): NotificationClientState {
     const activity = session.getClientActivity(source);
     if (!activity) {
       return {
+        deviceType: null,
         appVisible: false,
         focusedAgentId: null,
         focusedTerminalId: null,
@@ -2852,6 +2869,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     return {
+      deviceType: activity.deviceType,
       appVisible: activity.appVisible,
       focusedAgentId: activity.focusedAgentId,
       focusedTerminalId: activity.focusedTerminalId,
@@ -2859,25 +2877,27 @@ export class VoiceAssistantWebSocketServer {
     };
   }
 
-  private async broadcastAgentAttention(params: {
-    agentId: string;
-    provider: AgentProvider;
-    reason: "finished" | "error" | "permission";
-  }): Promise<void> {
+  private async broadcastAgentAttention(params: AgentAttentionParams): Promise<void> {
     const agent = this.agentManager.getAgent(params.agentId);
-    if (!agent?.workspaceId) {
+    const notification = await resolveAgentAttentionNotification({
+      params,
+      agent,
+      agentManager: this.agentManager,
+      serverId: this.serverId,
+    });
+    if (!notification) {
       return;
     }
     const clientEntries: Array<{
       ws: WebSocketLike;
-      state: ClientPresenceState;
+      state: NotificationClientState;
     }> = [];
 
     for (const [ws, connection] of this.sessions) {
       if (
         connection.session.delivery.isModern(ws)
           ? !connection.session.wantsSourceEvent(ws, "agent_attention_required")
-          : !(await connection.session.subscribesToAgent(agent, ws))
+          : !agent || !(await connection.session.subscribesToAgent(agent, ws))
       )
         continue;
       clientEntries.push({
@@ -2891,27 +2911,19 @@ export class VoiceAssistantWebSocketServer {
     );
     const allStates = notificationEntries.map((e) => e.state);
     const nowMs = Date.now();
-    const assistantMessage = await this.agentManager.getLastAssistantMessage(params.agentId);
-    const notification = buildAgentAttentionNotificationPayload({
-      reason: params.reason,
-      serverId: this.serverId,
-      workspaceId: agent.workspaceId,
-      agentId: params.agentId,
-      assistantMessage,
-      permissionRequest: findLatestPermissionRequest(agent.pendingPermissions),
-    });
 
-    const plan = computeNotificationPlan({
+    const plan = computeAgentNotificationPlan({
+      params,
       allStates,
-      focusTarget: { kind: "agent", id: params.agentId },
-      pushEligible: isPushEligibleAttentionReason(params.reason),
       nowMs,
     });
 
     if (plan.shouldPush) {
-      void this.pushNotificationSender.send(notification).catch((err) => {
-        this.logger.warn({ err, agentId: params.agentId }, "Failed to send push notification");
-      });
+      void this.pushNotificationSender
+        .send(buildAttentionPushPayload({ notification, urgent: params.urgent }))
+        .catch((err) => {
+          this.logger.warn({ err, agentId: params.agentId }, "Failed to send push notification");
+        });
     }
 
     for (const { ws } of clientEntries) {
@@ -3146,60 +3158,6 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
   };
 }
 
-interface HostAuthority {
-  hostname: string;
-  port: string | null;
-}
-
-function stripIpv6Brackets(hostname: string): string {
-  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-}
-
-function parseHostAuthority(host: string): HostAuthority | null {
-  const trimmed = host.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.startsWith("[")) {
-    const end = trimmed.indexOf("]");
-    if (end === -1) {
-      return null;
-    }
-    const hostname = stripIpv6Brackets(trimmed.slice(0, end + 1)).toLowerCase();
-    const rest = trimmed.slice(end + 1);
-    if (!rest) {
-      return { hostname, port: null };
-    }
-    if (!rest.startsWith(":")) {
-      return null;
-    }
-    const port = rest.slice(1);
-    return port ? { hostname, port } : null;
-  }
-
-  const firstColon = trimmed.indexOf(":");
-  if (firstColon === -1) {
-    return { hostname: trimmed.toLowerCase(), port: null };
-  }
-  if (trimmed.indexOf(":", firstColon + 1) !== -1) {
-    return { hostname: trimmed.toLowerCase(), port: null };
-  }
-  const hostname = trimmed.slice(0, firstColon).toLowerCase();
-  const port = trimmed.slice(firstColon + 1);
-  return hostname && port ? { hostname, port } : null;
-}
-
-function defaultPortForOriginProtocol(protocol: string): string | null {
-  if (protocol === "http:") {
-    return "80";
-  }
-  if (protocol === "https:") {
-    return "443";
-  }
-  return null;
-}
-
 function isLoopbackAlias(hostname: string): boolean {
   const normalized = stripIpv6Brackets(hostname).toLowerCase();
   if (normalized === "localhost" || normalized.endsWith(".localhost")) {
@@ -3229,7 +3187,7 @@ export function isWebSocketSameOrigin(
   } catch {
     return false;
   }
-  const originPort = originUrl.port || defaultPortForOriginProtocol(originUrl.protocol);
+  const originPort = originUrl.port || defaultPortForProtocol(originUrl.protocol);
   if (!originPort) {
     return false;
   }
@@ -3238,7 +3196,7 @@ export function isWebSocketSameOrigin(
   if (!requestAuthority) {
     return false;
   }
-  const requestPort = requestAuthority.port || defaultPortForOriginProtocol(originUrl.protocol);
+  const requestPort = requestAuthority.port || defaultPortForProtocol(originUrl.protocol);
   if (originPort !== requestPort) {
     return false;
   }

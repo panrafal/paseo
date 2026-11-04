@@ -19,7 +19,10 @@ export {
   createRelayE2eeTransportFactory,
   createRelayUpgradeTransportFactory,
   describeEndpointSecurityClose,
+  parseRelayAuthFailure,
+  RelayAuthError,
 } from "./daemon-client-relay-e2ee-transport.js";
+export type { RelayAuthOptions } from "./daemon-client-relay-e2ee-transport.js";
 export {
   bindWsHandler,
   createWebSocketTransportFactory,

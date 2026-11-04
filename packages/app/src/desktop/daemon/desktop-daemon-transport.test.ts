@@ -108,4 +108,30 @@ describe("desktop-daemon-transport", () => {
 
     expect(() => transportFactory!({ url })).toThrow("Invalid SSH transport target");
   });
+
+  it("opens TCP bridge targets and forwards WebSocket subprotocols", async () => {
+    const rpc = createFakeLocalDaemonTransportRpc();
+    const transportFactory = createDesktopDaemonTransportFactory(rpc);
+    expect(transportFactory).not.toBeNull();
+
+    const transport = transportFactory!({
+      url: buildDesktopDaemonTransportUrl({
+        transportType: "tcp",
+        endpoint: "192.168.1.194:6768",
+      }),
+      protocols: ["paseo.extra"],
+    });
+
+    rpc.resolveListen(() => {});
+    await Promise.resolve();
+
+    expect(rpc.openCalls).toHaveLength(1);
+    expect(rpc.openCalls[0]?.target).toEqual({
+      transportType: "tcp",
+      endpoint: "192.168.1.194:6768",
+      protocols: ["paseo.extra"],
+    });
+
+    transport.close();
+  });
 });

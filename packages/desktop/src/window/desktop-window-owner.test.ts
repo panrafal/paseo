@@ -8,7 +8,7 @@ interface Target {
 function harness() {
   const windows: OwnedDesktopWindow<Target>[] = [];
   const launches: Array<{ initialRoute: string | null; restoreWindowState: boolean }> = [];
-  const sent: Target[] = [];
+  const sent: Array<{ webContentsId: number; target: Target }> = [];
   let nextId = 1;
   let focused: OwnedDesktopWindow<Target> | null = null;
   let closeWindow = (_id: number) => {};
@@ -28,7 +28,7 @@ function harness() {
         restore: () => {},
         show: () => {},
         focus: () => {},
-        sendAgent: (target) => sent.push(target),
+        send: (target) => sent.push({ webContentsId: id, target }),
       };
       windows.push(window);
       input.onCreated(id);
@@ -36,8 +36,8 @@ function harness() {
     },
     windows: () => windows,
     focusedWindow: () => focused,
-    agentRoute: (target) => `/agent/${target.id}`,
-    deliverAgent: (_id, target) => target,
+    route: (target) => `/agent/${target.id}`,
+    deliver: (_id, target) => target,
   });
   return {
     owner,
@@ -64,13 +64,21 @@ describe("desktop window owner", () => {
     expect(h.owner.takePendingProject(2)).toBe("/project/b");
   });
 
-  it("focuses an existing window and delivers agent routing through its inbox", async () => {
+  it("focuses an existing window and delivers routing through its inbox", async () => {
     const h = harness();
     await h.owner.openPrimary();
-    h.setFocused(h.windows[0]);
-    await h.owner.openOrFocusAgent({ id: "agent-7" });
-    expect(h.launches).toHaveLength(1);
-    expect(h.sent).toEqual([{ id: "agent-7" }]);
+    await h.owner.openAdditional();
+    h.setFocused(h.windows[1]);
+    await h.owner.openOrFocus({ id: "agent-7" });
+    expect(h.launches).toHaveLength(2);
+    expect(h.sent).toEqual([{ webContentsId: 2, target: { id: "agent-7" } }]);
+  });
+
+  it("opens a window at the target route when none exists", async () => {
+    const h = harness();
+    await h.owner.openOrFocus({ id: "agent-7" });
+    expect(h.launches).toEqual([{ initialRoute: "/agent/agent-7", restoreWindowState: true }]);
+    expect(h.sent).toEqual([]);
   });
 
   it("removes pending routing state when a window closes", async () => {
