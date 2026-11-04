@@ -162,6 +162,7 @@ import {
   resolveWorkspaceExplorerToggleOwner,
   EXPLORER_TOGGLE_KEYS,
   WorkspaceExplorerSidebarToggle,
+  WorkspaceExplorerToggle,
   WorkspaceHeaderExplorerToggle,
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { useHasWindowChromeObstruction } from "@/utils/desktop-window";
@@ -214,7 +215,9 @@ import {
 } from "@/panels/panel-instance-attributes";
 import { findAdjacentPane } from "@/utils/split-navigation";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
-import { getIsElectron, isNative, isWeb } from "@/constants/platform";
+import { getIsElectron, getIsVscode, isNative, isWeb } from "@/constants/platform";
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
+import { openDesktopTarget } from "@/workspace/desktop-open-targets";
 import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
 import { useWorkspaceTerminals } from "@/screens/workspace/terminals/use-workspace-terminals";
 import type { TerminalProfile } from "@getpaseo/protocol/messages";
@@ -226,6 +229,7 @@ import { PluginHeaderButtons } from "@/plugins";
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
+  resolveWorkspaceFilePaths,
   type OpenFileDisposition,
   type WorkspaceFileLocation,
   type WorkspaceFileOpenRequest,
@@ -274,6 +278,49 @@ function buildWorkspaceFileLocation(
     return null;
   }
   return { path: fields.path, lineStart: fields.lineStart, lineEnd: fields.lineEnd };
+}
+
+function openWorkspaceFileInVscode(input: {
+  location: WorkspaceFileLocation;
+  workspaceDirectory: string | null;
+  failedOpenFileMessage: string;
+  onError: (message: string) => void;
+}): void {
+  const location = normalizeWorkspaceFileLocation(input.location);
+  if (!location || !input.workspaceDirectory) {
+    input.onError(input.failedOpenFileMessage);
+    return;
+  }
+
+  const resolvedFile = resolveWorkspaceFilePaths({
+    path: location.path,
+    workspaceRoot: input.workspaceDirectory,
+  });
+  if (!resolvedFile) {
+    input.onError(input.failedOpenFileMessage);
+    return;
+  }
+
+  void openDesktopTarget({
+    editorId: "vscode-self",
+    workspacePath: input.workspaceDirectory,
+    filePath: resolvedFile.absolutePath,
+    ...(location.lineStart !== undefined ? { line: location.lineStart } : {}),
+    ...(location.lineEnd !== undefined ? { lineEnd: location.lineEnd } : {}),
+  }).catch((error: unknown) => {
+    input.onError(error instanceof Error ? error.message : input.failedOpenFileMessage);
+  });
+}
+
+function canCreateWorkspaceBrowserTab(showBrowser: boolean): boolean {
+  return showBrowser && getIsElectron();
+}
+
+function canHandleWorkspaceBrowserRequests(
+  showBrowser: boolean,
+  persistenceKey: string | null,
+): boolean {
+  return showBrowser && Boolean(persistenceKey);
 }
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
@@ -1047,6 +1094,7 @@ function WorkspaceScreenContent({
   });
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
+  const { showBrowser, showFileExplorer, showGitChanges } = getWorkspaceSurfaceConfig();
 
   const normalizedServerId = useMemo(() => trimNonEmpty(decodeSegment(serverId)) ?? "", [serverId]);
 
@@ -1171,8 +1219,9 @@ function WorkspaceScreenContent({
       createWorkspaceAgentVisibilitySelector({
         serverId: normalizedServerId,
         workspaceId: normalizedWorkspaceId,
+        workspaceDirectory,
       }),
-    [normalizedServerId, normalizedWorkspaceId],
+    [normalizedServerId, normalizedWorkspaceId, workspaceDirectory],
   );
   const workspaceAgentVisibility = useStoreWithEqualityFn(
     useSessionStore,
@@ -1294,7 +1343,7 @@ function WorkspaceScreenContent({
     // Back dismisses the compact overlay only. On a wide native layout the
     // explorer is a tab, `showMobileAgent` has no rendered consumer, and
     // returning true would swallow Back with nothing to show for it.
-    if (!isRouteFocused || isWeb || !isMobile || !isExplorerSidebarShowing) {
+    if (!showFileExplorer || !isRouteFocused || isWeb || !isMobile || !isExplorerSidebarShowing) {
       return;
     }
 
@@ -1304,7 +1353,7 @@ function WorkspaceScreenContent({
     });
 
     return () => handler.remove();
-  }, [isExplorerSidebarShowing, isMobile, isRouteFocused, showMobileAgent]);
+  }, [isExplorerSidebarShowing, isMobile, isRouteFocused, showFileExplorer, showMobileAgent]);
 
   const workspaceLayout = useWorkspaceLayoutStore((state) =>
     persistenceKey ? (state.layoutByWorkspace[persistenceKey] ?? null) : null,
@@ -1369,11 +1418,14 @@ function WorkspaceScreenContent({
   const moveWorkspaceTabToPane = useWorkspaceLayoutStore((state) => state.moveTabToPane);
   const closeWorkspacePane = useWorkspaceLayoutStore((state) => state.closePane);
   const handleToggleExplorerSidebar = useCallback(() => {
+    if (!showFileExplorer) {
+      return;
+    }
     toggleExplorerSidebar({
       isCompact: isMobile,
       workspaceKey: persistenceKey,
     });
-  }, [isMobile, persistenceKey]);
+  }, [isMobile, persistenceKey, showFileExplorer]);
   const paneFocusSuppressedRef = useRef(false);
   const resizeWorkspaceSplit = useWorkspaceLayoutStore((state) => state.resizeSplit);
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
@@ -1727,6 +1779,15 @@ function WorkspaceScreenContent({
     if (focusPaneBeforeOpen && paneId && persistenceKey) {
       focusWorkspacePane(persistenceKey, paneId);
     }
+    if (getIsVscode()) {
+      openWorkspaceFileInVscode({
+        location: request.location,
+        workspaceDirectory,
+        failedOpenFileMessage: t("workspace.git.openInEditor.failedOpenFile"),
+        onError: toast.error,
+      });
+      return;
+    }
     if (request.disposition === "side") {
       const location = normalizeWorkspaceFileLocation(request.location);
       if (!location || !persistenceKey) return;
@@ -1824,7 +1885,7 @@ function WorkspaceScreenContent({
 
   const handleCreateBrowserTab = useCallback(
     (input?: { paneId?: string }) => {
-      if (!persistenceKey || !getIsElectron()) {
+      if (!showBrowser || !persistenceKey || !getIsElectron()) {
         return;
       }
       const { browserId } = createWorkspaceBrowser();
@@ -1834,7 +1895,7 @@ function WorkspaceScreenContent({
         paneLocalPlacement(input?.paneId),
       );
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey, showBrowser],
   );
 
   const handleCreateNewTab = useCallback(
@@ -1885,7 +1946,7 @@ function WorkspaceScreenContent({
 
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
-      if (!persistenceKey || !getIsElectron()) {
+      if (!showBrowser || !persistenceKey || !getIsElectron()) {
         return;
       }
       const { browserId } = createWorkspaceBrowser({ initialUrl: url });
@@ -1895,11 +1956,11 @@ function WorkspaceScreenContent({
         FOCUSED_PANE_PLACEMENT,
       );
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey, showBrowser],
   );
 
   useDesktopBrowserNewTabRequests({
-    enabled: Boolean(persistenceKey),
+    enabled: canHandleWorkspaceBrowserRequests(showBrowser, persistenceKey),
     workspaceLayout,
     openUrl: handleOpenUrlInBrowserTab,
   });
@@ -2457,6 +2518,8 @@ function WorkspaceScreenContent({
     (action: KeyboardActionDefinition): boolean => {
       if (action.id !== "workspace.tab.open") return false;
       if (!persistenceKey) return true;
+      if (action.target === "files" && !showFileExplorer) return true;
+      if (action.target === "changes" && !showGitChanges) return true;
 
       const target = resolveCommandCenterPanelTarget(action.target);
       if (action.placement === "supporting") {
@@ -2500,6 +2563,8 @@ function WorkspaceScreenContent({
       openWorkspaceTabFocused,
       persistenceKey,
       pullRequestOpenLocation,
+      showFileExplorer,
+      showGitChanges,
     ],
   );
 
@@ -2631,7 +2696,7 @@ function WorkspaceScreenContent({
           handleCreateBrowserTab({ paneId });
           return true;
         case "workspace.tab.target.changes":
-          if (persistenceKey && isGitCheckout) {
+          if (showGitChanges && persistenceKey && isGitCheckout) {
             openExplorerSidebarView({
               isCompact: isMobile,
               workspaceKey: persistenceKey,
@@ -2640,7 +2705,7 @@ function WorkspaceScreenContent({
           }
           return true;
         case "workspace.tab.target.files":
-          if (persistenceKey) {
+          if (showFileExplorer && persistenceKey) {
             openExplorerSidebarView({
               isCompact: isMobile,
               workspaceKey: persistenceKey,
@@ -2659,17 +2724,24 @@ function WorkspaceScreenContent({
       isGitCheckout,
       isMobile,
       persistenceKey,
+      showFileExplorer,
+      showGitChanges,
     ],
   );
 
   const handleWorkspaceSidebarAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
       if (action.id === "sidebar.toggle.right") {
+        if (!showFileExplorer) return true;
         handleToggleExplorerSidebar();
         return true;
       }
       if (action.id !== "sidebar.toggle.both") {
         return false;
+      }
+      if (!showFileExplorer) {
+        usePanelStore.getState().toggleAgentListForLayout({ isCompact: isMobile });
+        return true;
       }
       // This screen owns the layout key and the checkout, so it is the only
       // place that can read "is the explorer open" correctly.
@@ -2686,7 +2758,7 @@ function WorkspaceScreenContent({
       });
       return true;
     },
-    [handleToggleExplorerSidebar, isMobile, persistenceKey],
+    [handleToggleExplorerSidebar, isMobile, persistenceKey, showFileExplorer],
   );
 
   const handleWorkspacePaneAction = useCallback(
@@ -3248,10 +3320,12 @@ function WorkspaceScreenContent({
             hideLabels
           />
         ) : null}
-        {workspaceDirectory ? (
+        {!isMobile && workspaceDirectory && (showGitChanges || showFileExplorer) ? (
           <>
-            <WorkspaceActions serverId={normalizedServerId} cwd={workspaceDirectory} />
-            {workspaceActionsInBar ? null : (
+            {showGitChanges ? (
+              <WorkspaceActions serverId={normalizedServerId} cwd={workspaceDirectory} />
+            ) : null}
+            {showFileExplorer && !workspaceActionsInBar ? (
               <WorkspaceHeaderExplorerToggle
                 owner={explorerToggleOwner}
                 onPress={handleToggleExplorerSidebar}
@@ -3261,12 +3335,23 @@ function WorkspaceScreenContent({
                 style={styles.compactHeaderActionButton}
                 accessibilityState={explorerSidebarToggleAccessibilityState}
               />
-            )}
+            ) : null}
           </>
+        ) : null}
+        {isMobile && showFileExplorer ? (
+          <WorkspaceExplorerToggle
+            onPress={handleToggleExplorerSidebar}
+            label={explorerSidebarToggleLabel}
+            tooltipLabel={t("workspace.tabs.explorerSidebar.toggle")}
+            tooltipKeys={EXPLORER_TOGGLE_KEYS}
+            accessibilityState={explorerSidebarToggleAccessibilityState}
+            mobile
+          />
         ) : null}
       </View>
     ),
     [
+      isMobile,
       workspaceDescriptor,
       normalizedServerId,
       normalizedWorkspaceId,
@@ -3281,6 +3366,8 @@ function WorkspaceScreenContent({
       explorerSidebarToggleAccessibilityState,
       explorerToggleOwner,
       workspaceActionsInBar,
+      showFileExplorer,
+      showGitChanges,
       t,
     ],
   );
@@ -3290,21 +3377,23 @@ function WorkspaceScreenContent({
     [isFocusModeEnabled, isMobile],
   );
   const renderExplorerSidebarHeaderAction = useCallback(
-    () => (
-      <WorkspaceExplorerSidebarToggle
-        owner={explorerToggleOwner}
-        onPress={handleToggleExplorerSidebar}
-        label={explorerSidebarToggleLabel}
-        tooltipLabel={t("workspace.tabs.explorerSidebar.toggle")}
-        tooltipKeys={EXPLORER_TOGGLE_KEYS}
-        accessibilityState={explorerSidebarToggleAccessibilityState}
-      />
-    ),
+    () =>
+      showFileExplorer ? (
+        <WorkspaceExplorerSidebarToggle
+          owner={explorerToggleOwner}
+          onPress={handleToggleExplorerSidebar}
+          label={explorerSidebarToggleLabel}
+          tooltipLabel={t("workspace.tabs.explorerSidebar.toggle")}
+          tooltipKeys={EXPLORER_TOGGLE_KEYS}
+          accessibilityState={explorerSidebarToggleAccessibilityState}
+        />
+      ) : null,
     [
       explorerSidebarToggleAccessibilityState,
       explorerSidebarToggleLabel,
       explorerToggleOwner,
       handleToggleExplorerSidebar,
+      showFileExplorer,
       t,
     ],
   );
@@ -3312,10 +3401,10 @@ function WorkspaceScreenContent({
     () => createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
     [createTerminalMutation.isPending, pendingTerminalCreateInput],
   );
-  const showCreateBrowserTab = getIsElectron();
+  const showCreateBrowserTab = canCreateWorkspaceBrowserTab(showBrowser);
   const newTabLauncher = useMemo<NewTabLauncher>(
     () => ({
-      showChanges: isGitCheckout,
+      showChanges: showGitChanges && isGitCheckout,
       showPullRequest: hasPullRequest,
       showBrowser: showCreateBrowserTab,
       terminalDisabled: createTerminalDisabled,
@@ -3327,6 +3416,7 @@ function WorkspaceScreenContent({
       isGitCheckout,
       launchWorkspaceTab,
       showCreateBrowserTab,
+      showGitChanges,
     ],
   );
   const focusedPaneIdOrUndefined = useMemo(() => focusedPaneId ?? undefined, [focusedPaneId]);
