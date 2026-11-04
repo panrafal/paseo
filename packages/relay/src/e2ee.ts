@@ -16,7 +16,26 @@ export type {
 } from "./secure-channel.js";
 
 export { createClientChannel, createDaemonChannel, EncryptedChannel } from "./encrypted-channel.js";
-export type { Transport, TransportMessage, EncryptedChannelEvents } from "./encrypted-channel.js";
+export type {
+  Transport,
+  TransportMessage,
+  EncryptedChannelEvents,
+  E2EECapabilities,
+} from "./encrypted-channel.js";
+
+export {
+  RELAY_AUTH_CLOSE_CODE,
+  RELAY_AUTH_FAILURE_REASONS,
+  parseRelayAuthFrame,
+  parseRelayAuthResultFrame,
+} from "./relay-auth.js";
+export type {
+  RelayAuthFailureReason,
+  RelayAuthFrame,
+  RelayAuthProof,
+  RelayAuthResultFrame,
+  RelayDeviceCredential,
+} from "./relay-auth.js";
 
 export {
   generateKeyPair,
