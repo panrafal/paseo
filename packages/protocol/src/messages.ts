@@ -38,6 +38,7 @@ export {
 import { TerminalProfileSchema } from "./terminal-profile.js";
 export { TerminalProfileSchema, type TerminalProfile } from "./terminal-profile.js";
 import { z } from "zod";
+import { NotifyRequestSchema, NotifyResponseSchema } from "./notify.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
@@ -819,7 +820,7 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("attention_required"),
     provider: AgentProviderSchema,
-    reason: z.enum(["finished", "error", "permission"]),
+    reason: z.enum(["finished", "error", "permission", "notify"]),
     timestamp: z.string(),
     shouldNotify: z.boolean(),
     notification: z
@@ -830,7 +831,7 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
           serverId: z.string(),
           workspaceId: z.string().optional(),
           agentId: z.string(),
-          reason: z.enum(["finished", "error", "permission"]),
+          reason: z.enum(["finished", "error", "permission", "notify"]),
         }),
       })
       .optional(),
@@ -3512,6 +3513,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ChatPostRequestSchema,
   ChatReadRequestSchema,
   ChatWaitRequestSchema,
+  NotifyRequestSchema,
   ScheduleCreateRequestSchema,
   ScheduleListRequestSchema,
   SpeechLocalModelsListRequestSchema,
@@ -5026,7 +5028,7 @@ export const AgentAttentionRequiredMessageSchema = z.object({
   payload: z.object({
     subscriptionId: z.string().optional(),
     agentId: z.string(),
-    reason: z.enum(["finished", "error", "permission"]),
+    reason: z.enum(["finished", "error", "permission", "notify"]),
     timestamp: z.string(),
     shouldNotify: z.boolean(),
     notification: z
@@ -5037,7 +5039,7 @@ export const AgentAttentionRequiredMessageSchema = z.object({
           serverId: z.string(),
           workspaceId: z.string().optional(),
           agentId: z.string(),
-          reason: z.enum(["finished", "error", "permission"]),
+          reason: z.enum(["finished", "error", "permission", "notify"]),
         }),
       })
       .optional(),
@@ -7361,6 +7363,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ChatPostResponseSchema,
   ChatReadResponseSchema,
   ChatWaitResponseSchema,
+  NotifyResponseSchema,
   ScheduleCreateResponseSchema,
   ScheduleListResponseSchema,
   SpeechLocalModelsListResponseSchema,

@@ -4,13 +4,13 @@ export interface PushPayload {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  priority?: "default" | "normal" | "high";
+  channelId?: string;
+  interruptionLevel?: "passive" | "active" | "time-sensitive";
 }
 
-interface ExpoPushMessage {
+interface ExpoPushMessage extends PushPayload {
   to: string;
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
   sound?: "default";
 }
 
@@ -48,6 +48,9 @@ export class PushService {
       body: payload.body,
       data: payload.data,
       sound: "default",
+      priority: payload.priority,
+      channelId: payload.channelId,
+      interruptionLevel: payload.interruptionLevel,
     }));
 
     // Batch tokens (max 100 per request per Expo limits)

@@ -41,6 +41,10 @@ async function resolveToken(serverId: string): Promise<string | null> {
       name: "default",
       importance: Notifications.AndroidImportance.DEFAULT,
     });
+    await Notifications.setNotificationChannelAsync("urgent", {
+      name: "Urgent agent messages",
+      importance: Notifications.AndroidImportance.HIGH,
+    });
   }
 
   const projectId = getExpoProjectId();
