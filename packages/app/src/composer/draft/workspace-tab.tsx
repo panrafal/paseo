@@ -47,6 +47,7 @@ import {
 } from "@/workspace-tabs/model";
 import { openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
 import { useSettings } from "@/hooks/use-settings";
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
 
 interface AutoSubmitConfig {
   provider: string;
@@ -392,7 +393,7 @@ export function WorkspaceDraftComposer({
   );
   const handleOpenWorkspaceAttachment = useCallback(
     (attachment: WorkspaceComposerAttachment) => {
-      if (attachment.kind !== "review") {
+      if (!getWorkspaceSurfaceConfig().showFileExplorer || attachment.kind !== "review") {
         return;
       }
       openWorkspaceChanges({

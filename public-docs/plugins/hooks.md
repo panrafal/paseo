@@ -317,7 +317,7 @@ server.addHook("agent.open.before", async ({ request }, { paseo }) => {
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `workspaceId` | String or `null`                                                                                                        |
 | `title`       | Read-only string or `null`; creation title on create, stored title on resume.                                           |
-| `labels`      | Read-only string map; creation labels on create, stored labels on resume.                                               |
+| `labels`      | Read-only string map; creation labels on create, stored labels on resume. Empty when there are none. Older daemons omit this field; raise `requirements.paseo` before reading it. |
 | `metadata`    | Read-only JSON map; the [metadata](#metadata) stored on the agent.                                                      |
 | `tools`       | Editable `AgentToolDefinition[]`, local to this plugin. See [Attach tools to agents](#attach-tools-to-agents).          |
 | `mcpServers`  | Editable launch-only server map, local to this plugin. See [Inject MCP servers](#inject-mcp-servers).                   |

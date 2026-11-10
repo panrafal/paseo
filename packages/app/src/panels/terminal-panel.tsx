@@ -16,6 +16,7 @@ import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
+import { getWorkspaceSurfaceConfig } from "@/workspace/surface-capabilities";
 
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
@@ -78,22 +79,24 @@ function useTerminalPanelDescriptor(
 }
 
 function TerminalPanel() {
-  const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
+  const { serverId, workspaceId, target, openFileInWorkspace, openUrlInBrowserTab } =
+    usePaneContext();
   const { isWorkspaceFocused, isPaneFocused } = usePaneFocus();
   const workspaceFields = useWorkspaceFields(serverId, workspaceId, (w) => ({
     workspaceDirectory: w.workspaceDirectory,
   }));
   const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
   const isCompact = useIsCompactFormFactor();
+  const showFileExplorer = getWorkspaceSurfaceConfig().showFileExplorer;
   const handleOpenFileExplorer = useCallback(() => {
-    if (!workspaceDirectory) {
+    if (!showFileExplorer || !workspaceDirectory) {
       return;
     }
     showExplorerSidebar({
       isCompact,
       workspaceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
     });
-  }, [isCompact, serverId, workspaceId, workspaceDirectory]);
+  }, [isCompact, serverId, showFileExplorer, workspaceId, workspaceDirectory]);
   invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
   if (!workspaceDirectory) {
@@ -113,6 +116,7 @@ function TerminalPanel() {
       isPaneFocused={isPaneFocused}
       onOpenFileExplorer={handleOpenFileExplorer}
       onOpenWorkspaceFile={openFileInWorkspace}
+      onOpenUrlInBrowserTab={openUrlInBrowserTab}
     />
   );
 }

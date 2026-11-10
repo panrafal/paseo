@@ -180,6 +180,21 @@ interface NewWorkspaceScreenProps {
   projectId?: string;
   displayName?: string;
   draftId?: string;
+  initialPrompt?: string;
+}
+
+function useSeedNewWorkspacePrompt(
+  chatDraft: ReturnType<typeof useAgentInputDraft>,
+  initialPrompt: string | undefined,
+): void {
+  const seededPromptRef = useRef(false);
+  useEffect(() => {
+    if (seededPromptRef.current || !chatDraft.isHydrated || initialPrompt === undefined) {
+      return;
+    }
+    seededPromptRef.current = true;
+    chatDraft.replaceText(initialPrompt);
+  }, [chatDraft, initialPrompt]);
 }
 
 // A terminal launch sends argv, not a message: there is nothing to attach and
@@ -856,6 +871,7 @@ export function NewWorkspaceScreen({
   projectId,
   displayName: displayNameProp,
   draftId,
+  initialPrompt,
 }: NewWorkspaceScreenProps) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -898,6 +914,8 @@ export function NewWorkspaceScreen({
     WorkspaceCreationResult | { workspace: null }
   >({ workspace: null });
   const [pendingAction, setPendingAction] = useState<"chat" | "empty" | "terminal" | null>(null);
+  // Claim before any await; keep the claim through navigation, until this screen unmounts.
+  const submissionStartedRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const openAddProjectPicker = useOpenAddProject();
@@ -933,7 +951,7 @@ export function NewWorkspaceScreen({
     () => resolveLaunchTarget(manualLaunchTarget ?? formPreferences.launchTarget, terminalProfiles),
     [manualLaunchTarget, formPreferences.launchTarget, terminalProfiles],
   );
-  const [terminalPromptText, setTerminalPromptText] = useState("");
+  const [terminalPromptText, setTerminalPromptText] = useState(() => initialPrompt ?? "");
   const {
     isTerminalLaunch,
     selectedTerminalProfile,
@@ -1004,6 +1022,8 @@ export function NewWorkspaceScreen({
       initialSetup: forkDraftSetup?.setup,
     }),
   });
+  const clearChatDraft = chatDraft.clear;
+  useSeedNewWorkspacePrompt(chatDraft, initialPrompt);
   const composerState = chatDraft.composerState;
   const { setup, pluginProject, canCreateWorktree, isPending } = usePluginSetup({
     serverId: selectedServerId,
@@ -1298,12 +1318,15 @@ export function NewWorkspaceScreen({
 
   const handleSubmitNewWorkspace = useCallback(
     async (payload: MessagePayload) => {
+      if (submissionStartedRef.current) return;
+      submissionStartedRef.current = true;
       try {
         setErrorMessage(null);
+        const isEmpty = isEmptyWorkspaceSubmission(payload);
+        setPendingAction(isEmpty ? "empty" : "chat");
         await composerState?.persistFormPreferences();
         await updateFormPreferences({ launchTarget });
-        if (isEmptyWorkspaceSubmission(payload)) {
-          setPendingAction("empty");
+        if (isEmpty) {
           let outcome: SubmitOutcome = "background";
           await runCreateEmptyWorkspace({
             payload,
@@ -1326,14 +1349,13 @@ export function NewWorkspaceScreen({
           return;
         }
 
-        setPendingAction("chat");
         const outcome = await runCreateChatAgent({
           payload,
           composerState,
           forkDraftSetup,
           ensureWorkspace,
           serverId: selectedServerId,
-          clearDraft: chatDraft.clear,
+          clearDraft: clearChatDraft,
           draftKey,
           draftId: creationIdentity.draftId,
           draftContextScopeKey,
@@ -1349,6 +1371,7 @@ export function NewWorkspaceScreen({
           setPendingAction(null);
         }
       } catch (error) {
+        submissionStartedRef.current = false;
         const message = toErrorMessage(error);
         setPendingAction(null);
         setErrorMessage(message);
@@ -1359,7 +1382,7 @@ export function NewWorkspaceScreen({
       composerState,
       draftContextScopeKey,
       creationIdentity,
-      chatDraft.clear,
+      clearChatDraft,
       draftKey,
       ensureWorkspace,
       forkDraftSetup,
@@ -1376,10 +1399,12 @@ export function NewWorkspaceScreen({
   );
 
   const handleSubmitTerminalLaunch = useCallback(async () => {
+    if (submissionStartedRef.current) return;
+    submissionStartedRef.current = true;
     try {
       setErrorMessage(null);
-      await updateFormPreferences({ launchTarget });
       setPendingAction("terminal");
+      await updateFormPreferences({ launchTarget });
       let outcome: SubmitOutcome = "background";
       await runCreateTerminalWorkspace({
         cwd: selectedSourceDirectory ?? "",
@@ -1413,6 +1438,7 @@ export function NewWorkspaceScreen({
         sendTerminalInput: (terminalId, data) => {
           withConnectedClient().sendTerminalInput(terminalId, { type: "input", data });
         },
+        clearDraft: () => clearChatDraft("sent"),
         serverId: selectedServerId,
         // The terminal is spawned and fed its command before this runs, so skipping the
         // navigation costs nothing: it is standalone, and `reconcileTabs` auto-opens standalone
@@ -1430,12 +1456,14 @@ export function NewWorkspaceScreen({
         setPendingAction(null);
       }
     } catch (error) {
+      submissionStartedRef.current = false;
       const message = toErrorMessage(error);
       setPendingAction(null);
       setErrorMessage(message);
       toast.error(message);
     }
   }, [
+    clearChatDraft,
     ensureWorkspace,
     isStillOnCreateScreen,
     launchTarget,

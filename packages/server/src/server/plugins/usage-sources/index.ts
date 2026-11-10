@@ -58,6 +58,7 @@ export class UsageSourceRegistry {
   private readonly cache = new Map<string, { at: number; entry: UsageReportEntry }>();
   private readonly successful = new Map<string, NonNullable<UsageReportEntry["lastSuccessful"]>>();
   private readonly pending = new Map<string, Promise<UsageReportEntry>>();
+  private readonly generations = new Map<string, number>();
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -74,6 +75,7 @@ export class UsageSourceRegistry {
 
   unregister(id: string): void {
     this.sources.delete(id);
+    this.invalidateSource(id);
     for (const key of this.defaults.keys()) if (key.startsWith(`${id}:`)) this.defaults.delete(key);
     // Re-discover on the next session query when a source is replaced.
     for (const [agentId, mapping] of this.byAgent) {
@@ -81,6 +83,11 @@ export class UsageSourceRegistry {
         this.byAgent.delete(agentId);
     }
     for (const key of this.known.keys()) if (key.startsWith(`${id}:`)) this.known.delete(key);
+  }
+
+  /** Discard cached and in-flight reads so the next request observes source-side mutations. */
+  invalidateSource(id: string): void {
+    this.generations.set(id, (this.generations.get(id) ?? 0) + 1);
     for (const key of this.cache.keys()) if (key.startsWith(`${id}:`)) this.cache.delete(key);
     for (const key of this.successful.keys())
       if (key.startsWith(`${id}:`)) this.successful.delete(key);
@@ -237,9 +244,11 @@ export class UsageSourceRegistry {
     return merged;
   }
 
-  // COMPAT(providerUsageList): added in v0.1.98, remove after 2027-03-26.
-  async listLegacyUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }> {
-    const reports = await this.listReports();
+  // COMPAT(providerUsageList): added in v0.9.3, remove after 2027-03-26.
+  async listLegacyUsage(
+    options: { forceRefresh?: boolean } = {},
+  ): Promise<{ fetchedAt: string; providers: ProviderUsage[] }> {
+    const reports = await this.listReports(options);
     return {
       fetchedAt: reports.length
         ? reports.reduce(
@@ -270,6 +279,7 @@ export class UsageSourceRegistry {
       return Promise.resolve(cached.entry);
     const pending = this.pending.get(cacheKey);
     if (pending) return pending;
+    const generation = this.generations.get(known.source.id) ?? 0;
     const request = (async () => {
       const fetchedAt = new Date(this.now()).toISOString();
       const outcome = await this.fetchWithFallback(known);
@@ -290,6 +300,7 @@ export class UsageSourceRegistry {
       }
       if (
         this.sources.get(known.source.id) === known.source &&
+        generation === (this.generations.get(known.source.id) ?? 0) &&
         this.activeCacheKeys().has(cacheKey)
       ) {
         if (entry.report.status === "available") {
@@ -298,7 +309,7 @@ export class UsageSourceRegistry {
             report: entry.report,
           });
         }
-        this.writeCache(cacheKey, entry);
+        this.writeCache(cacheKey, entry, known.source.id, generation);
       }
       return entry;
     })();
@@ -309,7 +320,18 @@ export class UsageSourceRegistry {
     return request;
   }
 
-  private writeCache(id: string, entry: UsageReportEntry): void {
+  private writeCache(
+    id: string,
+    entry: UsageReportEntry,
+    sourceId?: string,
+    generation?: number,
+  ): void {
+    if (
+      sourceId !== undefined &&
+      generation !== undefined &&
+      generation !== (this.generations.get(sourceId) ?? 0)
+    )
+      return;
     const at = this.now();
     for (const [cachedId, cached] of this.cache) {
       if (at - cached.at >= this.ttlMs) this.cache.delete(cachedId);

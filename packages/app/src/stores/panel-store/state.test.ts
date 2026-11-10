@@ -4,6 +4,7 @@ import { usePanelStore } from ".";
 import {
   DEFAULT_TREE_RAIL_WIDTH,
   migratePanelState,
+  resolveDefaultAgentListOpen,
   selectIsAgentListOpen,
   selectIsCompactFileExplorerOpen,
   setMobilePanelTarget,
@@ -81,6 +82,19 @@ describe("panel-store migration", () => {
 
     expect(state.mobileView).toBeUndefined();
     expect(state.mobilePanel).toBeUndefined();
+  });
+});
+
+describe("resolveDefaultAgentListOpen", () => {
+  it.each([
+    { isVscode: true, isWeb: true, expected: false },
+    { isVscode: true, isWeb: false, expected: false },
+    { isVscode: false, isWeb: true, expected: true },
+    { isVscode: false, isWeb: false, expected: false },
+  ])("returns $expected for isVscode=$isVscode and isWeb=$isWeb", (testCase) => {
+    expect(
+      resolveDefaultAgentListOpen({ isWeb: testCase.isWeb, isVscode: testCase.isVscode }),
+    ).toBe(testCase.expected);
   });
 });
 

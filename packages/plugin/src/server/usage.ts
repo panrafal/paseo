@@ -50,9 +50,33 @@ export type UsageReport =
       windows: UsageWindow[];
       balances?: UsageBalance[];
       details?: UsageDetail[];
+      bankedResets?: CodexBankedResets;
     }
   | { status: "unavailable"; problem: UsageProblem }
   | { status: "error"; error: string };
+
+export interface CodexBankedReset {
+  id: string;
+  resetType: string;
+  supportedByPlan: boolean | null;
+  status: string;
+  grantedAt: string;
+  expiresAt: string | null;
+  title: string | null;
+  description: string | null;
+}
+
+export interface CodexBankedResets {
+  availableCount: number;
+  credits: CodexBankedReset[] | null;
+  error: string | null;
+}
+
+export type CodexBankedResetOutcome =
+  | "reset"
+  | "nothing_to_reset"
+  | "no_credit"
+  | "already_redeemed";
 
 export interface UsageAccount {
   /** Stable across token rotation; [A-Za-z0-9._-]{1,128}. Never a credential or raw email. */
