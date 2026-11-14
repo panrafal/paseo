@@ -353,6 +353,7 @@ describe("syncSkills", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
       skillNames: ["paseo"],
       onSkillError: (skillName) => errors.push(skillName),
     });
@@ -360,6 +361,9 @@ describe("syncSkills", () => {
     expect(errors).toEqual(["paseo"]);
     expect(await fs.readdir(outside)).toEqual(["SKILL.md"]);
     expect(await fs.readFile(path.join(outside, "SKILL.md"), "utf-8")).toBe("custom");
+    expect(await fs.readFile(path.join(sandbox.kiloDir, "paseo", "SKILL.md"), "utf-8")).toBe(
+      "bundled",
+    );
     await expect(fs.access(path.join(sandbox.codexDir, "paseo"))).rejects.toThrow();
   });
 });
@@ -396,6 +400,7 @@ describe("removeSkill", () => {
     await expect(fs.access(path.join(sandbox.agentsDir, "paseo"))).rejects.toThrow();
     await expect(fs.access(path.join(sandbox.claudeDir, "paseo"))).rejects.toThrow();
     await expect(fs.access(path.join(sandbox.codexDir, "paseo"))).rejects.toThrow();
+    await expect(fs.access(path.join(sandbox.kiloDir, "paseo"))).rejects.toThrow();
   });
 
   it("leaves a symlinked skill directory and its target in place", async () => {
@@ -409,6 +414,7 @@ describe("removeSkill", () => {
       agentsDir: sandbox.agentsDir,
       claudeDir: sandbox.claudeDir,
       codexDir: sandbox.codexDir,
+      kiloDir: sandbox.kiloDir,
     });
 
     expect((await fs.lstat(path.join(sandbox.agentsDir, "paseo"))).isSymbolicLink()).toBe(true);
