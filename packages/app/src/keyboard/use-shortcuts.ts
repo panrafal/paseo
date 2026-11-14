@@ -7,6 +7,9 @@ import type { KeyboardInputEvent } from "./internal/overlays";
 import { hasActiveOverlay } from "./internal/overlay-dispatch";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { usePathname, useRouter } from "expo-router";
+import { useRouteHistory } from "@/navigation/route-history";
+import { useNativeHistoryShortcuts } from "@/hooks/use-native-history-shortcuts";
+import { nativeHistoryShortcutsAvailable } from "@/native/history-shortcuts";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
@@ -53,6 +56,8 @@ export function useKeyboardShortcuts({
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const pathname = usePathname();
   const router = useRouter();
+  const navigateRouteHistory = useRouteHistory();
+  useNativeHistoryShortcuts(enabled, navigateRouteHistory);
   const resetModifiers = useKeyboardShortcutsStore((s) => s.resetModifiers);
   const { overrides } = useKeyboardShortcutOverrides();
   const bindings = useMemo(() => buildEffectiveBindings(overrides), [overrides]);
@@ -142,6 +147,8 @@ export function useKeyboardShortcuts({
       case "router-push":
         router.push(action.route as Parameters<typeof router.push>[0]);
         return true;
+      case "route-history":
+        return navigateRouteHistory(action.direction);
       case "open-project-picker":
         void openProjectPickerAction();
         return true;
@@ -193,7 +200,14 @@ export function useKeyboardShortcuts({
     usesDesktopBindings: usesDesktopBindings,
     commandCenterOpen: useKeyboardShortcutsStore.getState().commandCenterOpen,
   }));
-  const getBindings = useStableEvent(() => bindings);
+  const pipelineBindings = useMemo(
+    () =>
+      nativeHistoryShortcutsAvailable
+        ? bindings.filter((binding) => !binding.action.startsWith("navigation.history."))
+        : bindings,
+    [bindings],
+  );
+  const getBindings = useStableEvent(() => pipelineBindings);
   const isCapturing = useStableEvent(() => useKeyboardShortcutsStore.getState().capturingShortcut);
   const dispatchMatch = useStableEvent(
     (match: import("./keyboard-shortcuts").KeyboardShortcutMatch, input: KeyboardSourceInput) =>
