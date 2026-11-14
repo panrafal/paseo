@@ -126,11 +126,12 @@ import {
 } from "../provider-launch-config.js";
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "./provider-runner.js";
-import { resolveResumeProcessCwd } from "./resume-process-cwd.js";
+import { isDirectory, resolveResumeProcessCwd } from "./resume-process-cwd.js";
 import {
   buildStringCommandShellInvocation,
   createStringCommandShellEnvOverlay,
 } from "../../../utils/string-command-shell.js";
+import { spawnExitBoundProcess } from "../../../utils/exit-bound-process.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 import {
   type DiagnosticEntry,
@@ -1470,7 +1471,7 @@ export class ACPAgentClient implements AgentClient {
     client: ACPClient = this.buildProbeClient(),
   ): Promise<ACPProcessTransport> {
     const { command, args } = await this.resolveLaunchCommand();
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: process.cwd(),
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -2743,6 +2744,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       } catch {}
 
       try {
+        // A provider that never answers session/close must not keep its
+        // process alive past the close.
         if (this.agentCapabilities?.sessionCapabilities?.close) {
           await withTimeout(
             this.connection.unstable_closeSession({ sessionId: this.sessionId }),
@@ -3038,8 +3041,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   // Loading an archived agent's history runs nothing in its working directory, which
   // may have been removed with its worktree. session/load still names the original
   // directory; only the process starts from the home directory.
-  private resolveProcessCwd(): Promise<string> {
-    return resolveResumeProcessCwd(this.config.cwd, this.resumePurpose);
+  private async resolveProcessCwd(): Promise<string> {
+    const cwd = await resolveResumeProcessCwd(this.config.cwd, this.resumePurpose);
+    if (this.resumePurpose !== "history" && !(await isDirectory(this.config.cwd))) {
+      throw new Error(`${this.provider} working directory does not exist: ${this.config.cwd}`);
+    }
+    return cwd;
   }
 
   private async spawnProcess(): Promise<SpawnedACPProcess> {
@@ -3054,7 +3061,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     const command = prefix.command;
     const args = [...prefix.args, ...this.defaultCommand.slice(1)];
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: await this.resolveProcessCwd(),
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
