@@ -236,7 +236,7 @@ async function seedWorkspaceWithLegacyAgent(): Promise<{ paseoHomeRoot: string; 
     lastUserMessageAt: null,
     title: "Legacy cwd-only agent",
     labels: {},
-    lastStatus: "running",
+    lastStatus: "error",
     lastModeId: null,
     config: null,
     runtimeInfo: { provider: "codex", sessionId: null },
@@ -291,7 +291,7 @@ test("daemon bootstrap migrates cwd-only legacy agents before same-cwd workspace
     await client.connect();
     expect(await legacyAgentWorkspaceId(client)).toBe(LEGACY_OWNER_WORKSPACE);
     expect(await statusByWorkspaceId(client)).toEqual(
-      new Map([[LEGACY_OWNER_WORKSPACE, "running"]]),
+      new Map([[LEGACY_OWNER_WORKSPACE, "failed"]]),
     );
 
     const created = await client.createWorkspace({
@@ -313,7 +313,7 @@ test("daemon bootstrap migrates cwd-only legacy agents before same-cwd workspace
     expect(await agentIdsOwnedByWorkspace(client, createdWorkspaceId)).toEqual([]);
     expect(await statusByWorkspaceId(client)).toEqual(
       new Map([
-        [LEGACY_OWNER_WORKSPACE, "running"],
+        [LEGACY_OWNER_WORKSPACE, "failed"],
         [createdWorkspaceId, "done"],
       ]),
     );
