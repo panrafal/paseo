@@ -37,6 +37,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AppearanceProvider } from "@/appearance/provider";
 import { CommandCenter } from "@/command-center/command-center";
 import { CommandCenterRootActions } from "@/command-center/root-registration";
+import { CommandCenterSidebarPresetActions } from "@/command-center/sidebar-presets-registration";
 import { CommandCenterProvider } from "@/command-center/provider";
 import { CommandCenterWorkspaceActions } from "@/command-center/workspace-registration";
 import { PluginCommandCenterActions } from "@/plugins/command-center/registration";
@@ -55,6 +56,7 @@ import { DesktopWindowControls } from "@/components/desktop/window-controls";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { WorkspacePinShortcutHandler } from "@/components/workspace-pin-shortcut-handler";
 import { WorkspaceRenameHost } from "@/components/workspace-rename-host";
+import { SidebarPresetNameDialogHost } from "@/components/sidebar/presets/name-dialog-host";
 import { WorkspaceArchiveUndoShortcutHost } from "@/workspace/archive-undo";
 import { WorkspaceExplorerOpenGesture } from "@/mobile-panels/explorer-open-gesture";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
@@ -565,10 +567,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
         <LegacyAgentSkillsMigration />
         <WorktreeSetupCalloutSource />
         <CommandCenterRootActions />
+        <CommandCenterSidebarPresetActions />
         <CommandCenterWorkspaceActions />
         <PluginCommandCenterActions />
         <WorkspacePinShortcutHandler />
         <WorkspaceRenameHost />
+        <SidebarPresetNameDialogHost />
         <WorkspaceArchiveUndoShortcutHost />
         <CommandCenter />
         <AddProjectFlowHost />
