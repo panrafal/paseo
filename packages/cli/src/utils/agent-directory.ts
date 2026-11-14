@@ -5,19 +5,19 @@ type FetchAgentsOptions = NonNullable<
   Parameters<Awaited<ReturnType<typeof connectToDaemon>>["fetchAgents"]>[0]
 >;
 
-interface AgentDirectoryClient {
+interface AgentDirectoryClient<TAgent = AgentSnapshotPayload> {
   fetchAgents(options?: FetchAgentsOptions): Promise<{
-    entries: { agent: AgentSnapshotPayload }[];
+    entries: { agent: TAgent }[];
     pageInfo: { nextCursor: string | null };
   }>;
 }
 
 /** Read the complete directory without agents moving between pages as they update. */
-export async function fetchAllAgents(
-  client: AgentDirectoryClient,
+export async function fetchAllAgents<TAgent = AgentSnapshotPayload>(
+  client: AgentDirectoryClient<TAgent>,
   options: Omit<FetchAgentsOptions, "page" | "sort" | "subscribe"> = {},
-): Promise<AgentSnapshotPayload[]> {
-  const agents: AgentSnapshotPayload[] = [];
+): Promise<TAgent[]> {
+  const agents: TAgent[] = [];
   let cursor: string | undefined;
   // createdAt never changes, so agents cannot move past the cursor while the pages are read.
   do {

@@ -139,6 +139,7 @@ import {
 } from "@/navigation/settings-presentation";
 import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
 import { isNative, isWeb } from "@/constants/platform";
+import { nativeHistoryShortcutsAvailable } from "@/native/history-shortcuts";
 import { useOpenOnboarding } from "@/onboarding";
 
 // ---------------------------------------------------------------------------
@@ -197,6 +198,7 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     labelKey: "settings.sections.shortcuts",
     icon: Keyboard,
     hardwareKeyboardOnly: true,
+    desktopOnly: !nativeHistoryShortcutsAvailable,
     Content: KeyboardShortcutsSection,
   },
   {

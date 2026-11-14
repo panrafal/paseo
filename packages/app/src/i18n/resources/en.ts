@@ -721,6 +721,7 @@ export const en = {
         reloadedAgent: "Reloaded agent",
         failedToReloadAgent: "Failed to reload agent",
         failedToCloseAgent: "Failed to close agent",
+        failedToSaveClosePreference: "Couldn't save your terminal close preference",
       },
       confirmations: {
         close: "Close",
@@ -734,6 +735,8 @@ export const en = {
         bulkUnsaved: "{{count}} tab(s) have unsaved changes. Closing will discard those drafts.",
         closeTerminalTitle: "Close terminal?",
         closeTerminalMessage: "Any running process in this terminal will be stopped immediately.",
+        rememberChoice: "Remember this choice",
+        closeAndDontAskAgain: "Close and don't ask again",
         archiveRunningAgentTitle: "Archive running agent?",
         archiveRunningAgentMessage:
           "This agent is still running. Archiving it will stop the agent and close the tab.",
@@ -822,6 +825,11 @@ export const en = {
           pending: "Committing...",
           success: "Committed",
         },
+        commitAndPush: {
+          label: "Commit and push",
+          pending: "Committing and pushing...",
+          success: "Committed and pushed",
+        },
         pull: {
           label: "Pull",
           pending: "Pulling...",
@@ -893,6 +901,8 @@ export const en = {
           pullUpToDate: "Pull isn't available because this branch is already up to date",
           pushNoRemote:
             "Push isn't available here because this branch is not connected to a remote yet",
+          commitAndPushNoRemote:
+            "Commit and push isn't available here because this branch is not connected to a remote yet",
           pushBehind: "Push isn't available yet because there are newer changes to bring in first",
           pushNothing: "Push isn't available because there is nothing new to send",
           pullAndPushNoRemote:
@@ -935,6 +945,7 @@ export const en = {
         },
         toasts: {
           failedCommit: "Failed to commit",
+          failedCommitAndPush: "Failed to commit and push",
           failedPull: "Failed to pull",
           failedPush: "Failed to push",
           failedPullAndPush: "Failed to pull and push",
@@ -1022,6 +1033,10 @@ export const en = {
         openIn: "Open workspace in {{target}}",
         openFileIn: "Open {{fileName}} in {{target}}",
         failedOpen: "Failed to open workspace",
+        failedOpenFile: "Failed to open file",
+        setUp: "Set up…",
+        setUpRemoteHost: "Set up opening this host in an editor",
+        setUpToast: "To open {{host}} in an editor, set its SSH host under Open in editor.",
       },
       pr: {
         actions: {
@@ -1140,6 +1155,7 @@ export const en = {
     },
   },
   workspaceLabels: {
+    staleSelection: "Some selected labels no longer exist. Remove them to continue.",
     title: "Labels",
     unlabelled: "Unlabelled",
     create: "Create label",
@@ -1210,6 +1226,35 @@ export const en = {
       working: "Working",
       done: "Done",
     },
+    presets: {
+      trigger: "Sidebar presets",
+      triggerActive: "Sidebar preset: {{name}}",
+      heading: "Sidebar presets",
+      empty: "No saved presets",
+      save: "Save current view as preset…",
+      update: "Update “{{name}}”",
+      rename: "Rename “{{name}}”…",
+      delete: "Delete “{{name}}”",
+      clearFilters: "Clear filters",
+      modified: "Modified",
+      nameDialog: {
+        createTitle: "Save sidebar preset",
+        renameTitle: "Rename sidebar preset",
+        placeholder: "Preset name",
+        save: "Save",
+        duplicate: "A preset with this name already exists",
+      },
+      deleteConfirm: {
+        title: "Delete preset?",
+        message: "“{{name}}” will be deleted. The sidebar keeps its current view.",
+        confirm: "Delete",
+      },
+      commandCenter: {
+        save: "Save sidebar preset…",
+        update: "Update sidebar preset “{{name}}”",
+        clearFilters: "Clear sidebar filters",
+      },
+    },
     display: {
       showBackground: "Show background",
       trigger: "Display preferences",
@@ -1223,6 +1268,8 @@ export const en = {
       },
       grouping: {
         label: "Grouping",
+        currentLabel: "Current grouping: {{current}}",
+        toggleLabel: "Current grouping: {{current}}. Switch grouping",
         project: "Project",
         status: "Status",
         labels: "Labels",
@@ -1620,6 +1667,11 @@ export const en = {
     errorTitle: "Something went wrong",
     errorDescription:
       "The local server failed to start. If this keeps happening, please report the issue on GitHub and include the logs below.",
+    status: {
+      connecting: "Connecting to the Paseo daemon…",
+      loadingWorkspaces: "Loading your workspaces…",
+      opening: "Opening this folder in Paseo…",
+    },
     logs: {
       loading: "Loading daemon logs...",
       unavailable: "No daemon logs available.",
@@ -1972,6 +2024,13 @@ export const en = {
       unableToPair: "Unable to pair host",
       errorTitle: "Error",
     },
+    relayAuth: {
+      pairAgain:
+        "This device isn't paired with the host anymore. Scan a new pairing code on the host.",
+      passwordChanged: "The host password changed. Scan a new pairing code on the host.",
+      linkUsed: "This pairing link was already used or has expired. Create a new one on the host.",
+      rateLimited: "Too many failed sign-in attempts. Wait a minute, then try again.",
+    },
     device: {
       loadingOffer: "Loading pairing offer...",
       failedToLoadOffer: "Failed to load pairing offer.",
@@ -1993,6 +2052,10 @@ export const en = {
       hint: "Scan this QR code with Paseo on your phone, or copy the link below.",
       securityWarning:
         "Treat this pairing link like a password. Anyone with it can access this daemon.",
+      oneTimeWarning:
+        "This link pairs one device and stops working after 5 minutes. Don't share it.",
+      expiresIn: "Expires in {{time}}",
+      newLink: "Get new link",
       qrUnavailable: "QR code unavailable.",
       qrAccessibility: "Pairing QR code",
       retry: "Retry",
@@ -2082,6 +2145,7 @@ export const en = {
           markdown: "Markdown",
           html: "HTML",
           image: "Image",
+          video: "Video",
           source: "Source",
         },
       },
@@ -2089,6 +2153,8 @@ export const en = {
       loading: "Loading file...",
       noPreview: "No preview available",
       binaryPreviewUnavailable: "Binary preview unavailable",
+      videoPlaybackFailed:
+        "Unable to play this video. The file may be damaged or its format may not be supported on this device.",
       tooLargeToDisplay: "This file is too large to display",
       documentUnsupported: "{{type}} files can't be shown on this device",
       failedToLoad: "Failed to load file",
@@ -2608,6 +2674,10 @@ export const en = {
         description: "Lines kept in the built-in terminal buffer",
         accessibilityLabel: "Terminal scrollback lines",
       },
+      confirmTerminalClose: {
+        label: "Confirm closing terminals",
+        description: "Ask before closing a terminal tab",
+      },
       autoExpandReasoning: {
         label: "Always expand reasoning",
         description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
@@ -2803,6 +2873,7 @@ export const en = {
         jumpToTab: "Jump to tab",
         previousWorkspace: "Previous workspace",
         nextWorkspace: "Next workspace",
+        cycleSidebarGrouping: "Cycle grouping",
         previousTab: "Previous tab",
         nextTab: "Next tab",
         splitPaneRight: "Split pane right",
@@ -2818,6 +2889,8 @@ export const en = {
         closePane: "Close pane",
         newTerminal: "New terminal",
         searchFiles: "Search files",
+        historyBack: "History back",
+        historyForward: "History forward",
         toggleCommandCenter: "Toggle command center",
         showKeyboardShortcuts: "Show keyboard shortcuts",
         toggleLeftSidebar: "Toggle left sidebar",
@@ -2901,6 +2974,22 @@ export const en = {
         },
         preview: {
           workspaceName: "my-workspace",
+        },
+      },
+      openInEditor: {
+        title: "Open in editor",
+        info: "Open in editor launches the editor installed on this computer. When the daemon runs on another machine, the editor reaches it over SSH — VS Code and Cursor through Remote-SSH, Zed through an ssh:// URL.",
+        sshHost: {
+          label: "SSH host",
+          hint: "Lets editors on this computer open this host's files over SSH",
+          notSet: "Not set",
+          editLabel: "Edit the SSH host",
+          modalTitle: "SSH host",
+          modalHint:
+            "Normally an alias from your ~/.ssh/config, such as my-dev-host. Leave empty to turn this off.",
+          placeholder: "my-dev-host",
+          save: "Save",
+          invalid: "Use a single SSH host, with no spaces or slashes.",
         },
       },
       notFound: "Host not found",

@@ -17,6 +17,13 @@ export const ConnectionOfferV2Schema = z.object({
   // COMPAT(relayProtectedSecurity): added in v0.13.0. Present when the daemon requires
   // protected endpoint security; clients pin it before their first handshake.
   minimumSecurityMode: z.literal("protected").optional(),
+  /** One-time invitation the client exchanges for a device credential. */
+  pairing: z
+    .object({
+      token: z.string().min(1),
+      expiresAt: z.string().min(1),
+    })
+    .optional(),
 });
 
 export type ConnectionOfferV2 = z.infer<typeof ConnectionOfferV2Schema>;

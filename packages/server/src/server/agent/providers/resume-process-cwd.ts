@@ -13,7 +13,7 @@ export async function resolveResumeProcessCwd(
   return homedir();
 }
 
-async function isDirectory(target: string): Promise<boolean> {
+export async function isDirectory(target: string): Promise<boolean> {
   try {
     return (await stat(target)).isDirectory();
   } catch (error) {

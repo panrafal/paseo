@@ -1,6 +1,7 @@
 import type { Agent, WorkspaceDescriptor } from "@/stores/session-store";
 export const workspace: WorkspaceDescriptor = {
   createdAt: null,
+  activityAt: null,
   lastUserMessageAt: null,
   id: "workspace-1",
   projectId: "project-1",

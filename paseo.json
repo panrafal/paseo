@@ -27,6 +27,27 @@
     },
     "typecheck": {
       "command": "npm run typecheck"
+    },
+    "🛳️ deploy all": {
+      "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh"
+    },
+    "🛳️ deploy daemon 👹": {
+      "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh daemon"
+    },
+    "🛳️ deploy desktop 💻": {
+      "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh desktop"
+    },
+    "🛳️ deploy ios 📱": {
+      "command": "current_branch=\"$(git branch --show-current)\"; if [ \"$current_branch\" != main ]; then echo \"deploy must run from main (current branch: ${current_branch:-detached HEAD})\" >&2; exit 1; fi; git fetch origin main && git reset --hard origin/main && exec ./fork/deploy.sh ios"
+    },
+    "🍱 update": {
+      "command": "./fork/integrate.sh rebase --agent --push"
+    },
+    "🍱 rebuild integration": {
+      "command": "./fork/integrate.sh rebuild --agent --push"
+    },
+    "🍱 rebase branches": {
+      "command": "./fork/integrate.sh rebase-branches --agent --push"
     }
   }
 }

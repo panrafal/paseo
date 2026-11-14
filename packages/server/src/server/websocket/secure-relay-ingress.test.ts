@@ -139,6 +139,8 @@ test("admits the secured socket with its negotiated security mode", async () => 
   expect(secured).not.toBeNull();
   expect(secured!.securityMode).toBe("protected");
   expect(secured!.socket.readyState).toBe(1);
+  // Without device auth, admission still checks the hello password.
+  expect(secured!.relayAuthenticated).toBe(false);
 });
 
 test("admits a legacy client while protected mode is not required", async () => {

@@ -7,6 +7,7 @@ export interface SkillSyncOptions {
   agentsDir: string;
   claudeDir: string;
   codexDir: string;
+  kiloDir: string;
   skillNames: readonly string[];
   onSkillError?: (skillName: string, error: unknown) => void;
 }
@@ -109,7 +110,15 @@ async function pruneEmptyParentDirs(rootDir: string, rels: readonly string[]): P
   }
 }
 
+async function isSymbolicLink(p: string): Promise<boolean> {
+  const info = await fs.lstat(p).catch(() => null);
+  return info?.isSymbolicLink() ?? false;
+}
+
 async function assertManagedPathsStayInsideSkill(rootDir: string, rels: readonly string[]) {
+  if (await isSymbolicLink(rootDir)) {
+    throw new Error(`Cannot sync into a skill directory that is a symbolic link: ${rootDir}`);
+  }
   for (const rel of rels) {
     const normalized = path.normalize(rel);
     if (
@@ -174,6 +183,7 @@ export interface RemoveSkillTargets {
   agentsDir: string;
   claudeDir: string;
   codexDir: string;
+  kiloDir: string;
 }
 
 export async function removeSkill(skillName: string, targets: RemoveSkillTargets): Promise<void> {
@@ -181,8 +191,11 @@ export async function removeSkill(skillName: string, targets: RemoveSkillTargets
     path.join(targets.agentsDir, skillName),
     path.join(targets.claudeDir, skillName),
     path.join(targets.codexDir, skillName),
+    path.join(targets.kiloDir, skillName),
   ];
   for (const p of paths) {
+    // A symlinked skill directory is the user's own skill, not a Paseo install.
+    if (await isSymbolicLink(p)) continue;
     await fs.rm(p, { recursive: true, force: true });
   }
 }
@@ -242,20 +255,29 @@ export async function syncSkills(options: SkillSyncOptions): Promise<SkillSyncRe
     if (!bundleStat?.isDirectory()) continue;
 
     try {
-      changedFiles += await syncDirectoryFiles(
-        bundleSkillDir,
-        path.join(options.agentsDir, skillName),
-      );
-
-      changedFiles += await syncDirectoryFiles(
-        bundleSkillDir,
-        path.join(options.claudeDir, skillName),
-      );
+      for (const targetDir of [options.agentsDir, options.claudeDir]) {
+        const dstDir = path.join(targetDir, skillName);
+        // A symlinked skill directory is the user's own skill; writing would go
+        // through the link into wherever it points.
+        if (await isSymbolicLink(dstDir)) {
+          options.onSkillError?.(
+            skillName,
+            new Error(`Skipped skill directory that is a symbolic link: ${dstDir}`),
+          );
+          continue;
+        }
+        changedFiles += await syncDirectoryFiles(bundleSkillDir, dstDir);
+      }
 
       // Retain user edits to the old dedicated Codex copy.
       if (await isLegacyCodexCopy(skillName, options)) {
         changedFiles += await retireManagedSkill(path.join(options.codexDir, skillName));
       }
+
+      changedFiles += await syncDirectoryFiles(
+        bundleSkillDir,
+        path.join(options.kiloDir, skillName),
+      );
 
       processedSkills++;
     } catch (error) {

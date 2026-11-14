@@ -7,6 +7,7 @@ dist/
 .next/
 out/
 result
+scratch/
 
 # Environment variables
 .env
@@ -16,6 +17,10 @@ result
 .env*.local
 .dev.vars
 **/.dev.vars
+
+# dotenvx private keys. Encrypted env files (fork/.env.fork) are committed;
+# the key that opens them never is, anywhere in the tree.
+.env.keys
 
 # Logs
 *.log
@@ -41,6 +46,7 @@ tsconfig.tsbuildinfo
 
 # Testing
 coverage/
+.vscode-test/
 
 # Playwright
 test-results/

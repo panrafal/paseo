@@ -37,6 +37,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AppearanceProvider } from "@/appearance/provider";
 import { CommandCenter } from "@/command-center/command-center";
 import { CommandCenterRootActions } from "@/command-center/root-registration";
+import { CommandCenterSidebarPresetActions } from "@/command-center/sidebar-presets-registration";
 import { CommandCenterProvider } from "@/command-center/provider";
 import { CommandCenterWorkspaceActions } from "@/command-center/workspace-registration";
 import { PluginCommandCenterActions } from "@/plugins/command-center/registration";
@@ -55,6 +56,7 @@ import { DesktopWindowControls } from "@/components/desktop/window-controls";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { WorkspacePinShortcutHandler } from "@/components/workspace-pin-shortcut-handler";
 import { WorkspaceRenameHost } from "@/components/workspace-rename-host";
+import { SidebarPresetNameDialogHost } from "@/components/sidebar/presets/name-dialog-host";
 import { WorkspaceArchiveUndoShortcutHost } from "@/workspace/archive-undo";
 import { WorkspaceExplorerOpenGesture } from "@/mobile-panels/explorer-open-gesture";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
@@ -93,7 +95,8 @@ import {
 } from "@/navigation/settings-presentation";
 import { ThemedStack } from "@/navigation/themed-stack";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
-import { AgentNavigationListener } from "@/desktop/agent-navigation";
+import { DesktopNavigationListener } from "@/desktop/navigation";
+import { VscodeSendToComposerListener } from "@/desktop/vscode/send-to-composer";
 import { LegacyAgentSkillsMigration } from "@/agent-skills/legacy-migration";
 import { legacyFavoriteProfileMigration } from "@/agent-profiles/migration";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
@@ -565,10 +568,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
         <LegacyAgentSkillsMigration />
         <WorktreeSetupCalloutSource />
         <CommandCenterRootActions />
+        <CommandCenterSidebarPresetActions />
         <CommandCenterWorkspaceActions />
         <PluginCommandCenterActions />
         <WorkspacePinShortcutHandler />
         <WorkspaceRenameHost />
+        <SidebarPresetNameDialogHost />
         <WorkspaceArchiveUndoShortcutHost />
         <CommandCenter />
         <AddProjectFlowHost />
@@ -738,7 +743,17 @@ function OfferLinkListener() {
         return;
       try {
         const result = await getHostRuntimeStore().importConnectionLink(url, "openProject");
-        if (!cancelled && result.status === "connected") router.replace(buildOpenProjectRoute());
+        if (!cancelled && result.status === "connected") {
+          // The pairing token is spent; keep it out of browser history.
+          if (isWeb && window.location.hash.includes("offer=")) {
+            window.history.replaceState(
+              null,
+              "",
+              `${window.location.pathname}${window.location.search}`,
+            );
+          }
+          router.replace(buildOpenProjectRoute());
+        }
       } catch (error) {
         console.warn("[OfferLinkListener] Pairing link failed", error);
       }
@@ -956,7 +971,8 @@ function AppShell() {
     <MobilePanelsProvider>
       <HorizontalScrollProvider>
         <OpenProjectListener />
-        <AgentNavigationListener />
+        <DesktopNavigationListener />
+        <VscodeSendToComposerListener />
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />
