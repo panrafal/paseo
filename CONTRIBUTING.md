@@ -82,7 +82,7 @@ Explain the problem and link the relevant bug report or discussion. Include:
 
 - Automated tests that exercise the changed behavior. A bug fix needs a regression test that fails on the broken version.
 - The commands you ran and their output.
-- A recording for interactive UI changes, or before-and-after screenshots for static changes.
+- A recording for interactive UI changes, or before-and-after screenshots for static changes, on every affected platform or UI host, including VS Code.
 - The platforms you tested and any affected platforms you could not test.
 
 The [QA guide](docs/qa.md) explains the expected evidence and available tooling.
