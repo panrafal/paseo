@@ -33,7 +33,7 @@ export interface CreateTerminalWorkspaceInput {
   }) => Promise<CreatedTerminal>;
   /** Types text into a live terminal. Used for the shell path, where the typed command is a command, not argv. */
   sendTerminalInput: (terminalId: string, data: string) => void;
-  clearDraft: () => void;
+  clearDraft?: () => void;
   serverId: string;
   navigate: (serverId: string, workspaceId: string, target: WorkspaceTabTarget) => void;
 }
@@ -83,7 +83,7 @@ export async function runCreateTerminalWorkspace(
     sendTerminalInput(createdTerminal.terminalId, `${trimmedPrompt}\r`);
   }
 
-  clearDraft();
+  clearDraft?.();
   navigate(serverId, ensuredWorkspace.id, {
     kind: "terminal",
     terminalId: createdTerminal.terminalId,
