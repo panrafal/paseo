@@ -1,9 +1,12 @@
 import { SidebarViewSlot } from "@/plugins/sidebar-view";
 import { useAddHost } from "@/hosts/add-host";
 import {
+  CircleDashed,
   CircleGauge,
+  Folder,
   FolderPlus,
   GitBranch,
+  Search,
   Server,
   Settings,
   type LucideIcon,
@@ -18,12 +21,13 @@ import {
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
+  type PressableStateCallbackType,
 } from "react-native";
 import { Gesture, ScrollView as GHScrollView } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarCloseButton } from "@/components/headers/sidebar-close-button";
 import {
@@ -74,12 +78,17 @@ import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
-import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
+import {
+  nextSidebarGroupMode,
+  type SidebarGroupMode,
+  useSidebarViewStore,
+} from "@/stores/sidebar-view-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { PluginSidebarItem } from "@/plugins/sidebar-items";
 import { builtinSidebarNavLabelKey } from "@/sidebar-nav/model";
 import { useSidebarNavItems } from "@/sidebar-nav/use-sidebar-nav-items";
 import { usePanelStore } from "@/stores/panel-store";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { useLeftPanelWidth } from "@/mobile-panels/provider";
@@ -88,9 +97,11 @@ import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { openSettingsFromSidebar } from "@/navigation/settings-navigation";
 import { UsageSidebarItem, UsageSidebarRoot, useUsageSummary, useOpenSidebarUsage } from "@/usage";
+import type { Theme } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+import { SidebarPresetsMenu } from "./sidebar/presets/menu";
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -583,6 +594,10 @@ function MobileSidebar({
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
   }, [closeSidebar]);
+  const mobileWorkspacesSectionHeaderElement = useMemo(
+    () => <WorkspacesSectionHeader onBeforeSearch={closeSidebar} />,
+    [closeSidebar],
+  );
 
   const closeButton = useMemo(
     () => (
@@ -670,7 +685,7 @@ function MobileSidebar({
                 onImportSession={handleImportSession}
                 parentGestureRef={closeGestureRef}
                 dragGestureHostActive={active}
-                listHeaderComponent={workspacesSectionHeaderElement}
+                listHeaderComponent={mobileWorkspacesSectionHeaderElement}
               />
             )}
           </SidebarToastRegion>
@@ -903,20 +918,161 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+/** Below this header width the presets button stays an icon; above it, it names the preset. */
+const PRESET_LABEL_MIN_HEADER_WIDTH = 300;
+
+function WorkspacesSectionHeader({ onBeforeSearch }: { onBeforeSearch?: () => void }) {
+  const { t } = useTranslation();
+  const [headerWidth, setHeaderWidth] = useState(0);
+  const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
+    setHeaderWidth(event.nativeEvent.layout.width);
+  }, []);
   return (
-    <SidebarSectionHeader title="Workspaces">
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <View>
-            <SidebarDisplayPreferencesMenu />
-          </View>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="center" offset={8}>
-          <IconTooltipContent label="Display preferences" />
-        </TooltipContent>
-      </Tooltip>
-    </SidebarSectionHeader>
+    <View onLayout={handleHeaderLayout}>
+      <SidebarSectionHeader title="Workspaces">
+        <SidebarSearchAction onBeforeNavigate={onBeforeSearch} />
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <View>
+              <SidebarPresetsMenu showLabel={headerWidth >= PRESET_LABEL_MIN_HEADER_WIDTH} />
+            </View>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <IconTooltipContent label={t("sidebar.presets.trigger")} />
+          </TooltipContent>
+        </Tooltip>
+        <SidebarGroupingToggle />
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <View>
+              <SidebarDisplayPreferencesMenu />
+            </View>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <IconTooltipContent label="Display preferences" />
+          </TooltipContent>
+        </Tooltip>
+      </SidebarSectionHeader>
+    </View>
+  );
+}
+
+function workspacesSectionActionStyle({
+  hovered = false,
+  pressed,
+}: PressableStateCallbackType & { hovered?: boolean }) {
+  return [
+    styles.workspacesSectionAction,
+    (hovered || pressed) && styles.workspacesSectionActionHighlighted,
+  ];
+}
+
+interface WorkspacesSectionIconActionProps {
+  icon: typeof FolderPlus;
+  label: string;
+  accessibilityLabel?: string;
+  onPress: () => void;
+  testID: string;
+  iconTestID?: string;
+  shortcutKeys?: ReturnType<typeof useShortcutKeys>;
+}
+
+function WorkspacesSectionIconAction({
+  icon: Icon,
+  label,
+  accessibilityLabel = label,
+  onPress,
+  testID,
+  iconTestID,
+  shortcutKeys,
+}: WorkspacesSectionIconActionProps) {
+  const ThemedIcon = useMemo(() => withUnistyles(Icon), [Icon]);
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <Pressable
+          style={workspacesSectionActionStyle}
+          testID={testID}
+          accessible
+          accessibilityLabel={accessibilityLabel}
+          accessibilityRole="button"
+          onPress={onPress}
+        >
+          {({ hovered, pressed }) => (
+            <ThemedIcon
+              size={14}
+              uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
+              testID={iconTestID}
+            />
+          )}
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="center" offset={8}>
+        <IconTooltipContent label={label} shortcutKeys={shortcutKeys} />
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SidebarSearchAction({ onBeforeNavigate }: { onBeforeNavigate?: () => void }) {
+  const { t } = useTranslation();
+  const { items } = useSidebarNavItems("header");
+  const shortcutKeys = useShortcutKeys("toggle-command-center");
+  const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
+  const handlePress = useCallback(() => {
+    onBeforeNavigate?.();
+    setCommandCenterOpen(true);
+  }, [onBeforeNavigate, setCommandCenterOpen]);
+  const isVisible = items.some(
+    (item) => item.kind === "builtin" && item.id === "search" && item.visible,
+  );
+
+  if (!isVisible) return null;
+
+  return (
+    <WorkspacesSectionIconAction
+      icon={Search}
+      label={t("sidebar.sections.search")}
+      onPress={handlePress}
+      testID="sidebar-command-center-search"
+      shortcutKeys={shortcutKeys}
+    />
+  );
+}
+
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+
+function SidebarGroupingToggle() {
+  const { t } = useTranslation();
+  const shortcutKeys = useShortcutKeys("cycle-sidebar-grouping");
+  const groupMode = useSidebarViewStore((state) => state.groupMode);
+  const setGroupMode = useSidebarViewStore((state) => state.setGroupMode);
+  const targetMode = nextSidebarGroupMode(groupMode);
+  const currentModeLabel = t(
+    groupMode === "project"
+      ? "sidebar.display.grouping.project"
+      : "sidebar.display.grouping.status",
+  );
+  const label = t("sidebar.display.grouping.currentLabel", {
+    current: currentModeLabel,
+  });
+  const accessibilityLabel = t("sidebar.display.grouping.toggleLabel", {
+    current: currentModeLabel,
+  });
+  const Icon = groupMode === "project" ? Folder : CircleDashed;
+  const handlePress = useCallback(() => setGroupMode(targetMode), [setGroupMode, targetMode]);
+
+  return (
+    <WorkspacesSectionIconAction
+      icon={Icon}
+      label={label}
+      accessibilityLabel={accessibilityLabel}
+      onPress={handlePress}
+      testID="sidebar-grouping-toggle"
+      iconTestID={`sidebar-grouping-toggle-icon-${groupMode}`}
+      shortcutKeys={shortcutKeys}
+    />
   );
 }
 
@@ -956,6 +1112,16 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[2],
     gap: 2,
     paddingBottom: theme.spacing[1.5],
+  },
+  workspacesSectionAction: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.md,
+  },
+  workspacesSectionActionHighlighted: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   sidebarContent: {
     flex: 1,
