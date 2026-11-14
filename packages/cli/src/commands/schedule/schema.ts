@@ -77,6 +77,13 @@ export function createScheduleInspectRows(schedule: ScheduleRecord): ScheduleIns
           : `every:${schedule.cadence.everyMs}ms`,
     },
     { key: "Target", value: formatTarget(schedule.target) },
+    {
+      key: "WorkspaceLabels",
+      value:
+        schedule.target.type === "new-agent"
+          ? (schedule.target.config.workspaceLabels ?? []).join(", ")
+          : "",
+    },
     { key: "Status", value: schedule.status },
     { key: "CreatedAt", value: schedule.createdAt },
     { key: "UpdatedAt", value: schedule.updatedAt },
