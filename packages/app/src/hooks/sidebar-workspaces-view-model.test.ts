@@ -22,6 +22,7 @@ import {
 function workspaceWithForge(forge: string | undefined, prUrl: string): WorkspaceDescriptor {
   return {
     createdAt: null,
+    activityAt: null,
     lastUserMessageAt: null,
     id: "ws-1",
     projectId: "proj",
@@ -154,6 +155,7 @@ function workspace(input: {
 }): WorkspaceDescriptor {
   return {
     createdAt: null,
+    activityAt: null,
     lastUserMessageAt: null,
     id: input.id,
     projectId: input.projectId,

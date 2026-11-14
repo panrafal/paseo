@@ -94,6 +94,7 @@ import {
 import { ThemedStack } from "@/navigation/themed-stack";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { AgentNavigationListener } from "@/desktop/agent-navigation";
+import { VscodeSendToComposerListener } from "@/desktop/vscode/send-to-composer";
 import { LegacyAgentSkillsMigration } from "@/agent-skills/legacy-migration";
 import { legacyFavoriteProfileMigration } from "@/agent-profiles/migration";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
@@ -957,6 +958,7 @@ function AppShell() {
       <HorizontalScrollProvider>
         <OpenProjectListener />
         <AgentNavigationListener />
+        <VscodeSendToComposerListener />
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />

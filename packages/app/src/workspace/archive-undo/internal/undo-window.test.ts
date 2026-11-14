@@ -33,6 +33,7 @@ function deferred<T>(): Deferred<T> {
 function workspace(id: string): WorkspaceDescriptor {
   return {
     createdAt: null,
+    activityAt: null,
     lastUserMessageAt: null,
     id,
     projectId: "project",
