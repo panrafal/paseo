@@ -2139,6 +2139,7 @@ export const fr: TranslationResources = {
           markdown: "Markdown",
           html: "HTML",
           image: "Image",
+          video: "Vidéo",
           source: "Source",
         },
       },
@@ -2146,6 +2147,8 @@ export const fr: TranslationResources = {
       loading: "Chargement du fichier…",
       noPreview: "Aucun aperçu disponible",
       binaryPreviewUnavailable: "Aperçu indisponible pour un fichier binaire",
+      videoPlaybackFailed:
+        "Impossible de lire cette vidéo. Le fichier est peut-être endommagé ou son format n’est pas pris en charge sur cet appareil.",
       tooLargeToDisplay: "Ce fichier est trop volumineux pour être affiché",
       documentUnsupported: "Les fichiers {{type}} ne peuvent pas être affichés sur cet appareil",
       failedToLoad: "Impossible de charger le fichier",
