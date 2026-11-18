@@ -205,6 +205,8 @@ Then list, use, rename, or archive it:
 ```bash
 paseo workspace ls
 paseo workspace ls --background               # Also include background workspaces
+paseo workspace ls --label blocked            # Only workspaces carrying that label (repeat for several)
+paseo workspace ls --background --label blocked
 paseo run --workspace <workspace-id> "implement authentication"
 paseo workspace rename <workspace-id> "Auth rework"
 paseo workspace rename <workspace-id> --reset   # back to the branch or directory name
@@ -212,6 +214,8 @@ paseo workspace archive <workspace-id>
 ```
 
 Inside an agent session, `PASEO_WORKSPACE_ID` holds the agent's own workspace ID, so an agent can run `paseo workspace rename "$PASEO_WORKSPACE_ID" "Auth rework"` or `paseo workspace archive "$PASEO_WORKSPACE_ID"` even when other workspaces share its directory.
+
+The list shows each workspace's labels and pull request. Label filters match by name, ignoring case, and a workspace must carry every label you pass. `--json` also includes the branch and the pull request's URL, title, checks, and review decision.
 
 Add `--forge <name>` to PR checkout when Paseo cannot infer the forge from the source checkout. See [Git worktrees](/docs/worktrees) for setup hooks and services.
 
@@ -293,8 +297,9 @@ behavior.
 paseo ls                    # Non-archived agents in active workspaces
 paseo ls -a                 # Also include archived and background agents, with a BACKGROUND column
 paseo ls -g                 # Non-archived agents across all workspaces
-paseo ls -a -g --json       # All agents, including archived, as JSON
 paseo ls --background       # Also include background agents and agents in background workspaces
+paseo ls --label team=api   # Only agents carrying that label (repeat for several)
+paseo ls -a -g --json       # All agents, including archived, as JSON with each agent's labels
 ```
 
 ## Streaming output
