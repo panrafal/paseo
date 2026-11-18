@@ -1974,8 +1974,16 @@ export const ProviderDiagnosticRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const CodexBankedResetConsumeRequestMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_banked_reset.request"),
+  creditId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  requestId: z.string(),
+});
+
 export const ProviderUsageListRequestMessageSchema = z.object({
   type: z.literal("provider.usage.list.request"),
+  forceRefresh: z.boolean().optional(),
   requestId: z.string(),
 });
 
@@ -3611,6 +3619,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotRequestMessageSchema,
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
+  CodexBankedResetConsumeRequestMessageSchema,
   UsageListReportsRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
@@ -4041,6 +4050,8 @@ export const ServerInfoStatusPayloadSchema = z
         fileByteWrites: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: z.boolean().optional(),
+        // COMPAT(codexBankedResets): added in v0.7.3, remove after 2027-03-06.
+        codexBankedResets: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.
@@ -6801,6 +6812,30 @@ export const ProviderUsageDetailSchema = z.object({
   tone: ProviderUsageToneSchema.optional(),
 });
 
+export const CodexBankedResetSchema = z.object({
+  id: z.string(),
+  resetType: z.string(),
+  supportedByPlan: z.boolean().nullable(),
+  status: z.string(),
+  grantedAt: z.string(),
+  expiresAt: z.string().nullable(),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+});
+
+export const CodexBankedResetsSchema = z.object({
+  availableCount: z.number().int().nonnegative(),
+  credits: z.array(CodexBankedResetSchema).nullable(),
+  error: z.string().nullable(),
+});
+
+export const CodexBankedResetOutcomeSchema = z.enum([
+  "reset",
+  "nothing_to_reset",
+  "no_credit",
+  "already_redeemed",
+]);
+
 export const ProviderUsageSchema = z.object({
   providerId: z.string(),
   displayName: z.string(),
@@ -6812,7 +6847,16 @@ export const ProviderUsageSchema = z.object({
   windows: z.array(ProviderUsageWindowSchema),
   balances: z.array(ProviderUsageBalanceSchema).optional(),
   details: z.array(ProviderUsageDetailSchema).optional(),
+  bankedResets: CodexBankedResetsSchema.optional(),
   error: z.string().nullable().optional(),
+});
+
+export const CodexBankedResetConsumeResponseMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_banked_reset.response"),
+  payload: z.object({
+    requestId: z.string(),
+    outcome: CodexBankedResetOutcomeSchema,
+  }),
 });
 
 export const ProviderUsageListResponseMessageSchema = z.object({
@@ -6845,7 +6889,7 @@ const AvailableUsageReportSchema = z.object({
   details: z.array(ProviderUsageDetailSchema).optional(),
 });
 export const UsageReportSchema = z.discriminatedUnion("status", [
-  AvailableUsageReportSchema,
+  AvailableUsageReportSchema.extend({ bankedResets: CodexBankedResetsSchema.optional() }),
   z.object({ status: z.literal("unavailable"), problem: UsageProblemSchema }),
   z.object({ status: z.literal("error"), error: z.string() }),
 ]);
@@ -7630,6 +7674,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
   UsageListReportsUpdateMessageSchema,
+  CodexBankedResetConsumeResponseMessageSchema,
   UsageListReportsResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
@@ -7812,6 +7857,9 @@ export type RefreshProvidersSnapshotResponseMessage = z.infer<
 export type ProviderDiagnosticResponseMessage = z.infer<
   typeof ProviderDiagnosticResponseMessageSchema
 >;
+export type CodexBankedReset = z.infer<typeof CodexBankedResetSchema>;
+export type CodexBankedResets = z.infer<typeof CodexBankedResetsSchema>;
+export type CodexBankedResetOutcome = z.infer<typeof CodexBankedResetOutcomeSchema>;
 export type ProviderUsageTone = z.infer<typeof ProviderUsageToneSchema>;
 export type UsageProblem = z.infer<typeof UsageProblemSchema>;
 export type UsageReport = z.infer<typeof UsageReportSchema>;
