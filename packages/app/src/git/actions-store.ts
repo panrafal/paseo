@@ -11,6 +11,7 @@ export type CheckoutGitActionStatus = "idle" | "pending" | "success";
 
 export type CheckoutGitAsyncActionId =
   | "commit"
+  | "commit-and-push"
   | "pull"
   | "push"
   | "pull-and-push"
@@ -103,6 +104,7 @@ interface CheckoutGitActionsStoreState {
   }) => CheckoutGitActionStatus;
 
   commit: (params: { serverId: string; cwd: string }) => Promise<void>;
+  commitAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
   pull: (params: { serverId: string; cwd: string }) => Promise<void>;
   push: (params: { serverId: string; cwd: string }) => Promise<void>;
   pullAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
@@ -192,6 +194,25 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         const payload = await client.checkoutCommit(cwd, { addAll: true });
         if (payload.error) {
           throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  commitAndPush: async ({ serverId, cwd }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "commit-and-push",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const commitPayload = await client.checkoutCommit(cwd, { addAll: true });
+        if (commitPayload.error) {
+          throw new Error(commitPayload.error.message);
+        }
+        const pushPayload = await client.checkoutPush(cwd);
+        if (pushPayload.error) {
+          throw new Error(pushPayload.error.message);
         }
       },
     });
