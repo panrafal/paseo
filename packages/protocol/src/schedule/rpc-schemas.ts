@@ -83,6 +83,7 @@ const ScheduleUpdateNewAgentConfigSchema = z.object({
   modeId: z.string().trim().min(1).nullable().optional(),
   thinkingOptionId: z.string().trim().min(1).nullable().optional(),
   archiveOnFinish: z.boolean().optional(),
+  workspaceLabels: z.array(z.string().trim().min(1)).optional(),
   isolation: z.enum(["local", "worktree"]).optional(),
   cwd: z.string().trim().min(1).optional(),
 });

@@ -11,6 +11,10 @@ import { runDeleteCommand } from "./delete.js";
 import { runRunOnceCommand } from "./run-once.js";
 import { runUpdateCommand } from "./update.js";
 
+function collectLabel(name: string, names: string[] = []): string[] {
+  return [...names, name];
+}
+
 export function createScheduleCommand(): Command {
   const schedule = new Command("schedule").description("Manage recurring schedules");
 
@@ -33,6 +37,11 @@ export function createScheduleCommand(): Command {
         "Provider-specific mode (e.g. claude bypassPermissions, opencode build)",
       )
       .option("--thinking <id>", "Thinking option ID for new-agent runs")
+      .option(
+        "--workspace-label <name>",
+        "Assign an existing workspace label (repeatable)",
+        collectLabel,
+      )
       .option("--cwd <path>", "Working directory (default: current; required with --host)")
       .option("--run-now", "Fire one immediate run on creation")
       .option("--max-runs <n>", "Maximum number of runs")
@@ -92,6 +101,8 @@ export function createScheduleCommand(): Command {
       )
       .option("--model <model>", "New agent model (only for new-agent target)")
       .option("--mode <mode>", "New agent provider mode (only for new-agent target)")
+      .option("--workspace-label <name>", "Replace workspace labels (repeatable)", collectLabel)
+      .option("--clear-workspace-labels", "Clear workspace labels")
       .option("--cwd <path>", "New working directory (only for new-agent target)")
       .option("--max-runs <n>", "Set or change maximum number of runs")
       .option("--no-max-runs", "Clear the max-runs limit")
