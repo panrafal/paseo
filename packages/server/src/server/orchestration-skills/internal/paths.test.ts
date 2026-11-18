@@ -48,6 +48,7 @@ describe("orchestration skill paths", () => {
       agentsDir: path.join(home, ".agents", "skills"),
       claudeDir: path.join(home, ".claude", "skills"),
       codexDir: path.join(home, ".codex", "skills"),
+      kiloDir: path.join(home, ".kilo", "skills"),
     });
   });
 });
