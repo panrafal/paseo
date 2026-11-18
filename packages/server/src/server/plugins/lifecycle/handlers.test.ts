@@ -185,7 +185,7 @@ test("a session-open hook that returns its own object without metadata or backgr
       cwd: "/project",
       title: null,
       background: true,
-      labels: {},
+      labels: { "paseo.schedule-id": "sched-1" },
       metadata: { "linear.issue": { id: "ENG-1" } },
       tools: [],
       mcpServers: {},
@@ -197,6 +197,7 @@ test("a session-open hook that returns its own object without metadata or backgr
   );
   expect(result).toMatchObject({
     env: { HOOK: "1" },
+    labels: { "paseo.schedule-id": "sched-1" },
     background: true,
     metadata: { "linear.issue": { id: "ENG-1" } },
   });
