@@ -60,6 +60,8 @@ import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import { MAX_WEBSOCKET_MESSAGE_BYTES } from "@getpaseo/protocol/websocket-message-limit";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
+import { defaultPortForProtocol, parseHostAuthority, stripIpv6Brackets } from "./host-patterns.js";
+import { isOriginAllowed } from "./origins.js";
 import {
   Session,
   type SessionLifecycleIntent,
@@ -3200,60 +3202,6 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
   };
 }
 
-interface HostAuthority {
-  hostname: string;
-  port: string | null;
-}
-
-function stripIpv6Brackets(hostname: string): string {
-  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-}
-
-function parseHostAuthority(host: string): HostAuthority | null {
-  const trimmed = host.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.startsWith("[")) {
-    const end = trimmed.indexOf("]");
-    if (end === -1) {
-      return null;
-    }
-    const hostname = stripIpv6Brackets(trimmed.slice(0, end + 1)).toLowerCase();
-    const rest = trimmed.slice(end + 1);
-    if (!rest) {
-      return { hostname, port: null };
-    }
-    if (!rest.startsWith(":")) {
-      return null;
-    }
-    const port = rest.slice(1);
-    return port ? { hostname, port } : null;
-  }
-
-  const firstColon = trimmed.indexOf(":");
-  if (firstColon === -1) {
-    return { hostname: trimmed.toLowerCase(), port: null };
-  }
-  if (trimmed.indexOf(":", firstColon + 1) !== -1) {
-    return { hostname: trimmed.toLowerCase(), port: null };
-  }
-  const hostname = trimmed.slice(0, firstColon).toLowerCase();
-  const port = trimmed.slice(firstColon + 1);
-  return hostname && port ? { hostname, port } : null;
-}
-
-function defaultPortForOriginProtocol(protocol: string): string | null {
-  if (protocol === "http:") {
-    return "80";
-  }
-  if (protocol === "https:") {
-    return "443";
-  }
-  return null;
-}
-
 function isLoopbackAlias(hostname: string): boolean {
   const normalized = stripIpv6Brackets(hostname).toLowerCase();
   if (normalized === "localhost" || normalized.endsWith(".localhost")) {
@@ -3274,11 +3222,7 @@ export function isDaemonOriginAllowed(
   requestHost: string | null,
   allowedOrigins: Set<string>,
 ): boolean {
-  return (
-    allowedOrigins.has("*") ||
-    allowedOrigins.has(origin) ||
-    isWebSocketSameOrigin(origin, requestHost)
-  );
+  return isOriginAllowed(origin, allowedOrigins) || isWebSocketSameOrigin(origin, requestHost);
 }
 
 export function isWebSocketSameOrigin(
@@ -3299,7 +3243,7 @@ export function isWebSocketSameOrigin(
   } catch {
     return false;
   }
-  const originPort = originUrl.port || defaultPortForOriginProtocol(originUrl.protocol);
+  const originPort = originUrl.port || defaultPortForProtocol(originUrl.protocol);
   if (!originPort) {
     return false;
   }
@@ -3308,7 +3252,7 @@ export function isWebSocketSameOrigin(
   if (!requestAuthority) {
     return false;
   }
-  const requestPort = requestAuthority.port || defaultPortForOriginProtocol(originUrl.protocol);
+  const requestPort = requestAuthority.port || defaultPortForProtocol(originUrl.protocol);
   if (originPort !== requestPort) {
     return false;
   }
