@@ -22,7 +22,7 @@
 # Flags:
 #   --push       publish results, including fork-upstream on update/rebase
 #   --agent      hand conflicts and build or test failures to a Paseo agent
-#                (Codex Luna, xhigh thinking, by default)
+#                (Codex gpt-6.2-sol, low thinking, by default)
 #   --no-fetch   use the refs already fetched
 #   --no-verify  skip the build, lint and tests (fork/verify.sh) of each rebased
 #                branch and of the merged integration
