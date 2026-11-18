@@ -34,6 +34,7 @@ export interface OpenDesktopTargetInput {
   filePath?: string;
   line?: number;
   column?: number;
+  lineEnd?: number;
   remoteDestination?: RemoteDestination;
 }
 
