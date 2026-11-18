@@ -42,12 +42,32 @@ describe("orchestration skill paths", () => {
   });
 
   it("keeps the original fixed managed directories under the daemon user's home", () => {
-    const home = os.homedir();
+    const previous = process.env.PASEO_SKILLS_HOME;
+    delete process.env.PASEO_SKILLS_HOME;
+    try {
+      const home = os.homedir();
 
+      expect(resolveSkillTargets()).toMatchObject({
+        agentsDir: path.join(home, ".agents", "skills"),
+        claudeDir: path.join(home, ".claude", "skills"),
+        codexDir: path.join(home, ".codex", "skills"),
+        kiloDir: path.join(home, ".kilo", "skills"),
+      });
+    } finally {
+      if (previous !== undefined) process.env.PASEO_SKILLS_HOME = previous;
+    }
+  });
+
+  it("puts the managed directories under PASEO_SKILLS_HOME when it is set", () => {
+    const home = process.env.PASEO_SKILLS_HOME;
+
+    expect(home).toBeTruthy();
+    expect(home).not.toBe(os.homedir());
     expect(resolveSkillTargets()).toMatchObject({
-      agentsDir: path.join(home, ".agents", "skills"),
-      claudeDir: path.join(home, ".claude", "skills"),
-      codexDir: path.join(home, ".codex", "skills"),
+      agentsDir: path.join(home!, ".agents", "skills"),
+      claudeDir: path.join(home!, ".claude", "skills"),
+      codexDir: path.join(home!, ".codex", "skills"),
+      kiloDir: path.join(home!, ".kilo", "skills"),
     });
   });
 });

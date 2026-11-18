@@ -73,6 +73,19 @@ describe("connection offer", () => {
     });
   });
 
+  it("round-trips a one-time pairing invitation", () => {
+    const payload = {
+      v: 2,
+      serverId: "server-123",
+      daemonPublicKeyB64: "pubkey",
+      relay: { endpoint: "relay.paseo.sh:443", useTls: true },
+      pairing: { token: "token-abc", expiresAt: "2026-09-13T10:05:00.000Z" },
+    };
+    const encoded = encodeBase64UrlNoPadUtf8(JSON.stringify(payload));
+
+    expect(parseConnectionOfferFromUrl(`https://app.paseo.sh/#offer=${encoded}`)).toEqual(payload);
+  });
+
   it("returns null when the URL has no offer fragment", () => {
     expect(parseConnectionOfferFromUrl("https://app.paseo.sh/pair")).toBeNull();
   });

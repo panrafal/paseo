@@ -18,6 +18,17 @@ describe("canonical CLI surface", () => {
     ).rejects.toThrow();
   });
 
+  it("offers notify with agent selection, urgency, JSON and daemon selection", () => {
+    const notify = createCli().commands.find((command) => command.name() === "notify");
+    const help = notify?.helpInformation();
+    expect(help).toContain("<message>");
+    expect(help).toContain("--agent <id>");
+    expect(help).toContain("--title <title>");
+    expect(help).toContain("--urgent");
+    expect(help).toContain("--json");
+    expect(help).toContain("--host <host>");
+  });
+
   it("offers daemon host selection as a global option", () => {
     expect(createCli().helpInformation()).toContain("--host <host>");
   });
@@ -102,6 +113,13 @@ describe("canonical CLI surface", () => {
 
     expect(open?.helpInformation()).toContain("<agent-id>");
     expect(open?.helpInformation()).toContain("--server <server-id>");
+  });
+
+  it("filters workspace listings by label", () => {
+    const workspace = createCli().commands.find((command) => command.name() === "workspace");
+    const ls = workspace?.commands.find((command) => command.name() === "ls");
+
+    expect(ls?.helpInformation()).toContain("--label <name>");
   });
 
   it("offers the complete local plugin lifecycle", () => {

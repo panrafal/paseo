@@ -23,6 +23,7 @@ function descriptor(
 function workspace(id: string, projectId: string, root: string): WorkspaceDescriptor {
   return {
     createdAt: null,
+    activityAt: null,
     lastUserMessageAt: null,
     id,
     projectId,
