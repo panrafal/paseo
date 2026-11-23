@@ -17,9 +17,10 @@
 #             installed with npm, the service restarted and checked, the box
 #             healthcheck reported; once installed, its client tarballs are
 #             published to the release
-#   desktop   built by GitHub Actions; installed in Terminal after every job
-#             finishes and no local agent is running, since updating the Mac
-#             app stops the hosting daemon
+#   desktop   built and signed here, published to the fork-v<version>
+#             release; installed in Terminal after every job finishes and no
+#             local agent is running, since updating the Mac app stops the
+#             hosting daemon
 #   vscode    built here; the .vsix installed into VS Code and Cursor here and
 #             into their servers on the devbox
 #   ios       EAS build queued from here; it submits itself to TestFlight
@@ -157,25 +158,20 @@ publish_daemon_tarballs() {
     devbox_admin "sudo cat $(sq "$FORK_DEVBOX_WORK_ROOT/dist/getpaseo-$p-$VERSION.tgz")" >"$dest"
     files+=("$dest")
   done
-  if ! gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
-    gh release create "$tag" \
-      --repo "$REPO" \
-      --target "$(git rev-parse "$TARGET")" \
-      --title "Fork build $VERSION" \
-      --prerelease \
-      --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the fork-base branch."
-  fi
+  ensure_fork_release "$tag" "$(git rev-parse "$TARGET")"
   gh release upload "$tag" "${files[@]}" --repo "$REPO" --clobber
   say "published daemon tarballs: https://github.com/$REPO/releases/tag/$tag"
 }
 
+# The daemon job creates the release too, so a release alone does not mean
+# the app is in it; the update feed, uploaded last, does.
 job_desktop() {
-  local tag="fork-v$VERSION"
-  if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
-    note "release $tag already exists — not building it again"
+  local tag="fork-v$VERSION" feed="$FORK_DESKTOP_CHANNEL-mac.yml"
+  if gh release view "$tag" --repo "$REPO" --json assets -q '.assets[].name' 2>/dev/null | grep -qx "$feed"; then
+    note "release $tag already has the desktop app — not building it again"
   else
-    FORK_BUILD_LINKS_FILE="$RESULT_FILE" "$HERE/build.sh" desktop
-    note "built by GitHub Actions: https://github.com/$REPO/releases/tag/$tag"
+    "$HERE/build.sh" desktop
+    note "built here and published: https://github.com/$REPO/releases/tag/$tag"
   fi
   note "desktop build ready; installation waits until every job finishes"
 }
@@ -251,7 +247,7 @@ fi
 if wants desktop || wants daemon; then
   command -v gh >/dev/null 2>&1 || die "the gh CLI is required: brew install gh"
 fi
-if wants vscode || wants ios; then
+if wants vscode || wants ios || wants desktop; then
   command -v node >/dev/null 2>&1 || die "node is required to build here"
 fi
 if wants daemon || wants vscode; then
@@ -415,12 +411,12 @@ while [ "${#EXIT_FILES[@]}" -gt 0 ]; do
 done
 wait
 
-# After wait, not inside job_daemon: job_desktop pushes a tag whose Actions
-# workflow creates the same release, so uploading from the parallel daemon
-# job would race it. Gated on the install, not on the job's exit: devbox
-# clients (devhub's devflows) must follow the daemon the box now runs, and the
-# healthcheck that ends the job also fails on their outage — gating on it kept
-# 0.9.2 and 0.10.0 unpublished while devflows could not reach the new daemon.
+# After wait, not inside job_daemon: job_desktop creates the same release,
+# so creating it from the parallel daemon job would race it. Gated on the
+# install, not on the job's exit: devbox clients (devhub's devflows) must
+# follow the daemon the box now runs, and the healthcheck that ends the job
+# also fails on their outage — gating on it kept 0.9.2 and 0.10.0 unpublished
+# while devflows could not reach the new daemon.
 publish_rc=0
 if wants daemon && [ -e "$DEPLOY_DIR/daemon.installed" ]; then
   set +e

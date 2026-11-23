@@ -7,19 +7,22 @@
 #   fork/build.sh prepare    check main out into the build checkout, install
 #                            dependencies, stamp the fork version
 #   fork/build.sh daemon     build + pack the daemon and CLI into ~/.paseo-fork/dist
-#   fork/build.sh desktop    tag a fork build; Actions builds and releases the macOS app
+#   fork/build.sh desktop    on the Mac: build and sign the macOS app, publish it
+#                            to the fork-v<version> release
 #   fork/build.sh vscode     package the VS Code extension into ~/.paseo-fork/dist
 #   fork/build.sh ios        EAS iOS build; it submits itself to TestFlight
 #
 # Flags:
 #   --clean      wipe node_modules and dist before building
 #   --no-wait    ios: return as soon as the EAS build is queued
+#   --ci         desktop: build on GitHub Actions instead (fork/release.sh)
 #
 # The build lives in its own checkout ($FORK_WORK_ROOT/build) so node_modules
 # survives between builds and nothing here touches the checkout you work in.
 # `prepare` happens once per main commit; daemon, vscode and ios do it if
-# needed, and once it is done they can run at the same time. desktop builds
-# nothing here: it publishes main and a tag, and GitHub Actions does the rest.
+# needed, and once it is done they can run at the same time. desktop has a
+# checkout of its own ($FORK_WORK_ROOT/build-desktop): its web export and
+# server build would race vscode's in a shared one.
 
 set -euo pipefail
 
@@ -32,14 +35,15 @@ set -a
 set +a
 
 cmd=""
-do_clean=0 no_wait=0
+do_clean=0 no_wait=0 on_ci=0
 for arg in "$@"; do
   case "$arg" in
     prepare | daemon | desktop | vscode | ios) cmd="$arg" ;;
     --clean) do_clean=1 ;;
     --no-wait) no_wait=1 ;;
+    --ci) on_ci=1 ;;
     -h | --help)
-      sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,24p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) die "unknown argument: $arg" ;;
@@ -49,13 +53,20 @@ done
 
 require_repo
 
+# The signing certificate comes from the encrypted fork/.env.fork, by way of a
+# re-exec under dotenvx. One already in the environment wins.
+if [ "$cmd" = desktop ] && [ "$on_ci" -eq 0 ]; then
+  [ "$(uname -s)" = Darwin ] || die "the desktop app is built on macOS — run this on the Mac, or use --ci"
+  [ -n "${CSC_LINK:-}${CSC_NAME:-}" ] || load_fork_secrets "$HERE/build.sh" "$@"
+fi
+
 # ------------------------------------------------------------- checkout ----
 
 # The checkout is prepared once per main commit and shared by every build
 # after that. The marker records which commit it was prepared for; the lock
 # keeps two builds started at once from both running npm install into it.
 PREPARED_MARKER="$BUILD_DIR/.fork-prepared"
-PREPARE_LOCK="$WORK_ROOT/build.lock"
+PREPARE_LOCK="$BUILD_DIR.lock"
 
 prepare_checkout() {
   git rev-parse --verify -q "$TARGET^{commit}" >/dev/null ||
@@ -153,12 +164,68 @@ build_daemon() {
 }
 
 # -------------------------------------------------------------- desktop ----
-# macOS cannot be cross-built from here, so the desktop build is a tag that
-# starts the Fork Desktop workflow on a macOS runner. release.sh waits for
-# the run; a red run fails this command.
+# The same build as .github/workflows/fork-desktop.yml, run on this Mac:
+# signed with the Developer ID certificate, not notarized, and published to
+# the fork's release with an update feed that points at the fork.
 
 build_desktop() {
-  "$HERE/release.sh" desktop
+  if [ -z "${CSC_LINK:-}${CSC_NAME:-}" ]; then
+    die "no signing certificate. Put CSC_LINK (base64 of the Developer ID Application .p12)
+and CSC_KEY_PASSWORD in fork/.env.fork, or export CSC_NAME for one in the login
+keychain. See \"macOS\" in fork/README.md."
+  fi
+  command -v gh >/dev/null 2>&1 || die "the gh CLI is required: brew install gh"
+
+  BUILD_DIR="$DESKTOP_BUILD_DIR"
+  PREPARED_MARKER="$BUILD_DIR/.fork-prepared"
+  PREPARE_LOCK="$BUILD_DIR.lock"
+  prepare_checkout
+
+  local sha tag release_dir feed app
+  sha="$(git rev-parse "$TARGET")"
+  tag="fork-v$VERSION"
+  release_dir="$BUILD_DIR/packages/desktop/release"
+  feed="$release_dir/$FORK_DESKTOP_CHANNEL-mac.yml"
+
+  # The release is cut from what the fork already has, so the tag it creates
+  # names a commit others can fetch.
+  git fetch -q --tags "$FORK_REMOTE"
+  git merge-base --is-ancestor "$sha" "$FORK_REMOTE/$TARGET" ||
+    die "$TARGET ($(git rev-parse --short "$sha")) is not on $FORK_REMOTE — publish it with fork/integrate.sh first"
+  local tagged
+  tagged="$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)"
+  [ -z "$tagged" ] || [ "$tagged" = "$sha" ] ||
+    die "tag $tag is on $(git rev-parse --short "$tagged"), not on $TARGET ($(git rev-parse --short "$sha"))"
+
+  rm -rf "$release_dir"
+  say "Building the $FORK_DESKTOP_ARCH desktop app (web export, server, electron-builder)"
+  # NODE_OPTIONS: Metro's jest workers run out of heap on the generated
+  # ws-outbound.aot.js validator at Node's default.
+  (cd "$BUILD_DIR" &&
+    NODE_OPTIONS="--max-old-space-size=$FORK_DESKTOP_NODE_HEAP_MB" \
+      npm run build:desktop -- --publish never --mac "--$FORK_DESKTOP_ARCH" \
+      "-c.mac.notarize=false" \
+      "-c.publish.provider=github" \
+      "-c.publish.owner=$FORK_GH_OWNER" \
+      "-c.publish.repo=$FORK_GH_REPO" \
+      "-c.publish.channel=$FORK_DESKTOP_CHANNEL")
+
+  [ -f "$feed" ] || die "electron-builder left no $(basename "$feed") in $release_dir"
+  grep -qx "version: $VERSION" "$feed" || die "$(basename "$feed") is not for $VERSION"
+  # electron-builder skips signing with only a log line when it finds no
+  # identity, and the in-app updater refuses an unsigned app.
+  app="$(find "$release_dir" -maxdepth 2 -name '*.app' -type d | head -1)"
+  [ -n "$app" ] || die "no .app in $release_dir"
+  codesign --verify --deep --strict "$app" || die "$app is not validly signed"
+  codesign -dv "$app" 2>&1 | grep -q '^Authority=Developer ID Application' ||
+    die "$app is not signed with a Developer ID Application certificate"
+
+  ensure_fork_release "$tag" "$sha"
+  # The feed goes last: once it is up, installed apps start downloading.
+  gh release upload "$tag" --repo "$FORK_GH_OWNER/$FORK_GH_REPO" --clobber \
+    "$release_dir"/*.dmg "$release_dir"/*.zip
+  gh release upload "$tag" --repo "$FORK_GH_OWNER/$FORK_GH_REPO" --clobber "$feed"
+  say "Published the desktop app: https://github.com/$FORK_GH_OWNER/$FORK_GH_REPO/releases/tag/$tag"
 }
 
 # --------------------------------------------------------------- vscode ----
@@ -201,7 +268,13 @@ build_ios() {
 case "$cmd" in
   prepare) prepare_checkout ;;
   daemon) build_daemon ;;
-  desktop) build_desktop ;;
+  desktop)
+    if [ "$on_ci" -eq 1 ]; then
+      "$HERE/release.sh" desktop
+    else
+      build_desktop
+    fi
+    ;;
   vscode) build_vscode ;;
   ios) build_ios ;;
 esac

@@ -25,6 +25,7 @@ TARGET="${FORK_TARGET_BRANCH:-main}"
 WORK_ROOT="${FORK_WORK_ROOT:-$HOME/.paseo-fork}"
 INTEGRATE_DIR="$WORK_ROOT/integrate" # scratch worktree the merges happen in
 BUILD_DIR="$WORK_ROOT/build"         # persistent build checkout (keeps node_modules)
+DESKTOP_BUILD_DIR="$WORK_ROOT/build-desktop" # the desktop app's own, on the Mac
 DIST_DIR="$WORK_ROOT/dist"           # packed npm tarballs and the .vsix
 DEPLOY_DIR="$WORK_ROOT/deploy"       # fork/deploy.sh logs
 
@@ -53,6 +54,13 @@ FORK_DEVBOX_EDITOR_USER="${FORK_DEVBOX_EDITOR_USER:-$FORK_DEVBOX_USER}"
 # Fork identity lives in fork/dist.env; config.sh only needs the owner for
 # version stamping, so default it and let dist.env override.
 FORK_GH_OWNER="${FORK_GH_OWNER:-panrafal}"
+
+# The desktop build. The app looks for <channel>-mac.yml on the channel its own
+# settings pick, and a fork build has to be on beta, so that is the feed it
+# gets. update-macos.sh picks the dmg for the Mac it runs on.
+FORK_DESKTOP_ARCH="${FORK_DESKTOP_ARCH:-arm64}"
+FORK_DESKTOP_CHANNEL="${FORK_DESKTOP_CHANNEL:-beta}"
+FORK_DESKTOP_NODE_HEAP_MB="${FORK_DESKTOP_NODE_HEAP_MB:-4096}"
 
 # The workspaces that make up the daemon install, dependency-first: npm has
 # to see a package on disk before the one that requires it. build.sh packs
@@ -118,14 +126,15 @@ npm_install_retrying() {
 }
 
 # ------------------------------------------------------------- secrets ----
-# The fork's own secrets — today just EXPO_TOKEN, which fork/ios.sh hands to
-# `eas` — live encrypted in fork/.env.fork, committed on the tooling branch.
-# The private key that opens it never is: dotenvx keeps it in a .env.keys that
-# .gitignore covers at every depth, or you export DOTENV_PRIVATE_KEY_FORK.
+# The fork's own secrets — EXPO_TOKEN, which fork/ios.sh hands to `eas`, and
+# CSC_LINK and CSC_KEY_PASSWORD, the Developer ID certificate fork/build.sh
+# desktop signs with — live encrypted in fork/.env.fork, committed on the
+# tooling branch. The private key that opens it never is: dotenvx keeps it in
+# a .env.keys that .gitignore covers at every depth, or you export
+# DOTENV_PRIVATE_KEY_FORK.
 #
-# Apple's signing secrets are not here. Those are GitHub repo secrets, because
-# the thing that needs them is a workflow; EXPO_TOKEN is here because the thing
-# that needs it is a script on this machine.
+# The same certificate is also a GitHub repo secret, for the Actions fallback
+# (fork/build.sh desktop --ci); a secret there cannot be read back out.
 
 # `dotenvx set -f fork/.env.fork` writes .env.keys to the working directory,
 # but `dotenvx run` looks for it next to the env file. So the key can be in
@@ -241,6 +250,19 @@ fork_build_number() {
     die "fork/build-number on $ref counts $stored_base, but package.json's core is $expect_base — run fork/integrate.sh rebase"
   fi
   echo "$number"
+}
+
+# The fork-v<version> release, created at commit $2 when it is not there yet.
+# The daemon tarballs and the desktop app go to the same one.
+ensure_fork_release() {
+  local tag="$1" sha="$2" repo="$FORK_GH_OWNER/$FORK_GH_REPO"
+  gh release view "$tag" --repo "$repo" >/dev/null 2>&1 && return 0
+  gh release create "$tag" \
+    --repo "$repo" \
+    --target "$sha" \
+    --title "Fork build ${tag#fork-v}" \
+    --prerelease \
+    --notes "Personal fork build of Paseo: upstream main plus the branches listed in fork/branches on the fork-base branch."
 }
 
 require_repo() {

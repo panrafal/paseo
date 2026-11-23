@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 #
-# fork/release.sh — cut a fork build of the desktop app.
+# fork/release.sh — build the desktop app on GitHub Actions instead of the Mac.
+# fork/build.sh desktop --ci runs it; fork/build.sh desktop builds locally.
 #
-# Tags the current `main` commit as `fork-v<version>` and pushes it, which
-# starts the fork's own Desktop workflow on GitHub. That workflow builds and
-# signs the macOS app on a macos runner, skips notarization, and publishes it
-# to a GitHub Release on your fork, with an auto-update feed pointing at your
-# fork rather than upstream.
+# Tags the current `main` commit as `fork-v<version>`, pushes it, and starts
+# the fork's own Desktop workflow for that tag. The workflow builds and signs
+# the macOS app on a macos runner, skips notarization, and publishes it to a
+# GitHub Release on your fork, with an auto-update feed pointing at your fork
+# rather than upstream. A tag already on that commit is reused, so a build
+# that failed or never got a runner can be started again.
 #
 # Commands:
-#   fork/release.sh desktop [<version>]   tag + push, then watch the build
+#   fork/release.sh desktop [<version>]   tag + push, start and watch the build
 #   fork/release.sh status                show the latest fork release
 #   fork/release.sh watch                 follow the running workflow
 #
@@ -41,7 +43,9 @@ case "$cmd" in
     tag="fork-v$version"
     sha="$(git rev-parse "$TARGET")"
 
-    git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already exists"
+    tagged="$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)"
+    [ -z "$tagged" ] || [ "$tagged" = "$sha" ] ||
+      die "tag $tag is on $(git rev-parse --short "$tagged"), not on $TARGET ($(git rev-parse --short "$sha"))"
     # main is derived by fork/integrate.sh and published from there. It is
     # pushed here only when it is ahead of the fork's copy — a run that was
     # not pushed — and never rewound: the fetch above refreshed the
@@ -53,21 +57,31 @@ Reset it to the published one (git branch -f $TARGET $FORK_REMOTE/$TARGET, or re
 or publish yours with fork/integrate.sh first."
     fi
     git push -q "$FORK_REMOTE" "$TARGET:$TARGET"
-    git tag -a "$tag" "$sha" -m "Fork build $version from $TARGET"
-    git push "$FORK_REMOTE" "$tag"
-    say "Tagged $tag at $(git log -1 --format='%h %s' "$sha")"
+    if [ -z "$tagged" ]; then
+      git tag -a "$tag" "$sha" -m "Fork build $version from $TARGET"
+      git push "$FORK_REMOTE" "$tag"
+      say "Tagged $tag at $(git log -1 --format='%h %s' "$sha")"
+    else
+      say "Reusing $tag at $(git log -1 --format='%h %s' "$sha")"
+    fi
+    # The workflow no longer runs on tag pushes: fork/build.sh desktop and the
+    # daemon deploy create the tag too, through the release, and neither wants
+    # a second build on Actions.
+    gh workflow run fork-desktop.yml --repo "$REPO" --ref "$TARGET" -f "tag=$tag"
     say "Waiting for the Desktop workflow: https://github.com/$REPO/actions"
     echo
     echo "When it finishes, update the Mac with:"
     echo "    fork/update-macos.sh          # run this on the laptop"
     echo "  or let the app's built-in updater find it — the feed now points at $REPO."
-    # The run record shows up a few seconds after the tag push. Asking for the
+    # The run record shows up a few seconds after the dispatch. Asking for the
     # latest run right away returns the previous one, which "watch" reports
-    # as finished at once — so find the run by its tag, then wait for it.
+    # as finished at once — so find a queued or running one named for the tag
+    # (the workflow's run-name), then wait for it.
     run_id=""
     for _ in $(seq 1 30); do
       run_id="$(gh run list --repo "$REPO" --workflow fork-desktop.yml --limit 20 \
-        --json databaseId,headBranch -q "[.[] | select(.headBranch == \"$tag\")][0].databaseId // empty")"
+        --json databaseId,displayTitle,status \
+        -q "[.[] | select(.displayTitle == \"Fork Desktop $tag\" and .status != \"completed\")][0].databaseId // empty")"
       [ -z "$run_id" ] || break
       sleep 2
     done

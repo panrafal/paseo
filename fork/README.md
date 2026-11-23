@@ -427,7 +427,7 @@ it), using the repo's own `scripts/sync-workspace-versions.mjs`.
 | --------- | ------------------------------------------------------------------ |
 | `prepare` | the build checkout at `~/.paseo-fork/build`, installed and stamped |
 | `daemon`  | `~/.paseo-fork/dist/getpaseo-*-<version>.tgz`, seven tarballs      |
-| `desktop` | a `fork-v<version>` tag, and a GitHub release once Actions is done |
+| `desktop` | on the Mac: the signed app in the `fork-v<version>` release        |
 | `vscode`  | `~/.paseo-fork/dist/paseo-vscode-<version>.vsix`                   |
 | `ios`     | an EAS build that submits itself to TestFlight                     |
 
@@ -439,10 +439,10 @@ run at the same time, and a lock keeps two of them from both running
 `npm install` into the checkout; a failed install is retried as in
 [verify](#build-and-test-failures). `--clean` wipes `node_modules` and `dist` first.
 
-`desktop` builds nothing here. It pushes the local `main` to the fork when
-that is a fast-forward — a `main` behind the published one stops it, so a
-stale checkout cannot rewind the branch — pushes a `fork-v<version>` tag, and
-waits for the Actions run.
+`desktop` runs on the Mac only, in a checkout of its own at
+`~/.paseo-fork/build-desktop`: its web export and server build would race the
+`vscode` build in the shared one. It needs `main` to be on the fork already,
+since the release tags that commit. See [macOS](#macos).
 
 `vscode` needs `packages/vscode`, which arrives through the `vscode` patch
 branch; a `main` built without it makes the target a warning and exit 0.
@@ -461,18 +461,19 @@ logs and build links. The script resets `main` to `origin/main` here and on the
 devbox — a `main` checkout with uncommitted changes stops it — so every
 target comes from the same commit, then runs all four at once:
 
-| Target    | Built                                     | Installed                                                                                                                                                                                                                                                                                                                                                                                                     |
-| --------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `daemon`  | on the devbox, over ssh                   | once no agent on the devbox is running, `npm install -g` there, `systemctl restart paseo`, then a daemon check (unit active, `/api/health` 200) that fails the job; `devbox-healthcheck`'s FAIL lines are reported but do not. Once installed, the client tarballs are uploaded to the `fork-v<version>` release, even when a check failed, so capitally-devhub's devflows can follow the daemon the box runs |
-| `desktop` | by GitHub Actions, from a tag pushed here | After every job finishes, Terminal runs `fork/update-macos.sh`; once no local agent is running, it installs and relaunches the Mac app                                                                                                                                                                                                                                                                        |
-| `vscode`  | on the laptop                             | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                                                                                                                                                                                                                                                                                                                              |
-| `ios`     | by EAS, queued from the laptop            | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                                                                                                                                                                                                                                                                                                                             |
+| Target    | Built                          | Installed                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `daemon`  | on the devbox, over ssh        | once no agent on the devbox is running, `npm install -g` there, `systemctl restart paseo`, then a daemon check (unit active, `/api/health` 200) that fails the job; `devbox-healthcheck`'s FAIL lines are reported but do not. Once installed, the client tarballs are uploaded to the `fork-v<version>` release, even when a check failed, so capitally-devhub's devflows can follow the daemon the box runs |
+| `desktop` | on the laptop                  | After every job finishes, Terminal runs `fork/update-macos.sh`; once no local agent is running, it installs and relaunches the Mac app                                                                                                                                                                                                                                                                        |
+| `vscode`  | on the laptop                  | VS Code and Cursor on the laptop; VS Code Server and Cursor Server on the devbox                                                                                                                                                                                                                                                                                                                              |
+| `ios`     | by EAS, queued from the laptop | TestFlight, by EAS itself when the build is done; the deploy does not wait for it                                                                                                                                                                                                                                                                                                                             |
 
 One target failing does not stop the others. Each target's output goes to
 `~/.paseo-fork/deploy/<target>.log`, and the summary at the end says what was
 built, where it went, and where a failed one stopped. A re-run of the same
-version skips the desktop build when its release already exists; everything
-else is idempotent.
+version skips the desktop build when its release already has the update feed
+(`beta-mac.yml`, uploaded last); a release holding only the daemon tarballs
+still gets the app built. Everything else is idempotent.
 
 The Mac update is the last step because it stops Paseo's local daemon and
 the deploy script running inside it. Desktop builds alongside the other
@@ -506,8 +507,8 @@ The laptop needs:
   (`FORK_DEVBOX_USER`), at `/home/paseo/projects/paseo` (`FORK_DEVBOX_REPO`)
   and `/home/paseo/.paseo-fork` (`FORK_DEVBOX_WORK_ROOT`); the daemon is the
   `paseo` unit under `/usr` (`FORK_DEVBOX_SERVICE`, `FORK_DEVBOX_NPM_PREFIX`).
-- For `ios`, the key that opens `fork/.env.fork` — see
-  [EXPO_TOKEN](#expo_token).
+- For `desktop` and `ios`, the key that opens `fork/.env.fork` — see
+  [EXPO_TOKEN](#expo_token) — and the Xcode command line tools for `desktop`.
 
 ### The daemon, by hand
 
@@ -537,20 +538,52 @@ so the tarballs are read by `sudo`.
 
 ## macOS
 
-`fork/build.sh desktop` tags the current `main` as `fork-v<version>` and
-pushes the branch and the tag, starting **Fork Desktop**
-(`.github/workflows/fork-desktop.yml`, on `fork-base`). It builds arm64 and x64 on macOS runners, signs with your
-Developer ID certificate, skips notarization, and publishes a release on your
-fork.
+`fork/build.sh desktop` builds the app on the Mac, in
+`~/.paseo-fork/build-desktop`. It builds arm64 (`FORK_DESKTOP_ARCH`), signs
+with your Developer ID Application certificate, skips notarization, and
+uploads the `.dmg`, the `.zip` and the `beta-mac.yml` update feed to the
+`fork-v<version>` release, creating the release and its tag at `main` when
+they are not there yet. The feed goes last, so installed apps never see it
+before the files it names. It checks the app's signature before uploading:
+electron-builder only logs a line when it finds no identity, and the in-app
+updater refuses an unsigned app.
 
-Signing runs on a GitHub runner, so these live as repo secrets on the fork:
+The certificate is read from the environment, as electron-builder takes it:
+
+| Variable           | Value                                                    |
+| ------------------ | -------------------------------------------------------- |
+| `CSC_LINK`         | base64 of the Developer ID Application `.p12`, one line  |
+| `CSC_KEY_PASSWORD` | the `.p12` export password                               |
+| `CSC_NAME`         | instead of both: a Developer ID identity in the keychain |
+
+Keep the first two encrypted in `fork/.env.fork`, next to `EXPO_TOKEN`; the
+build decrypts them the same way `fork/ios.sh` does. Export the `.p12` from
+Keychain Access (My Certificates → Developer ID Application: … → Export, with
+a password), then, from the repo root on `fork-base`:
+
+```bash
+dotenvx set CSC_LINK "$(base64 < DeveloperIDApplication.p12 | tr -d '\n')" -f fork/.env.fork
+dotenvx set CSC_KEY_PASSWORD '<export password>' -f fork/.env.fork
+rm DeveloperIDApplication.p12
+git add fork/.env.fork && git commit -m 'fork: desktop signing certificate'
+```
+
+If that identity already sits in the Mac's login keychain, `export
+CSC_NAME='Developer ID Application: <name> (<team id>)'` in your shell
+profile does instead, and nothing is stored in the repo.
+
+`fork/build.sh desktop --ci` builds on GitHub Actions instead, through
+`fork/release.sh` and **Fork Desktop** (`.github/workflows/fork-desktop.yml`).
+It pushes `main` when that is a fast-forward, tags it unless the tag is
+already on that commit, starts the workflow for the tag and waits for it. The
+workflow only runs when started that way: the Mac build and the daemon
+deploy create the tag through the release, and a tag trigger would build the
+app a second time. It signs with the same certificate, held as repo secrets:
 
 | Secret                       | Where it comes from                            |
 | ---------------------------- | ---------------------------------------------- |
 | `APPLE_CERTIFICATE`          | base64 of your Developer ID Application `.p12` |
 | `APPLE_CERTIFICATE_PASSWORD` | the `.p12` export password                     |
-
-Store the certificate as base64 without line breaks:
 
 ```bash
 base64 < DeveloperIDApplication.p12 | tr -d '\n' | \
@@ -558,13 +591,13 @@ base64 < DeveloperIDApplication.p12 | tr -d '\n' | \
 gh secret set APPLE_CERTIFICATE_PASSWORD --repo panrafal/paseo
 ```
 
-The workflow passes `mac.notarize=false`, so it needs no App Store Connect key,
-Apple ID, app-specific password or Apple team ID. `FORK_APPLE_TEAM_ID` remains
-in `fork/dist.env` because iOS still needs it.
+Hosted macOS arm64 runners run short at times; a job that gets none is
+cancelled after a quarter of an hour with "The job was not acquired by Runner
+of type hosted".
 
-These are the only fork values GitHub holds. The rest are the plain identifiers
-in `fork/dist.env`, committed as they are, and `EXPO_TOKEN`, which a script on
-your own machine needs — see [iOS / TestFlight](#ios--testflight).
+Neither build is notarized, so neither needs an App Store Connect key, Apple
+ID, app-specific password or Apple team ID. `FORK_APPLE_TEAM_ID` remains in
+`fork/dist.env` because iOS still needs it.
 
 On the Mac, `fork/update-macos.sh [fork-v<version>]` downloads that build
 (the newest without an argument), quits a running Paseo, installs it, clears
@@ -726,7 +759,7 @@ that has them at the top level, or copy one back temporarily. A workflow
 upstream adds later lands at the top level, live; `fork/integrate.sh` warns
 about it when it publishes `main`, and the fix is the same move on `fork-base`.
 Fork Desktop
-triggers on its own, on `fork-v*` tags. Patch branches can bring workflows of
+runs only when `fork/release.sh` starts it. Patch branches can bring workflows of
 their own: `vscode` adds `vscode.yml`, which runs on every push to `main`, so
 each `--push` also costs a VS Code Extension CI run.
 
@@ -798,7 +831,8 @@ The copy still contains this fork's identity. Replace it before the first
 build:
 
 - `fork/dist.env` — keep the keys, replace every value.
-- `fork/.env.fork` — delete it; create yours when you set up iOS.
+- `fork/.env.fork` — delete it; create yours when you set up the desktop
+  signing certificate or iOS.
 - `fork/branches` — empty except the header comments. That file is this
   fork's patch list.
 - `fork/build-number` — the first `rebuild` writes it.
@@ -842,9 +876,10 @@ To run the integration loop:
 
 To ship a signed Mac app, in addition:
 
-- A Developer ID Application certificate, stored as the `APPLE_CERTIFICATE`
-  and `APPLE_CERTIFICATE_PASSWORD` GitHub secrets on your fork. See
-  [macOS](#macos).
+- A Developer ID Application certificate, encrypted into `fork/.env.fork`
+  as `CSC_LINK` and `CSC_KEY_PASSWORD` for the Mac build, and as the
+  `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` GitHub secrets for
+  the Actions fallback. See [macOS](#macos).
 
 To ship iOS to TestFlight, in addition:
 

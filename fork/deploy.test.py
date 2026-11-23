@@ -43,6 +43,11 @@ esac
         self.script(self.bin / "gh", '''
 printf '%s\n' "$*" >> "$TEST_ROOT/gh.calls"
 case "$*" in
+  'release view '*'--json assets'*)
+    [ "${RELEASE_EXISTS:-1}" = 0 ] || exit 1
+    printf '%s\n' getpaseo-cli-0.7.2-panrafal.9.tgz
+    [ "${DESKTOP_PUBLISHED:-0}" = 0 ] || printf '%s\n' Paseo-arm64.dmg beta-mac.yml
+    ;;
   'release view '*) exit "${RELEASE_EXISTS:-1}" ;;
   'release create '*) exit 0 ;;
   'release upload '*) exit 0 ;;
@@ -153,11 +158,17 @@ echo 'Update finished'
         self.assertFalse((self.root / "launcher").exists())
         self.assertTrue((self.root / "ios.finished").exists())
 
-    def test_existing_release_hands_off_without_rebuilding(self):
-        result = self.deploy("desktop", RELEASE_EXISTS="0")
+    def test_published_desktop_hands_off_without_rebuilding(self):
+        result = self.deploy("desktop", RELEASE_EXISTS="0", DESKTOP_PUBLISHED="1")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue((self.root / "launcher").exists())
         self.assertFalse((self.root / "desktop.built").exists())
+
+    def test_release_with_only_daemon_tarballs_builds_desktop(self):
+        result = self.deploy("desktop", RELEASE_EXISTS="0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.root / "desktop.built").exists())
+        self.assertTrue((self.root / "launcher").exists())
 
     def test_without_desktop_never_opens_terminal(self):
         result = self.deploy("ios", EXPECT_DESKTOP="0")
