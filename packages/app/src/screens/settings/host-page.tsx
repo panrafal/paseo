@@ -1,3 +1,4 @@
+import { formatHostConnectionError } from "@/runtime/relay-auth";
 import {
   ArrowDown,
   ArrowUp,
@@ -53,6 +54,7 @@ import { ProviderList } from "@/provider-settings";
 import { openProviderSettings } from "@/navigation/settings-navigation";
 import { HostUsageSection } from "@/usage";
 import { HostAppearanceSection } from "@/screens/settings/host-appearance-section";
+import { HostOpenInEditorSection } from "@/screens/settings/host-open-in-editor-section";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
@@ -241,7 +243,7 @@ function HostConnectionError({ serverId }: { serverId: string }) {
       <InlineAlert
         size="sm"
         variant="error"
-        title={connectionError}
+        title={formatHostConnectionError(connectionError, t)}
         description={snapshot?.authFailureReason ? t("settings.host.password.guidance") : undefined}
         testID="host-connection-error"
       />
@@ -385,6 +387,8 @@ export function HostSettingsPage({
       <HostConnectionError serverId={serverId} />
 
       <HostAppearanceSection host={host} />
+
+      <HostOpenInEditorSection serverId={serverId} isLocalDaemon={isLocalDaemon} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 

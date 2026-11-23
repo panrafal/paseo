@@ -5,6 +5,7 @@ import {
   ComposerEditingScope,
   WorkspaceComposerEditingSessionsProvider,
 } from "@/composer/editing-session";
+import { resolveNewWorkspaceRouteParams } from "@/navigation/new-workspace-route-params";
 import { NewWorkspaceScreen } from "@/screens/new-workspace-screen";
 import { buildNewWorkspaceDraftKey } from "@/stores/draft-keys";
 
@@ -18,18 +19,17 @@ export default function NewWorkspaceRoute() {
     name?: string;
     projectId?: string;
     draftId?: string;
+    q?: string;
   }>();
-  const serverId = typeof params.serverId === "string" ? params.serverId : "";
-  const sourceDirectory = typeof params.dir === "string" ? params.dir : undefined;
-  const displayName = typeof params.name === "string" ? params.name : undefined;
-  const projectId = typeof params.projectId === "string" ? params.projectId : undefined;
-  const draftId = typeof params.draftId === "string" ? params.draftId : undefined;
+  const { serverId, sourceDirectory, displayName, projectId, draftId, initialPrompt } =
+    resolveNewWorkspaceRouteParams(params);
   const screenKey = JSON.stringify([
     serverId,
     sourceDirectory ?? null,
     displayName ?? null,
     projectId ?? null,
     draftId ?? null,
+    initialPrompt ?? null,
   ]);
 
   // The shell remounts this route when the viewport crosses the compact breakpoint;
@@ -51,6 +51,7 @@ export default function NewWorkspaceRoute() {
             displayName={displayName}
             projectId={projectId}
             draftId={draftId}
+            initialPrompt={initialPrompt}
           />
         </ComposerEditingScope>
       </WorkspaceComposerEditingSessionsProvider>

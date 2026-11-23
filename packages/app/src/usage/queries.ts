@@ -49,7 +49,7 @@ function hostUsageQueryKey(serverId: string) {
  * a list shape keeps the previous key's data while the next one loads, which would show one host's
  * reports as another's.
  */
-function usageReportsQueryKey(serverId: string) {
+export function usageReportsQueryKey(serverId: string) {
   return [...hostUsageQueryKey(serverId), "reports"] as const;
 }
 

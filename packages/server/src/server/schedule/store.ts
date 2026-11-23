@@ -114,13 +114,17 @@ async function readScheduleFile(filePath: string): Promise<string | null> {
 export class ScheduleStore {
   private readonly scheduleMutations = new Map<string, Promise<unknown>>();
   private readonly identityMutations = new Map<string, Promise<unknown>>();
+  private onChange?: (schedule: StoredSchedule, change: "write" | "delete") => void;
   private reportedInvalidFiles = new Set<string>();
 
   constructor(
     private readonly dir: string,
     private readonly logger: Logger,
-    private readonly onChange?: (schedule: StoredSchedule, change: "write" | "delete") => void,
   ) {}
+
+  setChangeHandler(handler: (schedule: StoredSchedule, change: "write" | "delete") => void): void {
+    this.onChange = handler;
+  }
 
   private filePath(id: string): string {
     return join(this.dir, `${id}.json`);
