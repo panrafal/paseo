@@ -216,9 +216,15 @@ keychain. See \"macOS\" in fork/README.md."
   # identity, and the in-app updater refuses an unsigned app.
   app="$(find "$release_dir" -maxdepth 2 -name '*.app' -type d | head -1)"
   [ -n "$app" ] || die "no .app in $release_dir"
+  # On arm64 that fallback is an ad-hoc signature, which --verify accepts.
+  # Authority lines need -dvv; -dv leaves them out.
   codesign --verify --deep --strict "$app" || die "$app is not validly signed"
-  codesign -dv "$app" 2>&1 | grep -q '^Authority=Developer ID Application' ||
-    die "$app is not signed with a Developer ID Application certificate"
+  local signature
+  signature="$(codesign -dvv "$app" 2>&1)" || die "cannot read the signature of $app"
+  grep -q '^Authority=Developer ID Application' <<<"$signature" ||
+    die "$app is not signed with a Developer ID Application certificate:
+$(grep -E '^(Signature|Authority|TeamIdentifier)=' <<<"$signature" || true)
+Look for \"signing\" or \"skipped macOS code signing\" in the electron-builder output above."
 
   ensure_fork_release "$tag" "$sha"
   # The feed goes last: once it is up, installed apps start downloading.
