@@ -256,13 +256,18 @@ describe("getSkillsStatus", () => {
     expect(status.ops).toEqual([{ kind: "update", name: "paseo" }]);
   });
 
-  it("returns drift when Antigravity is missing or stale", async () => {
+  it.each(["Antigravity", "Kilo"])("returns drift when %s is missing or stale", async (agent) => {
+    const targetDir =
+      agent === "Antigravity"
+        ? sandbox.targets.antigravityDir
+        : path.join(sandbox.root, "home", ".kilo", "skills");
+    sandbox.targets.installDirs[2] = targetDir;
     await writeCurrentBundle(sandbox.targets.sourceDir);
     await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", { "SKILL.md": "paseo-v1" });
     await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo-loop", { "SKILL.md": "loop-v1" });
     await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", { "SKILL.md": "paseo-v1" });
     await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.antigravityDir, "paseo", { "SKILL.md": "stale" });
+    await writeOnDiskSkill(targetDir, "paseo", { "SKILL.md": "stale" });
 
     const status = await getSkillsStatus(sandbox.targets, ALL_SKILLS);
 
@@ -870,5 +875,54 @@ describe("uninstallSkills", () => {
 
     expect(status.state).toBe("not-installed");
     expect(await installedIn(sandbox.targets, "paseo-chat")).toEqual([false, false, false, false]);
+  });
+});
+
+describe("symlinked skill directories", () => {
+  let sandbox: Sandbox;
+
+  beforeEach(async () => {
+    sandbox = await makeSandbox();
+  });
+
+  afterEach(async () => {
+    await fs.rm(sandbox.root, { recursive: true, force: true });
+  });
+
+  it("treats them as the user's own and never writes into their target", async () => {
+    await writeCurrentBundle(sandbox.targets.sourceDir);
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo-loop", { "SKILL.md": "loop-v1" });
+    const outside = path.join(sandbox.root, "custom-skills", "paseo");
+    await writeFiles(outside, { "SKILL.md": "custom paseo" });
+    for (const dir of sandbox.targets.installDirs) {
+      await fs.symlink(outside, path.join(dir, "paseo"));
+    }
+
+    const status = await autoUpdateInstalledSkills(sandbox.targets, ALL_SKILLS);
+
+    expect(status.state).toBe("up-to-date");
+    expect(status.ops).toEqual([]);
+    expect(await fs.readdir(outside)).toEqual(["SKILL.md"]);
+    expect(await fs.readFile(path.join(outside, "SKILL.md"), "utf-8")).toBe("custom paseo");
+    await expect(fs.access(path.join(sandbox.targets.codexDir, "paseo"))).rejects.toThrow();
+    expect(await getSkillsStatus(sandbox.targets, ALL_SKILLS)).toMatchObject({
+      state: "up-to-date",
+      ops: [],
+    });
+  });
+
+  it("keeps them on uninstall", async () => {
+    await writeCurrentBundle(sandbox.targets.sourceDir);
+    const outside = path.join(sandbox.root, "custom-skills", "paseo");
+    await writeFiles(outside, { "SKILL.md": "custom paseo" });
+    await fs.mkdir(sandbox.targets.agentsDir, { recursive: true });
+    await fs.symlink(outside, path.join(sandbox.targets.agentsDir, "paseo"));
+
+    await uninstallSkills(sandbox.targets, ALL_SKILLS);
+
+    expect((await fs.lstat(path.join(sandbox.targets.agentsDir, "paseo"))).isSymbolicLink()).toBe(
+      true,
+    );
+    expect(await fs.readFile(path.join(outside, "SKILL.md"), "utf-8")).toBe("custom paseo");
   });
 });

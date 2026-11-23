@@ -318,6 +318,7 @@ describe("a Command Center item reaching an agent's composer by id", () => {
   // Command Center return before calling the item, and nothing would be reported.
   const workspace: WorkspaceDescriptor = {
     createdAt: null,
+    activityAt: null,
     lastUserMessageAt: null,
     id: "workspace-1",
     projectId: "project-1",

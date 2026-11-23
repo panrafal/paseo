@@ -1,8 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { useWorkspaceLabelProjection, workspaceLabels } from "@/workspace-labels";
 import { openScheduleForm, type ScheduleFormSnapshot } from "./schedule-form-model";
 
 export function useScheduleFormModel(snapshot: ScheduleFormSnapshot) {
   const [model] = useState(() => openScheduleForm(snapshot));
+  const state = useSyncExternalStore(model.subscribe, model.getState, model.getState);
+  const { targetHost } = useWorkspaceLabelProjection(state.selectedServerId ?? undefined);
+  useEffect(() => {
+    model.applyWorkspaceLabelCatalog(
+      state.selectedServerId,
+      targetHost?.labels.map((label) => label.name) ?? [],
+    );
+  }, [model, state.selectedServerId, targetHost?.labels]);
+  useEffect(() => workspaceLabels.subscribeChanges(model.applyWorkspaceLabelChange), [model]);
 
   useEffect(() => {
     return () => {

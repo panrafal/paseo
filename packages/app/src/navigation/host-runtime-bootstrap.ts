@@ -11,6 +11,10 @@ import {
   buildHostWorkspaceRoute,
   buildOpenProjectRoute,
 } from "@/utils/host-routes";
+import {
+  buildVscodeWorkspaceMatchHref,
+  type VscodeWorkspaceMatchState,
+} from "@/desktop/vscode/initial-target";
 
 export interface HostRuntimeBootstrapStore {
   boot: () => Promise<void>;
@@ -119,6 +123,8 @@ export interface ResolveIndexStartupRouteInput extends ResolveStartupRouteBaseIn
   hasGivenUpWaitingForHost: boolean;
   /** Setup may still open over the empty home; see `useIsSetupDecisionPending`. */
   isWaitingForSetup: boolean;
+  isVscodeRuntime?: boolean;
+  vscodeWorkspaceMatchState?: VscodeWorkspaceMatchState;
 }
 
 export interface ResolveHostStartupRouteInput extends ResolveStartupRouteBaseInput {
@@ -186,6 +192,22 @@ function resolveReadyIndexStartupRoute(input: ResolveIndexStartupRouteInput): St
 
   if (!input.isWorkspaceSelectionLoaded) {
     return { kind: "splash" };
+  }
+
+  if (input.isVscodeRuntime && input.vscodeWorkspaceMatchState?.status === "loading") {
+    return { kind: "splash" };
+  }
+
+  const vscodeWorkspaceMatchState = input.vscodeWorkspaceMatchState;
+  if (
+    input.isVscodeRuntime &&
+    vscodeWorkspaceMatchState?.status === "ready" &&
+    vscodeWorkspaceMatchState.match
+  ) {
+    return {
+      kind: "redirect",
+      href: buildVscodeWorkspaceMatchHref(vscodeWorkspaceMatchState.match),
+    };
   }
 
   if (

@@ -23,6 +23,8 @@ export interface ViewportFitOptions {
   padding?: number;
   maxWidth?: number;
   maxHeight?: number;
+  /** Keep content at its own size when it is smaller than the viewport. */
+  allowUpscale?: boolean;
 }
 
 export const FIT_TRANSFORM: ViewportTransform = { scale: 1, x: 0, y: 0 };
@@ -65,7 +67,8 @@ export function fitContentSize(
     0,
     Math.min(viewport.height - padding * 2, options.maxHeight ?? Number.POSITIVE_INFINITY),
   );
-  const fitScale = Math.min(availableWidth / content.width, availableHeight / content.height);
+  const scaleToFit = Math.min(availableWidth / content.width, availableHeight / content.height);
+  const fitScale = options.allowUpscale === false ? Math.min(1, scaleToFit) : scaleToFit;
   return {
     width: content.width * fitScale,
     height: content.height * fitScale,

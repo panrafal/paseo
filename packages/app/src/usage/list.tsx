@@ -6,6 +6,7 @@ import type { DraggableRenderItemInfo } from "@/components/draggable-list.types"
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import { settingsStyles } from "@/styles/settings";
+import { CodexBankedResetManagement } from "./banked-resets";
 import { UsageCard } from "./card";
 import type { UsageDisplay } from "./display";
 import { useUsageInSidebar } from "./in-sidebar";
@@ -111,7 +112,14 @@ function UsageListCard({
           pinnable={pinnable}
           refreshable
           arrangement={arrangement}
-        />
+        >
+          {entry.sourceId === "codex" ? (
+            <CodexBankedResetManagement
+              serverId={serverId}
+              resets={entry.report.status === "available" ? entry.report.bankedResets : undefined}
+            />
+          ) : null}
+        </UsageCard>
       </View>
     </View>
   );

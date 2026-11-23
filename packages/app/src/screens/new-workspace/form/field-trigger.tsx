@@ -1,5 +1,11 @@
 import { forwardRef, useCallback, useMemo, type ReactElement, type ReactNode } from "react";
-import { Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  Text,
+  View,
+  type PressableStateCallbackType,
+  type StyleProp,
+  type TextStyle,
+} from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown } from "lucide-react-native";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -35,6 +41,7 @@ export interface FieldTriggerContentProps {
   label: string;
   icon: ReactNode;
   value: string;
+  valueStyle?: StyleProp<TextStyle>;
   /** A word before the value that a badge needs because it shows no label, such as "from". */
   qualifier?: string;
   /** Secondary text after the value, such as a terminal profile's name. */
@@ -46,13 +53,17 @@ export function FieldTriggerContent({
   label,
   icon,
   value,
+  valueStyle,
   qualifier,
   detail,
 }: FieldTriggerContentProps): ReactElement {
   const valueLine = (
     <>
       <View style={styles.iconBox}>{icon}</View>
-      <Text style={variant === "field" ? styles.fieldValue : styles.value} numberOfLines={1}>
+      <Text
+        style={[variant === "field" ? styles.fieldValue : styles.value, valueStyle]}
+        numberOfLines={1}
+      >
         {qualifier && variant === "badge" ? <Text style={styles.detail}>{qualifier} </Text> : null}
         {value}
         {detail ? <Text style={styles.detail}> {detail}</Text> : null}

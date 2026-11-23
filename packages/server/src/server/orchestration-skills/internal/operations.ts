@@ -57,6 +57,14 @@ type SkillFiles = Map<string, string>;
 type TargetSkills = Map<string, SkillFiles>;
 
 /**
+ * A skill directory that is a symbolic link is the user's own skill (a custom
+ * version kept elsewhere). Paseo never writes through it or deletes it, so it
+ * counts as neither installed nor missing.
+ */
+const USER_LINKED = "user-linked";
+type TargetSkillEntries = Map<string, SkillFiles | typeof USER_LINKED>;
+
+/**
  * The bundle directory is the catalog. Reading it instead of a hardcoded list is
  * what makes `all` pick up skills added in a later release with no code change.
  */
@@ -110,21 +118,41 @@ async function hashSkills(rootDir: string, names: readonly string[]): Promise<Ta
   return out;
 }
 
+async function hashTargetSkills(
+  rootDir: string,
+  names: readonly string[],
+): Promise<TargetSkillEntries> {
+  const out: TargetSkillEntries = new Map();
+  for (const name of names) {
+    const skillDir = path.join(rootDir, name);
+    const info = await fs.lstat(skillDir).catch(() => null);
+    if (info?.isSymbolicLink()) {
+      out.set(name, USER_LINKED);
+      continue;
+    }
+    const files = await hashSkillDir(skillDir);
+    if (files !== null) out.set(name, files);
+  }
+  return out;
+}
+
 function diff(
   bundle: TargetSkills,
-  disks: readonly TargetSkills[],
+  disks: readonly TargetSkillEntries[],
   names: readonly string[],
   desired: ReadonlySet<string>,
 ): SkillOp[] {
   const ops: SkillOp[] = [];
   for (const name of names) {
     const b = desired.has(name) ? bundle.get(name) : undefined;
-    const targetFiles = disks.map((disk) => disk.get(name));
+    const targetFiles = disks
+      .map((disk) => disk.get(name))
+      .filter((entry) => entry !== USER_LINKED);
     const installedTargets = targetFiles.filter(
       (files): files is SkillFiles => files !== undefined,
     );
     if (b) {
-      const missingTargets = installedTargets.length < disks.length;
+      const missingTargets = installedTargets.length < targetFiles.length;
       const changedTargets = installedTargets.some((files) => !bundleFilesMatch(b, files));
       if (missingTargets) ops.push({ kind: "add", name });
       else if (changedTargets) ops.push({ kind: "update", name });
@@ -136,12 +164,20 @@ function diff(
   return ops;
 }
 
-function hasInstalledPaseoSkill(disks: readonly TargetSkills[]): boolean {
-  return disks.some((disk) => disk.size > 0);
+function isInstalled(disk: TargetSkillEntries, name: string): boolean {
+  const entry = disk.get(name);
+  return entry !== undefined && entry !== USER_LINKED;
 }
 
-function installedSkillNames(disks: readonly TargetSkills[], names: readonly string[]): string[] {
-  return names.filter((name) => disks.some((disk) => disk.has(name)));
+function hasInstalledPaseoSkill(disks: readonly TargetSkillEntries[]): boolean {
+  return disks.some((disk) => [...disk.keys()].some((name) => isInstalled(disk, name)));
+}
+
+function installedSkillNames(
+  disks: readonly TargetSkillEntries[],
+  names: readonly string[],
+): string[] {
+  return names.filter((name) => disks.some((disk) => isInstalled(disk, name)));
 }
 
 function bundleFilesMatch(bundle: SkillFiles, disk: SkillFiles): boolean {
@@ -169,12 +205,13 @@ export async function getSkillsStatus(
   const names = managedSkillNames(available);
   const [bundle, codexDisk, ...disks] = await Promise.all([
     hashSkills(targets.sourceDir, available),
-    hashSkills(targets.codexDir, names),
-    ...targets.installDirs.map((root) => hashSkills(root, names)),
+    hashTargetSkills(targets.codexDir, names),
+    ...targets.installDirs.map((root) => hashTargetSkills(root, names)),
   ]);
   const desired = resolveDesiredSkills(selection, available);
   const ops = diff(bundle, disks, names, desired);
   for (const name of codexDisk.keys()) {
+    if (!isInstalled(codexDisk, name)) continue;
     if (ops.some((op) => op.name === name)) continue;
     if (!(await isLegacyCodexCopy(name, targets))) continue;
     if (!desired.has(name)) ops.push({ kind: "delete", name });

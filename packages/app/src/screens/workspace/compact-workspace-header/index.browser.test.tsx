@@ -40,6 +40,7 @@ it("updates compact header actions on panel changes without rendering the worksp
         title="Workspace"
         subtitle="Project"
         isSubtitleDistinct
+        branchName={null}
         explorerAction={null}
         inDesktopTitlebar={false}
         tabSwitcher={null}

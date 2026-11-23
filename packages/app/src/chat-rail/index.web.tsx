@@ -11,6 +11,7 @@ import {
   CHAT_OUTLINE_GUTTER_INSET,
   CHAT_OUTLINE_MIN_PANEL_WIDTH,
 } from "@/agent-stream/chat-outline/geometry";
+import { getIsVscode } from "@/constants/platform";
 import { resolveContentMaxWidth, useSettings } from "@/hooks/use-settings";
 import { useSessionStore } from "@/stores/session-store";
 import { CHAT_COLUMN_BASE_GUTTER, resolveChatColumnGutters } from "./gutters";
@@ -67,6 +68,7 @@ function cssLength(value: number | string): string {
  * enabled flag and reserved inset (`0` or `44`) enter React context for `AgentStreamView`.
  */
 export function ChatColumnRailSurface({ serverId, children }: ChatColumnRailSurfaceProps) {
+  const isVscode = getIsVscode();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [isBelow, setIsBelow] = useState(true);
   const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
@@ -76,6 +78,7 @@ export function ChatColumnRailSurface({ serverId, children }: ChatColumnRailSurf
   );
 
   useLayoutEffect(() => {
+    if (isVscode) return;
     const node = surfaceRef.current;
     if (!node) return;
     const update = (width: number) => {
@@ -93,10 +96,10 @@ export function ChatColumnRailSurface({ serverId, children }: ChatColumnRailSurf
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [isVscode]);
 
   const enabled = supportsChatOutline && chatOutlineEnabled;
-  const inset = enabled && !isBelow ? CHAT_OUTLINE_GUTTER_INSET : 0;
+  const inset = enabled && (isVscode || !isBelow) ? CHAT_OUTLINE_GUTTER_INSET : 0;
 
   useLayoutEffect(() => {
     if (inset > 0) {

@@ -12,6 +12,7 @@ import {
 
 const baseWorkspace: WorkspaceDescriptor = {
   createdAt: null,
+  activityAt: null,
   lastUserMessageAt: null,
   id: "/repo/worktree",
   projectId: "/repo",
