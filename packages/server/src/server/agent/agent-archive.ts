@@ -16,7 +16,7 @@ export function buildArchivedAgentRecord(
     ...record,
     archivedAt: options.archivedAt,
     updatedAt: latestTimestamp(record.updatedAt, options.updatedAt),
-    lastStatus: normalizeArchivedStatus(record.lastStatus),
+    lastStatus: settleStoredAgentStatus(record.lastStatus),
     requiresAttention: false,
     attentionReason: null,
     attentionTimestamp: null,
@@ -30,7 +30,7 @@ function latestTimestamp(current: string, archiveTime: string): string {
   return Date.parse(archiveTime) > Date.parse(current) ? archiveTime : current;
 }
 
-function normalizeArchivedStatus(
+export function settleStoredAgentStatus(
   status: StoredAgentRecord["lastStatus"],
 ): StoredAgentRecord["lastStatus"] {
   return status === "running" || status === "initializing" ? "idle" : status;
