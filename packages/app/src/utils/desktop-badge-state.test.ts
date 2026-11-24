@@ -21,6 +21,7 @@ function workspace(id: string, status: WorkspaceDescriptor["status"]): Workspace
     status,
     archivingAt: null,
     statusEnteredAt: null,
+    activityAt: null,
     diffStat: null,
     scripts: [],
   };

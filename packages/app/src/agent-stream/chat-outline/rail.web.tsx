@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore }
 import { Pressable, Text, View, type PointerEvent as RNPointerEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
+import { getIsVscode } from "@/constants/platform";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { CHAT_OUTLINE_RAIL_LEFT, CHAT_OUTLINE_RAIL_WIDTH } from "./geometry";
 import { createChatOutlineHoverIntent } from "./hover-intent";
@@ -72,7 +73,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
 
   return (
     <View
-      style={styles.rail}
+      style={[styles.rail, getIsVscode() && styles.vscodeRail]}
       role="tablist"
       testID="chat-outline-rail"
       onPointerEnter={handlePointerEnterRail}
@@ -145,7 +146,7 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
   return (
     <View style={styles.slot} onPointerEnter={handlePointerEnter}>
       <Pressable
-        style={styles.target}
+        style={[styles.target, getIsVscode() && styles.vscodeTarget]}
         onPress={handlePress}
         onFocus={handleFocus}
         onBlur={handleBlur}
@@ -185,6 +186,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     zIndex: 2,
   },
+  vscodeRail: { left: 0 },
   // Slots tile the rail with no gaps, so every pixel of the column belongs to a prompt even
   // when a long conversation squeezes them well below their resting height.
   slot: {
@@ -204,6 +206,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: theme.spacing[1],
     borderRadius: theme.borderRadius.base,
   },
+  vscodeTarget: { paddingLeft: 0 },
   // At rest the pills use low-emphasis chrome so the column stays readable peripherally
   // without competing with the transcript. Attention is the only foreground state.
   pill: {

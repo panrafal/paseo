@@ -59,12 +59,14 @@ function WorkspaceExplorerToggle({
 }
 
 export function useWorkspaceExplorerControls({
+  enabled,
   hasWorkspace,
   compact,
   focusMode,
   expanded,
   onToggle,
 }: {
+  enabled: boolean;
   hasWorkspace: boolean;
   compact: boolean;
   focusMode: boolean;
@@ -73,9 +75,20 @@ export function useWorkspaceExplorerControls({
 }) {
   const { t } = useTranslation();
   const hasLeadingWindowControls = useHasWindowChromeObstruction("top-left");
-  const inDesktopTitlebar = hasLeadingWindowControls && hasWorkspace && !compact && !focusMode;
+  const inDesktopTitlebar =
+    enabled && hasLeadingWindowControls && hasWorkspace && !compact && !focusMode;
 
   return useMemo(() => {
+    if (!enabled) {
+      return {
+        inDesktopTitlebar,
+        headerAction: null,
+        compactAction: null,
+        dockAction: null,
+        titlebarAction: null,
+      };
+    }
+
     const props = {
       label: expanded
         ? t("workspace.tabs.explorerSidebar.close")
@@ -129,7 +142,7 @@ export function useWorkspaceExplorerControls({
       ) : null,
       titlebarAction: null,
     };
-  }, [compact, expanded, inDesktopTitlebar, onToggle, t]);
+  }, [compact, enabled, expanded, inDesktopTitlebar, onToggle, t]);
 }
 
 const styles = StyleSheet.create((theme) => ({
