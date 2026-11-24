@@ -100,6 +100,11 @@ function createInput(
         status: "idle",
         handler: () => undefined,
       },
+      "commit-and-push": {
+        disabled: false,
+        status: "idle",
+        handler: () => undefined,
+      },
       pull: {
         disabled: false,
         status: "idle",
@@ -890,6 +895,35 @@ describe("git-actions-policy", () => {
       "Pull and push isn't available while you have local changes so commit or stash them first",
     );
   });
+
+  it("offers commit and push alongside commit when only a push remote is available", () => {
+    const actions = buildGitActions(
+      createInput({ hasPushRemote: true, hasUncommittedChanges: true }),
+    );
+    const action = actions.secondary.find((entry) => entry.id === "commit-and-push");
+
+    expect(actions.primary?.id).toBe("commit");
+    expect(action).toBeDefined();
+    expect(action?.unavailableMessage).toBeUndefined();
+  });
+
+  it("omits commit and push when there is nothing to commit", () => {
+    const actions = buildGitActions(createInput({ hasRemote: true }));
+
+    expect(actions.secondary.some((action) => action.id === "commit-and-push")).toBe(false);
+  });
+
+  it.each([false, true])(
+    "explains why commit and push requires a push remote (has pull remote: %s)",
+    (hasPullRemote) => {
+      const actions = buildGitActions(createInput({ hasPullRemote, hasUncommittedChanges: true }));
+      const action = actions.secondary.find((entry) => entry.id === "commit-and-push");
+
+      expect(action?.unavailableMessage).toBe(
+        "Commit and push isn't available here because this branch is not connected to a remote yet",
+      );
+    },
+  );
 
   it("hides Git actions for a non-Git workspace", () => {
     const directory = buildGitActions(createInput({ isGit: false }));
