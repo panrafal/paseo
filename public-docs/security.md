@@ -35,6 +35,7 @@ Relay is off on new installations. When you pair a device from `paseo`, `paseo d
 2. When you scan the QR code or open the pairing link (`https://app.paseo.sh/#offer=...`), your client reads the daemon's public key from the URL fragment. Browsers never send URL fragments to the server, so `app.paseo.sh` never sees the key.
 3. When a client connects through the relay, both sides generate fresh ephemeral keys and run a Noise `NK` handshake bound to the daemon's public key. The handshake uses `X25519`, `ChaCha20-Poly1305`, and `SHA-256`. The daemon ignores all commands until the handshake completes.
 4. After the handshake, every message is encrypted with `ChaCha20-Poly1305` and an incrementing counter. When either side predates Noise, the session falls back to NaCl `box` (`XSalsa20-Poly1305`) until both sides are updated.
+5. With [device authentication](/docs/configuration#device-authentication) enabled, the client authenticates inside the encrypted channel. It uses the one-time pairing token on the first connection and the device credential issued by the daemon on later connections. The daemon opens a session only after authentication succeeds.
 
 The relay sees only IP addresses, connection timing, message sizes, session IDs, and the public handshake frames. It cannot read message contents, tamper with messages, or derive encryption keys.
 
@@ -53,7 +54,17 @@ Legacy NaCl `box` sessions remain supported by default during migration and do n
 
 The QR code or pairing link is the trust anchor. It contains the daemon's public key, which the client needs to start an encrypted session and which is never sent to the relay. Treat the link like a password and do not share it publicly.
 
-If you also set a daemon password, relay clients send it inside the encrypted channel. The daemon rejects any client without the right password, so a leaked pairing link alone does not grant access.
+If device authentication is off and you set a daemon password, relay clients send it inside the encrypted channel. The daemon rejects any client without the right password, so a leaked pairing link alone does not grant access.
+
+With device authentication on, a pairing link or QR code pairs one device and stops working after 5 minutes. Once your device has paired, the link is worthless to anyone who finds it. Until then, whoever uses it first gets access, even to a password-protected daemon, so don't share it.
+
+A paired device does not send the daemon password. Its device credential is tied to the password it was paired under, so setting, changing, or removing the password signs out every paired device. To remove a single device:
+
+```bash
+paseo daemon devices                   # list paired devices
+paseo daemon devices revoke <id>       # disconnect that device within 15 seconds
+paseo daemon devices revoke --all
+```
 
 ## Direct connections
 
@@ -106,7 +117,7 @@ Prefer entries with a scheme. Without one, `.example.com` also admits plain `htt
 
 By default, anyone who can reach the daemon's listening address can connect. On localhost this is fine, only local processes have access. But if you bind to a network interface (e.g. your LAN IP or `0.0.0.0`), or if you don't fully trust your local network, you can require a password.
 
-When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header, and every WebSocket client, including relay clients, must send the password when it connects. Relay clients send it inside the end-to-end encrypted channel, so the relay never sees it. Unauthenticated HTTP requests receive a `401 Unauthorized` response. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
+When a password is configured, all HTTP requests must include an `Authorization: Bearer <password>` header, and every WebSocket client must send the password when it connects. Relay clients send it inside the end-to-end encrypted channel, so the relay never sees it. With [device authentication](/docs/configuration#device-authentication) on, a paired relay device signs in with its device credential instead and is not asked for the password. Direct connections, including the bundled web UI, still need it. Unauthenticated HTTP requests receive a `401 Unauthorized` response. Only the `/api/health` liveness endpoint is exempt, so that process supervisors and load balancers can probe without credentials.
 
 If you enable the [bundled web UI](/docs/web-ui), its static files are also served without the password so the login screen can render. This is by design, the API and WebSocket still require authentication before any agent data is returned or any command runs. Set a password before binding the daemon to a network so the data behind the page stays protected.
 
@@ -174,7 +185,7 @@ Logging out of the CLI does not silently remove daemon authority. Interactive `l
 ## Recommendations
 
 - **Use the relay** for mobile access, it's the simplest option and all traffic is end-to-end encrypted
-- **Treat the QR code like a password**, anyone with the pairing offer can connect to your daemon unless you also set a password
+- **Treat the QR code like a password**, enable device authentication to limit pairing offers to one use within five minutes
 - **Set a password** if you bind to a network address, it prevents unauthorized clients from controlling your agents
 - **Never bind to 0.0.0.0 without a password**, without one, any device on your network can connect
 - **Scope Docker mounts tightly**, agents can access mounted workspaces and provider credentials

@@ -15,6 +15,8 @@ A principal is the durable identity the daemon authorizes. A credential proves t
 
 A pairing invitation is neither. It is an expiring, single-use exchange that creates a principal and credential with the permissions selected by its issuer.
 
+Relay pairing links are the first invitations (`packages/server/src/server/relay-auth/`). They still admit the device as the owner principal, and that relay admission stands in for the daemon password in `hello`; issuer-selected permissions come when devices become principals of their own.
+
 ## Permissions
 
 | Permission          | Authority                                                                  |
