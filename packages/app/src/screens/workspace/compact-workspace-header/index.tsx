@@ -19,6 +19,7 @@ interface CompactWorkspaceHeaderProps {
   subtitle: string;
   isSubtitleDistinct: boolean;
   explorerAction: ReactNode;
+  branchName: string | null;
   tabSwitcher: ReactNode;
   inDesktopTitlebar: boolean;
   /** Workspace overflow menu. */
@@ -35,6 +36,7 @@ export function CompactWorkspaceHeader({
   subtitle,
   isSubtitleDistinct,
   explorerAction,
+  branchName,
   children,
   tabSwitcher,
   inDesktopTitlebar,
@@ -50,9 +52,10 @@ export function CompactWorkspaceHeader({
         subtitle={subtitle}
         isSubtitleDistinct={isSubtitleDistinct}
         serverId={serverId}
+        branchName={branchName}
       />
     ),
-    [subtitle, isSubtitleDistinct, serverId],
+    [subtitle, isSubtitleDistinct, serverId, branchName],
   );
   const symbols = {
     "tab-count": tabSwitcher,

@@ -1110,6 +1110,15 @@ export const ko: TranslationResources = {
           failedAccessible: "검사 실패",
           runningAccessible: "검사 진행 중",
         },
+        reviewSummary: {
+          approved: "승인됨",
+          approvedBy: "{{names}} 님이 승인함",
+          changesRequested: "변경 요청됨",
+          changesRequestedBy: "{{names}} 님이 변경을 요청함",
+        },
+        stackSummary: {
+          accessible: "스택의 풀 리퀘스트 {{position}}/{{size}}",
+        },
         sections: {
           checks: "검사",
           pipeline: "파이프라인",
@@ -1304,6 +1313,8 @@ export const ko: TranslationResources = {
         project: "프로젝트",
         host: "호스트",
         changeRequest: "풀 리퀘스트",
+        reviews: "리뷰",
+        stack: "PR 스택",
         checks: "검사",
         services: "서비스",
         labels: "레이블",

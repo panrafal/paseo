@@ -35,12 +35,12 @@ function select(overrides: Partial<Parameters<typeof selectMetaRowItems>[0]> = {
 const kinds = (items: ReturnType<typeof selectMetaRowItems>) => items.map((item) => item.kind);
 
 describe("selectMetaRowItems", () => {
-  it("puts the enabled branch and project badges first", () => {
+  it("puts the host first, then the enabled branch and project badges", () => {
     const visible = { ...DEFAULT_SIDEBAR_ROW_ITEMS, branch: true, project: true };
     expect(kinds(select({ visible }))).toEqual([
+      "host",
       "branch",
       "project",
-      "host",
       "changeRequest",
       "checks",
       "services",
@@ -118,6 +118,58 @@ describe("selectMetaRowItems", () => {
       checksDisplay: "none",
     });
     expect(kinds(items)).toEqual(["host", "services", "labels"]);
+  });
+
+  it("puts the review verdict last, after the labels", () => {
+    const prHint: PrHint = {
+      ...PR_HINT,
+      reviews: [
+        { author: "alice", state: "approved" },
+        { author: "carol", state: "changes_requested" },
+      ],
+    };
+    const visible = { ...DEFAULT_SIDEBAR_ROW_ITEMS, reviews: true };
+    expect(select({ prHint, visible }).at(-1)).toEqual({
+      kind: "reviews",
+      summary: {
+        approvedBy: ["alice"],
+        changesRequestedBy: ["carol"],
+        approved: true,
+        changesRequested: true,
+      },
+    });
+  });
+
+  it("leaves the review verdict off by default, and keeps it without the change request", () => {
+    const prHint: PrHint = { ...PR_HINT, reviewDecision: "approved" };
+    expect(kinds(select({ prHint }))).not.toContain("reviews");
+    expect(
+      kinds(
+        select({
+          prHint,
+          visible: { ...DEFAULT_SIDEBAR_ROW_ITEMS, changeRequest: false, reviews: true },
+        }),
+      ),
+    ).toEqual(["host", "checks", "services", "labels", "reviews"]);
+  });
+
+  it("puts the stack position at the very end when switched on", () => {
+    const prHint: PrHint = {
+      ...PR_HINT,
+      reviewDecision: "approved",
+      stack: { position: 3, size: 9 },
+    };
+    expect(kinds(select({ prHint }))).not.toContain("stack");
+    const visible = { ...DEFAULT_SIDEBAR_ROW_ITEMS, reviews: true, stack: true };
+    expect(select({ prHint, visible }).slice(-2)).toEqual([
+      expect.objectContaining({ kind: "reviews" }),
+      { kind: "stack", stack: { position: 3, size: 9 } },
+    ]);
+  });
+
+  it("draws no stack position for a change request outside a stack", () => {
+    const visible = { ...DEFAULT_SIDEBAR_ROW_ITEMS, stack: true };
+    expect(kinds(select({ visible }))).not.toContain("stack");
   });
 
   it("carries the resolved check summary rather than the raw hint", () => {

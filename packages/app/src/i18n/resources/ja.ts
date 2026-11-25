@@ -1118,6 +1118,15 @@ export const ja: TranslationResources = {
           failedAccessible: "チェック失敗",
           runningAccessible: "チェック実行中",
         },
+        reviewSummary: {
+          approved: "承認済み",
+          approvedBy: "{{names}} が承認",
+          changesRequested: "変更をリクエスト",
+          changesRequestedBy: "{{names}} が変更をリクエスト",
+        },
+        stackSummary: {
+          accessible: "スタック内のプルリクエスト {{position}}/{{size}}",
+        },
         sections: {
           checks: "チェック",
           pipeline: "パイプライン",
@@ -1311,6 +1320,8 @@ export const ja: TranslationResources = {
         project: "プロジェクト",
         host: "ホスト",
         changeRequest: "プルリクエスト",
+        reviews: "レビュー",
+        stack: "PR スタック",
         checks: "チェック",
         services: "サービス",
         labels: "ラベル",

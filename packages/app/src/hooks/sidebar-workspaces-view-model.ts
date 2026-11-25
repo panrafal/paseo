@@ -414,7 +414,9 @@ function areSidebarWorkspaceEntriesEqual(
         leftHint.state === rightHint.state &&
         leftHint.checks === rightHint.checks &&
         leftHint.checksStatus === rightHint.checksStatus &&
-        leftHint.reviewDecision === rightHint.reviewDecision)
+        leftHint.reviewDecision === rightHint.reviewDecision &&
+        leftHint.reviews === rightHint.reviews &&
+        leftHint.stack === rightHint.stack)
     );
   });
 }

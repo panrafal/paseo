@@ -1123,6 +1123,15 @@ export const ru: TranslationResources = {
           failedAccessible: "Проверки не пройдены",
           runningAccessible: "Проверки выполняются",
         },
+        reviewSummary: {
+          approved: "Одобрено",
+          approvedBy: "Одобрили: {{names}}",
+          changesRequested: "Запрошены изменения",
+          changesRequestedBy: "Запросили изменения: {{names}}",
+        },
+        stackSummary: {
+          accessible: "Пул-реквест {{position}} из {{size}} в стеке",
+        },
         sections: {
           checks: "Проверки",
           pipeline: "Пайплайн",
@@ -1316,6 +1325,8 @@ export const ru: TranslationResources = {
         project: "Проект",
         host: "Хост",
         changeRequest: "PR",
+        reviews: "Ревью",
+        stack: "Стек PR",
         checks: "Проверки",
         services: "Сервисы",
         labels: "Метки",

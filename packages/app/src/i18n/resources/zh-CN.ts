@@ -1094,6 +1094,15 @@ export const zhCN: TranslationResources = {
           failedAccessible: "检查失败",
           runningAccessible: "检查运行中",
         },
+        reviewSummary: {
+          approved: "已批准",
+          approvedBy: "{{names}} 已批准",
+          changesRequested: "已请求更改",
+          changesRequestedBy: "{{names}} 请求了更改",
+        },
+        stackSummary: {
+          accessible: "堆栈中的拉取请求 {{position}}/{{size}}",
+        },
         sections: {
           checks: "Checks",
           pipeline: "流水线",
@@ -1287,6 +1296,8 @@ export const zhCN: TranslationResources = {
         project: "项目",
         host: "主机",
         changeRequest: "拉取请求",
+        reviews: "评审",
+        stack: "PR 堆栈",
         checks: "检查",
         services: "服务",
         labels: "标签",

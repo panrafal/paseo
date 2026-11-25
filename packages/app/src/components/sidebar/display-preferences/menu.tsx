@@ -21,9 +21,11 @@ import {
   GitBranch,
   GitPullRequest,
   Globe,
+  Layers,
   Server,
   Settings2,
   Tag,
+  ThumbsUp,
   Type,
 } from "lucide-react-native";
 import {
@@ -106,6 +108,8 @@ const ROW_ITEM_ICONS: Record<SidebarRowItem, OptionIcon> = {
   project: withUnistyles(Folder),
   host: withUnistyles(Server),
   changeRequest: withUnistyles(GitPullRequest),
+  reviews: withUnistyles(ThumbsUp),
+  stack: withUnistyles(Layers),
   services: withUnistyles(Globe),
   labels: withUnistyles(Tag),
 };
@@ -142,6 +146,8 @@ const ROW_ITEM_LABEL_KEYS: Record<SidebarRowItem, string> = {
   project: "sidebar.display.show.project",
   host: "sidebar.display.show.host",
   changeRequest: "sidebar.display.show.changeRequest",
+  reviews: "sidebar.display.show.reviews",
+  stack: "sidebar.display.show.stack",
   services: "sidebar.display.show.services",
   labels: "sidebar.display.show.labels",
 };
