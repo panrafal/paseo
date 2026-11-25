@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 
 import { AudioCaptureStartError, type AudioCaptureStartFailure } from "@/audio";
 import { DictationStreamSender } from "@/dictation/dictation-stream-sender";
@@ -37,6 +38,30 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const clearStartError = useCallback(() => setStartError(null), []);
   const [status, setStatus] = useState<DictationStatus>("idle");
   const latestPartialTranscriptRef = useRef("");
+
+  useEffect(() => {
+    if (!isRecording) {
+      return;
+    }
+
+    // A delayed cleanup must not release a newer recording's lock.
+    const tag = `paseo:dictation:${generateMessageId()}`;
+    const activation = activateKeepAwakeAsync(tag);
+    void activation.catch((wakeLockError) => {
+      console.warn("[useDictation] Failed to activate keep-awake:", wakeLockError);
+    });
+
+    return () => {
+      void activation
+        .then(
+          () => deactivateKeepAwake(tag),
+          () => undefined,
+        )
+        .catch((wakeLockError) => {
+          console.warn("[useDictation] Failed to deactivate keep-awake:", wakeLockError);
+        });
+    };
+  }, [isRecording]);
 
   const onTranscriptRef = useRef(onTranscript);
   useEffect(() => {
