@@ -6,7 +6,9 @@ import {
   resolveAttachmentPreviewUrl,
 } from "@/attachments/service";
 import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/utils";
-import type { FileKind, FileObservation, FileSession } from "./handle";
+import { getVideoMimeTypeFromPath, resolveVideoMimeType } from "@/attachments/file-types";
+import { VIDEO_PREVIEW_MAX_BYTES } from "@/attachments/preview-limits";
+import type { FileKind, FileObservation, FileSession, FileTarget } from "./handle";
 
 export interface DaemonFileFeatures {
   // COMPAT(workspaceFileEditing): added in v0.2.0, remove after 2027-01-18 once daemon floor >= v0.2.0.
@@ -20,12 +22,19 @@ export function createDaemonFileSession(
   client: DaemonClient,
   features: DaemonFileFeatures,
 ): FileSession {
+  const readFile = (target: FileTarget) =>
+    client.readFile(
+      target.cwd,
+      target.path,
+      undefined,
+      getVideoMimeTypeFromPath(target.path) ? VIDEO_PREVIEW_MAX_BYTES : undefined,
+    );
   return {
     async observe(target, onObservation) {
       if (!features.workspaceFileEditing) {
         // COMPAT(workspaceFileEditing): the host cannot observe files; its read is the stat.
         return {
-          initial: statFromRead(await client.readFile(target.cwd, target.path)),
+          initial: statFromRead(await readFile(target)),
           unsubscribe() {},
         };
       }
@@ -46,7 +55,7 @@ export function createDaemonFileSession(
       const initial = subscription.initial;
       if (initial.status === "ready" && !initial.kind) {
         // COMPAT(fileVersionKind): see above.
-        const read = statFromRead(await client.readFile(target.cwd, target.path));
+        const read = statFromRead(await readFile(target));
         kind = { kind: read.kind, mimeType: read.mimeType };
       }
       return {
@@ -57,7 +66,7 @@ export function createDaemonFileSession(
       };
     },
     async read(target) {
-      return client.readFile(target.cwd, target.path);
+      return readFile(target);
     },
     async write({ target, content, ...expected }) {
       if (!features.workspaceFileEditing) throw new Error("Update the host to edit files.");
@@ -73,15 +82,16 @@ export function createDaemonFileSession(
       });
     },
     async createUrl({ target, bytes, mimeType }) {
+      const previewMimeType = resolveVideoMimeType({ mimeType, path: target.path }) ?? mimeType;
       const attachment = await persistAttachmentFromBytes({
         id: createPreviewAttachmentId({
-          mimeType,
+          mimeType: previewMimeType,
           path: `${target.cwd}/${target.path}`,
           contentLength: bytes.byteLength,
           contentKey: String(Date.now()),
         }),
         bytes,
-        mimeType,
+        mimeType: previewMimeType,
         fileName: getFileNameFromPath(target.path),
       });
       const url = await resolveAttachmentPreviewUrl(attachment);
