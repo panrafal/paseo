@@ -849,6 +849,11 @@ export const ar: TranslationResources = {
           pending: "ارتكاب...",
           success: "ملتزم",
         },
+        commitAndPush: {
+          label: "الالتزام والدفع",
+          pending: "جارٍ الالتزام والدفع...",
+          success: "تم الالتزام والدفع",
+        },
         pull: {
           label: "يحذب",
           pending: "سحب...",
@@ -916,6 +921,8 @@ export const ar: TranslationResources = {
           pullDirty: "السحب غير متاح أثناء وجود تغييرات محلية، لذا قم بتنفيذها أو تخزينها أولاً",
           pullUpToDate: "السحب غير متاح لأن هذا الفرع محدث بالفعل",
           pushNoRemote: "الدفع غير متاح هنا لأن هذا الفرع غير متصل بجهاز التحكم عن بعد بعد",
+          commitAndPushNoRemote:
+            "الالتزام والدفع غير متاح هنا لأن هذا الفرع غير متصل بجهاز التحكم عن بعد بعد",
           pushBehind: "الدفع غير متاح حتى الآن نظرًا لوجود تغييرات أحدث يجب إدخالها أولاً",
           pushNothing: "خدمة الدفع غير متاحة لأنه لا يوجد شيء جديد لإرساله",
           pushUpstreamGone: "الدفع غير متاح لأن الفرع الذي يتتبعه هذا الفرع لم يعد موجودًا",
@@ -950,6 +957,7 @@ export const ar: TranslationResources = {
         },
         toasts: {
           failedCommit: "فشل في الالتزام",
+          failedCommitAndPush: "فشل الالتزام والدفع",
           failedPull: "فشل في السحب",
           failedPush: "فشل في الدفع",
           failedPullAndPush: "فشل في السحب والدفع",
