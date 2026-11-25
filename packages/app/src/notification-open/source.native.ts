@@ -1,4 +1,5 @@
 import * as Notifications from "expo-notifications";
+import { foregroundNotificationBehavior } from "@/push-notifications/foreground";
 import type { NotificationOpenSource, NotificationTap } from "./source";
 
 function toTap(response: Notifications.NotificationResponse): NotificationTap {
@@ -10,13 +11,8 @@ function toTap(response: Notifications.NotificationResponse): NotificationTap {
 
 export function createNotificationOpenSource(): NotificationOpenSource {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: false,
-      shouldShowBanner: false,
-      shouldShowList: true,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async (notification) =>
+      foregroundNotificationBehavior(notification.request.content.data),
   });
   return {
     subscribe(onTap) {

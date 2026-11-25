@@ -15,6 +15,14 @@ import { createToolHosts } from "./agent/host-operations/index.js";
 import { HOST_ROUTE_OPCODE } from "@getpaseo/protocol/binary-frames/index";
 import { DaemonLinkEndpoint, VirtualHostSocket } from "./connected-hosts/index.js";
 import { ConnectedHosts } from "./connected-hosts/index.js";
+import {
+  notifyAgent,
+  buildAttentionPushPayload,
+  computeAgentNotificationPlan,
+  resolveAgentAttentionNotification,
+  type AgentAttentionParams,
+  type NotificationClientState,
+} from "./notify.js";
 import { stat } from "node:fs/promises";
 import {
   createWorkspaceBaseBranchService,
@@ -80,7 +88,6 @@ function resolveWorkspaceArchiveOperations(
   return operations ?? new WorkspaceArchiveOperations();
 }
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
-import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { attachMutableProviderConfigOwner } from "./agent/mutable-provider-config-owner.js";
 import type {
@@ -105,14 +112,9 @@ import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-run
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
 import {
   computeNotificationPlan,
-  isPushEligibleAttentionReason,
   type ClientPresenceState,
   type NotificationPlan,
 } from "./agent-attention-policy.js";
-import {
-  buildAgentAttentionNotificationPayload,
-  findLatestPermissionRequest,
-} from "@getpaseo/protocol/agent-attention-notification";
 import { createGitHubService } from "../services/github-service.js";
 import type { ForgeService } from "../services/forge-service.js";
 import {
@@ -1704,6 +1706,14 @@ export class VoiceAssistantWebSocketServer {
         return total;
       },
       sourceId: options.sourceId,
+      onNotify: (request) =>
+        notifyAgent({
+          request,
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          serverId: this.serverId,
+          broadcastAttention: (params) => this.broadcastAgentAttention(params),
+        }),
       browserToolsBroker: this.browserToolsBroker,
       clientId: options.clientId,
       appVersion: options.appVersion,
@@ -2954,10 +2964,11 @@ export class VoiceAssistantWebSocketServer {
     this.logger.info(loggedMetrics, "ws_runtime_metrics");
   }
 
-  private getClientActivityState(session: Session, source: object): ClientPresenceState {
+  private getClientActivityState(session: Session, source: object): NotificationClientState {
     const activity = session.getClientActivity(source);
     if (!activity) {
       return {
+        deviceType: null,
         appVisible: false,
         focusedAgentId: null,
         focusedTerminalId: null,
@@ -2966,6 +2977,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     return {
+      deviceType: activity.deviceType,
       appVisible: activity.appVisible,
       focusedAgentId: activity.focusedAgentId,
       focusedTerminalId: activity.focusedTerminalId,
@@ -2973,26 +2985,27 @@ export class VoiceAssistantWebSocketServer {
     };
   }
 
-  private async broadcastAgentAttention(params: {
-    agentId: string;
-    provider: AgentProvider;
-    reason: "finished" | "error" | "permission";
-    attentionTimestamp: Date | null;
-  }): Promise<void> {
+  private async broadcastAgentAttention(params: AgentAttentionParams): Promise<void> {
     const agent = this.agentManager.getAgent(params.agentId);
-    if (!agent?.workspaceId) {
+    const notification = await resolveAgentAttentionNotification({
+      params,
+      agent,
+      agentManager: this.agentManager,
+      serverId: this.serverId,
+    });
+    if (!notification) {
       return;
     }
     const clientEntries: Array<{
       ws: WebSocketLike;
-      state: ClientPresenceState;
+      state: NotificationClientState;
     }> = [];
 
     for (const [ws, connection] of this.sessions) {
       if (
         connection.session.delivery.isModern(ws)
           ? !connection.session.wantsSourceEvent(ws, "agent_attention_required")
-          : !(await connection.session.subscribesToAgent(agent, ws))
+          : !agent || !(await connection.session.subscribesToAgent(agent, ws))
       )
         continue;
       clientEntries.push({
@@ -3006,30 +3019,18 @@ export class VoiceAssistantWebSocketServer {
     );
     const allStates = notificationEntries.map((e) => e.state);
     const nowMs = Date.now();
-    const assistantMessage = await this.agentManager.getLastAssistantMessage(params.agentId);
-    const notification = buildAgentAttentionNotificationPayload({
-      reason: params.reason,
-      serverId: this.serverId,
-      workspaceId: agent.workspaceId,
-      agentId: params.agentId,
-      assistantMessage,
-      permissionRequest: findLatestPermissionRequest(agent.pendingPermissions),
-    });
 
     const plan = this.planOncePerUnreadFinish(
       params,
-      computeNotificationPlan({
-        allStates,
-        focusTarget: { kind: "agent", id: params.agentId },
-        pushEligible: isPushEligibleAttentionReason(params.reason),
-        nowMs,
-      }),
+      computeAgentNotificationPlan({ params, allStates, nowMs }),
     );
 
     if (plan.shouldPush) {
-      void this.pushNotificationSender.send(notification).catch((err) => {
-        this.logger.warn({ err, agentId: params.agentId }, "Failed to send push notification");
-      });
+      void this.pushNotificationSender
+        .send(buildAttentionPushPayload({ notification, urgent: params.urgent }))
+        .catch((err) => {
+          this.logger.warn({ err, agentId: params.agentId }, "Failed to send push notification");
+        });
     }
 
     for (const { ws } of clientEntries) {
@@ -3079,7 +3080,7 @@ export class VoiceAssistantWebSocketServer {
   // reacts to each event of a background task. The user hears about an unread finish once.
   // A finish that was not delivered, because the user had the agent on screen, does not count.
   private planOncePerUnreadFinish(
-    params: { agentId: string; reason: string; attentionTimestamp: Date | null },
+    params: AgentAttentionParams,
     plan: NotificationPlan,
   ): NotificationPlan {
     if (params.reason !== "finished" || params.attentionTimestamp === null) {
