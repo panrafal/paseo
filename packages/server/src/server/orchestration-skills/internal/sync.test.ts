@@ -11,6 +11,7 @@ interface Sandbox {
   claudeDir: string;
   codexDir: string;
   antigravityDir: string;
+  kiloDir: string;
   installDirs: string[];
 }
 
@@ -21,9 +22,10 @@ async function makeSandbox(): Promise<Sandbox> {
   const claudeDir = path.join(root, "home", ".claude", "skills");
   const codexDir = path.join(root, "home", ".codex", "skills");
   const antigravityDir = path.join(root, "home", ".gemini", "config", "skills");
-  const installDirs = [agentsDir, claudeDir, antigravityDir];
+  const kiloDir = path.join(root, "home", ".kilo", "skills");
+  const installDirs = [agentsDir, claudeDir, antigravityDir, kiloDir];
   await fs.mkdir(sourceDir, { recursive: true });
-  return { root, sourceDir, agentsDir, claudeDir, codexDir, antigravityDir, installDirs };
+  return { root, sourceDir, agentsDir, claudeDir, codexDir, antigravityDir, kiloDir, installDirs };
 }
 
 async function writeBundleSkill(
@@ -83,6 +85,9 @@ describe("syncSkills", () => {
       "utf-8",
     );
     expect(antigravityContent).toBe("new paseo content");
+    expect(await fs.readFile(path.join(sandbox.kiloDir, "paseo", "SKILL.md"), "utf-8")).toBe(
+      "new paseo content",
+    );
     await expect(fs.stat(path.join(sandbox.codexDir, "paseo", "SKILL.md"))).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -380,6 +385,29 @@ describe("syncSkills", () => {
     expect(errors).toContain("paseo");
     expect(result.processedSkills).toBe(0);
   });
+
+  it("never writes through a skill directory that is a symbolic link", async () => {
+    await writeBundleSkill(sandbox.sourceDir, "paseo", { "SKILL.md": "bundled" });
+    const outside = path.join(sandbox.root, "outside", "paseo");
+    await fs.mkdir(outside, { recursive: true });
+    await fs.writeFile(path.join(outside, "SKILL.md"), "custom");
+    await fs.mkdir(sandbox.agentsDir, { recursive: true });
+    await fs.symlink(outside, path.join(sandbox.agentsDir, "paseo"));
+
+    const errors: string[] = [];
+    await syncSkills({
+      sourceDir: sandbox.sourceDir,
+      installDirs: sandbox.installDirs,
+      codexDir: sandbox.codexDir,
+      skillNames: ["paseo"],
+      onSkillError: (skillName) => errors.push(skillName),
+    });
+
+    expect(errors).toEqual(["paseo"]);
+    expect(await fs.readdir(outside)).toEqual(["SKILL.md"]);
+    expect(await fs.readFile(path.join(outside, "SKILL.md"), "utf-8")).toBe("custom");
+    await expect(fs.access(path.join(sandbox.codexDir, "paseo"))).rejects.toThrow();
+  });
 });
 
 describe("removeSkill", () => {
@@ -411,6 +439,23 @@ describe("removeSkill", () => {
     await expect(fs.access(path.join(sandbox.claudeDir, "paseo"))).rejects.toThrow();
     await expect(fs.access(path.join(sandbox.codexDir, "paseo"))).rejects.toThrow();
     await expect(fs.access(path.join(sandbox.antigravityDir, "paseo"))).rejects.toThrow();
+    await expect(fs.access(path.join(sandbox.kiloDir, "paseo"))).rejects.toThrow();
+  });
+
+  it("leaves a symlinked skill directory and its target in place", async () => {
+    const outside = path.join(sandbox.root, "outside", "paseo");
+    await fs.mkdir(outside, { recursive: true });
+    await fs.writeFile(path.join(outside, "SKILL.md"), "custom");
+    await fs.mkdir(sandbox.agentsDir, { recursive: true });
+    await fs.symlink(outside, path.join(sandbox.agentsDir, "paseo"));
+
+    await removeSkill("paseo", {
+      installDirs: sandbox.installDirs,
+      codexDir: sandbox.codexDir,
+    });
+
+    expect((await fs.lstat(path.join(sandbox.agentsDir, "paseo"))).isSymbolicLink()).toBe(true);
+    expect(await fs.readFile(path.join(outside, "SKILL.md"), "utf-8")).toBe("custom");
   });
 
   it("does not throw when targets are missing", async () => {

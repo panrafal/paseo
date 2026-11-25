@@ -59,7 +59,9 @@ import type {
   PullRequestCheckStatus,
   PullRequestCommandStatus,
   PullRequestMergeMethod,
+  PullRequestReview,
   PullRequestReviewDecision,
+  PullRequestStackPosition,
   PullRequestSummary,
   PullRequestTimeline,
   PullRequestTimelineError,
@@ -102,6 +104,7 @@ export type {
   PullRequestMergeable,
   PullRequestMergeMethod,
   PullRequestMergeResult,
+  PullRequestReview,
   PullRequestReviewDecision,
   PullRequestSummary,
   PullRequestTimeline,
@@ -364,8 +367,20 @@ const CurrentPullRequestStatusSchema = z.object({
   mergedAt: z.string().nullable().optional(),
   statusCheckRollup: z.unknown().optional(),
   reviewDecision: z.unknown().optional(),
+  latestReviews: z.unknown().optional(),
+  stackEntry: z.unknown().optional(),
   mergeable: PullRequestMergeableSchema.optional().default("UNKNOWN"),
   headRepositoryOwner: HeadRepositoryOwnerSchema,
+});
+
+const PullRequestStackEntrySchema = z.object({
+  position: z.number(),
+  stack: z.object({ size: z.number() }),
+});
+
+const LatestReviewSchema = z.object({
+  author: z.object({ login: z.string().optional() }).nullable().optional().catch(null),
+  state: z.string().catch(""),
 });
 
 const TimelineAuthorSchema = z
@@ -543,7 +558,7 @@ query PullRequestCheckoutTarget($owner: String!, $name: String!, $number: Int!) 
 }`;
 
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,updatedAt,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,updatedAt,mergedAt,reviewDecision,latestReviews,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 
 const PULL_REQUEST_STATUS_FACTS_QUERY = `
@@ -663,6 +678,12 @@ const BatchPollPrNodeSchema = z.object({
   mergedAt: z.string().nullable().optional(),
   mergeable: PullRequestMergeableSchema.optional().default("UNKNOWN"),
   reviewDecision: z.unknown().optional(),
+  latestOpinionatedReviews: z
+    .object({ nodes: z.array(z.unknown()) })
+    .nullable()
+    .optional()
+    .catch(null),
+  stackEntry: z.unknown().optional(),
   headRepositoryOwner: HeadRepositoryOwnerSchema,
   mergeStateStatus: z.string().nullable().optional().catch(null),
   autoMergeRequest: GitHubAutoMergeRequestSchema,
@@ -754,7 +775,26 @@ const BatchCheckRunContextSchema = z.object({
 type BatchPollPrNode = z.infer<typeof BatchPollPrNodeSchema>;
 type BatchPollRepository = z.infer<typeof BatchPollRepositorySchema>;
 
-const BATCH_PR_STATUS_FRAGMENT = `
+/**
+ * Reviewers a row can name. GraphQL bills a nested connection by its page size times the
+ * candidate PRs, so this stays near what a real review ever has.
+ */
+const BATCH_LATEST_REVIEW_LIMIT = 20;
+
+/**
+ * Stacked pull requests are new to github.com's schema, and GitHub Enterprise Server rejects the
+ * whole query over one unknown field, so the selection is only sent to github.com.
+ */
+const BATCH_PR_STACK_SELECTION = `
+  stackEntry {
+    position
+    stack {
+      size
+    }
+  }`;
+
+function buildBatchPullRequestStatusFragment(stackSelection: string): string {
+  return `
 fragment PaseoPollPullRequest on PullRequest {
   number
   url
@@ -768,6 +808,14 @@ fragment PaseoPollPullRequest on PullRequest {
   mergedAt
   mergeable
   reviewDecision
+  latestOpinionatedReviews(first: ${BATCH_LATEST_REVIEW_LIMIT}) {
+    nodes {
+      author {
+        login
+      }
+      state
+    }
+  }${stackSelection}
   headRepositoryOwner {
     login
   }
@@ -786,6 +834,15 @@ fragment PaseoPollPullRequest on PullRequest {
   isMergeQueueEnabled
   isInMergeQueue
 }`;
+}
+
+const BATCH_PR_STATUS_FRAGMENT = buildBatchPullRequestStatusFragment("");
+const GITHUB_COM_BATCH_PR_STATUS_FRAGMENT =
+  buildBatchPullRequestStatusFragment(BATCH_PR_STACK_SELECTION);
+
+function batchPullRequestStatusFragment(host: string): string {
+  return host === "github.com" ? GITHUB_COM_BATCH_PR_STATUS_FRAGMENT : BATCH_PR_STATUS_FRAGMENT;
+}
 
 function batchAlias(index: number): string {
   return `t${index}`;
@@ -1915,7 +1972,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       cwd: firstEntry.target.cwd,
       targetCount: addressedEntries.length,
       selections: () => selections,
-      fragments: BATCH_PR_STATUS_FRAGMENT,
+      fragments: batchPullRequestStatusFragment(firstEntry.host),
     };
     const args = [
       "api",
@@ -3751,6 +3808,13 @@ function toBatchCurrentPullRequestItem(
     mergedAt: node.mergedAt ?? null,
     ...(statusCheckRollup ? { statusCheckRollup } : {}),
     reviewDecision: node.reviewDecision,
+    // GraphQL can ask for the opinionated list (latest approval or change request per reviewer);
+    // the CLI only exposes `latestReviews`. Both become one flat array, and parsing drops states
+    // that are not a verdict.
+    ...(node.latestOpinionatedReviews
+      ? { latestReviews: node.latestOpinionatedReviews.nodes }
+      : {}),
+    stackEntry: node.stackEntry,
     mergeable: node.mergeable,
     headRepositoryOwner: node.headRepositoryOwner,
   };
@@ -4367,6 +4431,8 @@ function toCurrentPullRequestStatus(
     state = "";
   }
   const checks = parseStatusCheckRollup(item.statusCheckRollup);
+  const reviews = parseLatestReviews(item.latestReviews);
+  const stack = parseStackPosition(item.stackEntry);
   return {
     ...(typeof item.number === "number" ? { number: item.number } : {}),
     ...(repoIdentity ? { repoOwner: repoIdentity.owner, repoName: repoIdentity.name } : {}),
@@ -4382,7 +4448,43 @@ function toCurrentPullRequestStatus(
     checks,
     checksStatus: computeChecksStatus(checks),
     reviewDecision: mapReviewDecision(item.reviewDecision),
+    ...(reviews.length > 0 ? { reviews } : {}),
+    ...(stack ? { stack } : {}),
   };
+}
+
+function parseStackPosition(value: unknown): PullRequestStackPosition | null {
+  const parsed = PullRequestStackEntrySchema.safeParse(value);
+  if (!parsed.success) {
+    return null;
+  }
+  return { position: parsed.data.position, size: parsed.data.stack.size };
+}
+
+function parseLatestReviews(value: unknown): PullRequestReview[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const reviews: PullRequestReview[] = [];
+  for (const entry of value) {
+    const parsed = LatestReviewSchema.safeParse(entry);
+    if (!parsed.success) {
+      continue;
+    }
+    const state = mapLatestReviewState(parsed.data.state);
+    if (!state) {
+      continue;
+    }
+    // A deleted account still leaves its review; GitHub shows it as "ghost".
+    reviews.push({ author: parsed.data.author?.login || "ghost", state });
+  }
+  return reviews;
+}
+
+function mapLatestReviewState(state: string): PullRequestReview["state"] | null {
+  if (state === "APPROVED") return "approved";
+  if (state === "CHANGES_REQUESTED") return "changes_requested";
+  return null;
 }
 
 async function resolveGitHubEnterpriseHost(cwd: string): Promise<string | null> {

@@ -165,6 +165,18 @@ export class AgentManagerShuttingDownError extends Error {
   }
 }
 
+// An agent whose worktree was removed keeps its recorded cwd. Typed so callers can
+// report an unavailable runtime instead of an unexpected failure.
+export class WorkingDirectoryMissingError extends Error {
+  readonly cwd: string;
+
+  constructor(cwd: string, options?: { cause?: unknown }) {
+    super(`Working directory does not exist: ${cwd}`, options);
+    this.name = "WorkingDirectoryMissingError";
+    this.cwd = cwd;
+  }
+}
+
 type RunCancellationCause = "reload" | "replace" | "rewind" | "stop";
 
 export class AgentRunCancellationError extends Error {
@@ -194,7 +206,7 @@ async function assertUsableWorkingDirectory(cwd: string): Promise<void> {
       "code" in error &&
       (error as NodeJS.ErrnoException).code === "ENOENT"
     ) {
-      throw new Error(`Working directory does not exist: ${cwd}`, { cause: error });
+      throw new WorkingDirectoryMissingError(cwd, { cause: error });
     }
     if (error instanceof Error) {
       throw error;

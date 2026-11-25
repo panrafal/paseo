@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { selectDaemonTarget } from "../../utils/daemon-target.js";
 
+import { createScheduleCommand } from "./index.js";
 import {
   compileEveryPresetToCron,
   parseScheduleCreateInput,
@@ -180,6 +181,42 @@ describe("parseScheduleCreateInput archive on finish", () => {
       }),
     ).toThrow(expect.objectContaining({ code: "INVALID_TARGET" }));
   });
+});
+
+test("parses repeated workspace-label options for create/update, clearing, and conflicts", () => {
+  const commands = createScheduleCommand().commands;
+  const create = commands.find((command) => command.name() === "create")!;
+  const update = commands.find((command) => command.name() === "update")!;
+  for (const command of [create, update]) {
+    command.parseOptions(["--workspace-label", "Review", "--workspace-label", "Ready"]);
+    expect(command.opts().workspaceLabel).toEqual(["Review", "Ready"]);
+  }
+  expect(parseScheduleCreateInput({ ...baseOptions, ...create.opts() }).target).toMatchObject({
+    config: { workspaceLabels: ["Review", "Ready"] },
+  });
+  expect(parseScheduleUpdateInput({ id: "abc", ...update.opts() })).toEqual({
+    id: "abc",
+    newAgentConfig: { workspaceLabels: ["Review", "Ready"] },
+  });
+  expect(parseScheduleUpdateInput({ id: "abc", clearWorkspaceLabels: true })).toEqual({
+    id: "abc",
+    newAgentConfig: { workspaceLabels: [] },
+  });
+  update.parseOptions(["--clear-workspace-labels"]);
+  expect(() => parseScheduleUpdateInput({ id: "abc", ...update.opts() })).toThrow(
+    expect.objectContaining({ code: "CONFLICTING_WORKSPACE_LABELS" }),
+  );
+  expect(() =>
+    parseScheduleCreateInput({
+      daemonTarget: baseOptions.daemonTarget,
+      prompt: "Review",
+      every: "5m",
+      target: "agent:abc",
+      workspaceLabel: ["Review"],
+    }),
+  ).toThrow(
+    "--provider/--mode/--thinking/--archive-on-finish/--workspace-label can only be used with a new-agent target",
+  );
 });
 
 describe("parseScheduleUpdateInput", () => {

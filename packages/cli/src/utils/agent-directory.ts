@@ -4,9 +4,9 @@ import { resolveAgentId, type connectToDaemon } from "./client.js";
 type DaemonClient = Awaited<ReturnType<typeof connectToDaemon>>;
 type FetchAgentsOptions = NonNullable<Parameters<DaemonClient["fetchAgents"]>[0]>;
 
-export interface AgentDirectoryClient {
+export interface AgentDirectoryClient<TAgent = AgentSnapshotPayload> {
   fetchAgents(options?: FetchAgentsOptions): Promise<{
-    entries: { agent: AgentSnapshotPayload }[];
+    entries: { agent: TAgent }[];
     pageInfo: { nextCursor: string | null };
   }>;
 }
@@ -20,11 +20,11 @@ export interface AgentLookupClient extends AgentDirectoryClient {
 const FULL_AGENT_UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 /** Read the complete directory without agents moving between pages as they update. */
-export async function fetchAllAgents(
-  client: AgentDirectoryClient,
+export async function fetchAllAgents<TAgent = AgentSnapshotPayload>(
+  client: AgentDirectoryClient<TAgent>,
   options: Omit<FetchAgentsOptions, "page" | "sort" | "subscribe"> = {},
-): Promise<AgentSnapshotPayload[]> {
-  const agents: AgentSnapshotPayload[] = [];
+): Promise<TAgent[]> {
+  const agents: TAgent[] = [];
   let cursor: string | undefined;
   // createdAt never changes, so agents cannot move past the cursor while the pages are read.
   do {

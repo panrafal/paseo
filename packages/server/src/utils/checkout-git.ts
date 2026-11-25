@@ -33,6 +33,8 @@ import type {
   ForgeSpecificStatusFacts,
   PullRequestCheck as ForgePullRequestCheck,
   PullRequestMergeable,
+  PullRequestReview,
+  PullRequestStackPosition,
 } from "../services/forge-service.js";
 import {
   ForgeAuthenticationError,
@@ -4675,6 +4677,8 @@ export interface PullRequestStatus {
   checks?: PullRequestCheck[];
   checksStatus?: ChecksStatus;
   reviewDecision?: ReviewDecision;
+  reviews?: PullRequestReview[];
+  stack?: PullRequestStackPosition;
   forgeSpecific?: ForgeSpecificStatusFacts;
 }
 

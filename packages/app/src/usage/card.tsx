@@ -1,5 +1,5 @@
 import { GripVertical, RotateCw } from "lucide-react-native";
-import { useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View, type StyleProp, type TextStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -15,7 +15,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import type { TFunction } from "i18next";
-import { useCallback } from "react";
 import { UsageBalanceBar } from "./balance-bar";
 import type { UsageDisplay } from "./display";
 import { formatAgo, formatProviderUsageLabel, formatUsageAccountName } from "./format";
@@ -52,6 +51,7 @@ export function UsageCard({
   refreshable,
   arrangement,
   compact = false,
+  children,
 }: {
   serverId: string;
   agentId?: string;
@@ -64,6 +64,7 @@ export function UsageCard({
   /** Present where the user arranges cards. */
   arrangement?: UsageCardArrangement;
   compact?: boolean;
+  children?: ReactNode;
 }) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -128,7 +129,9 @@ export function UsageCard({
         report={report}
         showsFreshnessInline={showsFreshnessInline}
         refreshState={refreshState}
-      />
+      >
+        {children}
+      </UsageCardBody>
     </View>
   );
 }
@@ -140,6 +143,7 @@ function UsageCardBody({
   report,
   showsFreshnessInline,
   refreshState,
+  children,
 }: {
   entry: UsageReportEntry;
   display: UsageDisplay;
@@ -147,8 +151,10 @@ function UsageCardBody({
   report: ReturnType<typeof resolveUsageReport>;
   showsFreshnessInline: boolean;
   refreshState: UsageRefresh;
+  children?: ReactNode;
 }) {
   const { t } = useTranslation();
+  const bankedResets = entry.report.status === "available" ? entry.report.bankedResets : undefined;
   const { windows, balances, details, retained, successfulAt, forecastAt, messages } = report;
   const footer = entry.account.label ?? null;
   return (
@@ -192,6 +198,17 @@ function UsageCardBody({
           ))}
         </View>
       ) : null}
+
+      {bankedResets ? (
+        <View style={styles.details}>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Banked resets</Text>
+            <Text style={styles.detailValue}>{bankedResets.availableCount} available</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {children}
 
       {footer || showsFreshnessInline ? (
         <View style={styles.footerRow}>

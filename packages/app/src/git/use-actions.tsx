@@ -87,8 +87,15 @@ function openURLInNewTab(url: string): void {
   void openExternalUrl(url);
 }
 
-function isActionDisabled(actionsDisabled: boolean, status: CheckoutGitActionStatus): boolean {
-  return actionsDisabled || status === "pending";
+/**
+ * An action is disabled while it or any action it conflicts with is pending.
+ * Commit and push overlaps both commit and push, so the three block each other.
+ */
+function isActionDisabled(
+  actionsDisabled: boolean,
+  ...statuses: CheckoutGitActionStatus[]
+): boolean {
+  return actionsDisabled || statuses.includes("pending");
 }
 
 function resolveBranchLabel(input: {
@@ -203,6 +210,7 @@ interface UseGitActionsInput {
   cwd: string;
   icons: {
     commit: ReactElement;
+    commitAndPush: ReactElement;
     pull: ReactElement;
     push: ReactElement;
     pullAndPush: ReactElement;
@@ -411,6 +419,9 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const commitStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "commit" }),
   );
+  const commitAndPushStatus = useCheckoutGitActionsStore((s) =>
+    s.getStatus({ serverId, cwd, actionId: "commit-and-push" }),
+  );
   const pullStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "pull" }),
   );
@@ -456,6 +467,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   );
 
   const runCommit = useCheckoutGitActionsStore((s) => s.commit);
+  const runCommitAndPush = useCheckoutGitActionsStore((s) => s.commitAndPush);
   const runPull = useCheckoutGitActionsStore((s) => s.pull);
   const runPush = useCheckoutGitActionsStore((s) => s.push);
   const runPullAndPush = useCheckoutGitActionsStore((s) => s.pullAndPush);
@@ -497,6 +509,17 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
         toastActionError(err, t("workspace.git.actions.toasts.failedCommit"));
       });
   }, [cwd, runCommit, serverId, t, toastActionError, toastActionSuccess]);
+
+  const handleCommitAndPush = useCallback(() => {
+    void runCommitAndPush({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess(t("workspace.git.actions.commitAndPush.success"));
+        return;
+      })
+      .catch((err) => {
+        toastActionError(err, t("workspace.git.actions.toasts.failedCommitAndPush"));
+      });
+  }, [cwd, runCommitAndPush, serverId, t, toastActionError, toastActionSuccess]);
 
   const handlePull = useCallback(() => {
     void runPull({ serverId, cwd })
@@ -724,10 +747,21 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       shipDefault,
       runtime: {
         commit: {
-          disabled: isActionDisabled(actionsDisabled, commitStatus),
+          disabled: isActionDisabled(actionsDisabled, commitStatus, commitAndPushStatus),
           status: commitStatus,
           icon: icons.commit,
           handler: handleCommit,
+        },
+        "commit-and-push": {
+          disabled: isActionDisabled(
+            actionsDisabled,
+            commitAndPushStatus,
+            commitStatus,
+            pushStatus,
+          ),
+          status: commitAndPushStatus,
+          icon: icons.commitAndPush,
+          handler: handleCommitAndPush,
         },
         pull: {
           disabled: isActionDisabled(actionsDisabled, pullStatus),
@@ -736,7 +770,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
           handler: handlePull,
         },
         push: {
-          disabled: isActionDisabled(actionsDisabled, pushStatus),
+          disabled: isActionDisabled(actionsDisabled, pushStatus, commitAndPushStatus),
           status: pushStatus,
           icon: icons.push,
           handler: handlePush,
@@ -844,6 +878,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     shouldPromoteArchive,
     actionsDisabled,
     commitStatus,
+    commitAndPushStatus,
     pullStatus,
     pushStatus,
     pullAndPushStatus,
@@ -860,6 +895,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     archiveController.canArchive,
     archiveController.isArchiving,
     handleCommit,
+    handleCommitAndPush,
     handlePull,
     handlePush,
     handlePullAndPush,
@@ -955,6 +991,12 @@ function getTranslatedGitActionLabels(
         label: t("workspace.git.actions.commit.label"),
         pendingLabel: t("workspace.git.actions.commit.pending"),
         successLabel: t("workspace.git.actions.commit.success"),
+      };
+    case "commit-and-push":
+      return {
+        label: t("workspace.git.actions.commitAndPush.label"),
+        pendingLabel: t("workspace.git.actions.commitAndPush.pending"),
+        successLabel: t("workspace.git.actions.commitAndPush.success"),
       };
     case "pull":
       return {
@@ -1069,6 +1111,8 @@ function translateGitActionUnavailableMessage(
       "workspace.git.actions.unavailable.pullUpToDate",
     "Push isn't available here because this branch is not connected to a remote yet":
       "workspace.git.actions.unavailable.pushNoRemote",
+    "Commit and push isn't available here because this branch is not connected to a remote yet":
+      "workspace.git.actions.unavailable.commitAndPushNoRemote",
     "Push isn't available yet because there are newer changes to bring in first":
       "workspace.git.actions.unavailable.pushBehind",
     "Push isn't available because there is nothing new to send":

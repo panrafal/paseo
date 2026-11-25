@@ -127,11 +127,12 @@ import {
 } from "../provider-launch-config.js";
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "./provider-runner.js";
-import { resolveResumeProcessCwd } from "./resume-process-cwd.js";
+import { isDirectory, resolveResumeProcessCwd } from "./resume-process-cwd.js";
 import {
   buildStringCommandShellInvocation,
   createStringCommandShellEnvOverlay,
 } from "../../../utils/string-command-shell.js";
+import { spawnExitBoundProcess } from "../../../utils/exit-bound-process.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 import {
   type DiagnosticEntry,
@@ -758,11 +759,28 @@ export function mapACPUsage(usage: Usage | null | undefined): AgentUsage | undef
     return undefined;
   }
 
-  return {
-    inputTokens: usage.inputTokens ?? undefined,
-    outputTokens: usage.outputTokens ?? undefined,
-    cachedInputTokens: usage.cachedReadTokens ?? undefined,
+  const mapped: AgentUsage = {};
+  if (typeof usage.inputTokens === "number") {
+    mapped.inputTokens = usage.inputTokens;
+  }
+  if (typeof usage.outputTokens === "number") {
+    mapped.outputTokens = usage.outputTokens;
+  }
+  if (typeof usage.cachedReadTokens === "number") {
+    mapped.cachedInputTokens = usage.cachedReadTokens;
+  }
+  return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
+
+export function mapACPUsageUpdate(update: UsageUpdate): AgentUsage {
+  const mapped: AgentUsage = {
+    contextWindowMaxTokens: update.size,
+    contextWindowUsedTokens: update.used,
   };
+  if (update.cost?.currency === "USD") {
+    mapped.totalCostUsd = update.cost.amount;
+  }
+  return mapped;
 }
 
 export function resolveACPModeSelection({
@@ -1364,7 +1382,6 @@ export class ACPAgentClient implements AgentClient {
     const probe = await this.spawnProcess(PROBE_ENV, {
       signal,
       deferCleanupOnError: true,
-      ownsProcessGroup: true,
       client: this.buildProbeClient((params) => history.accept(params)),
     });
     try {
@@ -1556,7 +1573,6 @@ export class ACPAgentClient implements AgentClient {
       client?: ACPClient;
       signal?: AbortSignal;
       deferCleanupOnError?: boolean;
-      ownsProcessGroup?: boolean;
     },
   ): Promise<ACPProbeProcess> {
     const configuredOptions = ACPProviderOptionsSchema.parse(options?.providerOptions ?? {});
@@ -1572,18 +1588,16 @@ export class ACPAgentClient implements AgentClient {
     try {
       const spawned = await raceProviderRefreshAbort(
         signal,
-        this.spawnTransport(launchEnv, options?.client, options?.ownsProcessGroup).then(
-          async (spawnedTransport) => {
-            transport = spawnedTransport;
-            // Cancellation can close the process before initialize observes its failure.
-            void spawnedTransport.processError.catch(() => undefined);
-            if (signal?.aborted) {
-              await closeTransport();
-              signal.throwIfAborted();
-            }
-            return spawnedTransport;
-          },
-        ),
+        this.spawnTransport(launchEnv, options?.client).then(async (spawnedTransport) => {
+          transport = spawnedTransport;
+          // Cancellation can close the process before initialize observes its failure.
+          void spawnedTransport.processError.catch(() => undefined);
+          if (signal?.aborted) {
+            await closeTransport();
+            signal.throwIfAborted();
+          }
+          return spawnedTransport;
+        }),
       );
       const probe: UninitializedACPProcess = {
         child: spawned.child,
@@ -1631,13 +1645,10 @@ export class ACPAgentClient implements AgentClient {
   protected async spawnTransport(
     launchEnv?: Record<string, string>,
     client: ACPClient = this.buildProbeClient(),
-    ownsProcessGroup = false,
   ): Promise<ACPProcessTransport> {
     const { command, args } = await this.resolveLaunchCommand();
-    const detached = ownsProcessGroup && process.platform !== "win32";
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: process.cwd(),
-      detached,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
         overlays: [launchEnv],
@@ -1667,7 +1678,7 @@ export class ACPAgentClient implements AgentClient {
 
     return {
       child,
-      ownsProcessGroup: detached,
+      ownsProcessGroup: process.platform !== "win32",
       connection,
       stderrChunks,
       spawnReady: spawnReadyPromise,
@@ -2910,6 +2921,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       } catch {}
 
       try {
+        // A provider that never answers session/close must not keep its
+        // process alive past the close.
         if (this.agentCapabilities?.sessionCapabilities?.close) {
           await withTimeout(
             this.connection.unstable_closeSession({ sessionId: this.sessionId }),
@@ -3205,8 +3218,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   // Loading an archived agent's history runs nothing in its working directory, which
   // may have been removed with its worktree. session/load still names the original
   // directory; only the process starts from the home directory.
-  private resolveProcessCwd(): Promise<string> {
-    return resolveResumeProcessCwd(this.config.cwd, this.resumePurpose);
+  private async resolveProcessCwd(): Promise<string> {
+    const cwd = await resolveResumeProcessCwd(this.config.cwd, this.resumePurpose);
+    if (this.resumePurpose !== "history" && !(await isDirectory(this.config.cwd))) {
+      throw new Error(`${this.provider} working directory does not exist: ${this.config.cwd}`);
+    }
+    return cwd;
   }
 
   private async spawnProcess(): Promise<SpawnedACPProcess> {
@@ -3221,7 +3238,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     const command = prefix.command;
     const args = [...prefix.args, ...this.defaultCommand.slice(1)];
-    const child = spawnProcess(command, args, {
+    const child = spawnExitBoundProcess(command, args, {
       cwd: await this.resolveProcessCwd(),
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -3677,20 +3694,21 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (contextWindowMaxTokens === undefined || contextWindowUsedTokens === undefined) {
       return;
     }
+    const usage = { ...this.currentTurnUsage, ...mapACPUsageUpdate(update) };
+    this.currentTurnUsage = usage;
     this.pushEvent({
       type: "usage_updated",
       provider: this.provider,
-      usage: {
-        ...this.currentTurnUsage,
-        contextWindowMaxTokens,
-        contextWindowUsedTokens,
-      },
+      usage,
       turnId: this.activeForegroundTurnId ?? undefined,
     });
   }
 
   private handlePromptResponse(response: PromptResponse, turnId: string): void {
-    this.currentTurnUsage = mapACPUsage(response.usage) ?? this.currentTurnUsage;
+    const promptUsage = mapACPUsage(response.usage);
+    this.currentTurnUsage = promptUsage
+      ? { ...this.currentTurnUsage, ...promptUsage }
+      : this.currentTurnUsage;
 
     switch (response.stopReason) {
       case "cancelled":

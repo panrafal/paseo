@@ -10,6 +10,23 @@ export interface PrHint {
   checks?: PrHintCheck[];
   checksStatus?: "none" | "pending" | "success" | "failure";
   reviewDecision?: "approved" | "changes_requested" | "pending" | null;
+  /**
+   * Latest verdict per reviewer, when the forge names them. The state stays as open as the wire
+   * keeps it, and the array keeps the payload's identity so a row can compare it by reference.
+   */
+  reviews?: PrHintReview[];
+  /** Position in a forge-native stack, 1 closest to the base branch. */
+  stack?: PrHintStack;
+}
+
+export interface PrHintStack {
+  position: number;
+  size: number;
+}
+
+export interface PrHintReview {
+  author: string;
+  state: string;
 }
 
 export interface PrHintCheck extends PresentableCheck {
@@ -24,6 +41,8 @@ interface PrStatusLike {
   checks?: PrHintCheck[];
   checksStatus?: string;
   reviewDecision?: string | null;
+  reviews?: PrHintReview[];
+  stack?: PrHintStack;
   forge?: string;
 }
 
@@ -70,5 +89,7 @@ export function selectPrHintFromStatus(
     checks: status.checks,
     checksStatus: status.checksStatus as PrHint["checksStatus"],
     reviewDecision: status.reviewDecision as PrHint["reviewDecision"],
+    reviews: status.reviews,
+    stack: status.stack,
   };
 }

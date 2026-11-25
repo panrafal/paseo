@@ -9,6 +9,58 @@ private weak var activeModule: PaseoHardwareKeyboardModule?
 private var isHardwareSubmitEnabled = false
 private var overlayKeys: Set<String> = []
 private var claimedShortcuts: [ClaimedShortcut] = []
+private var shortcuts: [HardwareShortcut] = []
+private var isCapturingShortcut = false
+
+fileprivate struct HardwareShortcut: Record {
+  @Field var key: String = ""
+  @Field var code: String = ""
+  @Field var ctrlKey: Bool = false
+  @Field var metaKey: Bool = false
+  @Field var altKey: Bool = false
+  @Field var shiftKey: Bool = false
+
+  var modifiers: UIKeyModifierFlags {
+    var flags: UIKeyModifierFlags = []
+    if ctrlKey { flags.insert(.control) }
+    if metaKey { flags.insert(.command) }
+    if altKey { flags.insert(.alternate) }
+    if shiftKey { flags.insert(.shift) }
+    return flags
+  }
+
+  var input: String {
+    switch code {
+    case "ArrowLeft": return UIKeyCommand.inputLeftArrow
+    case "ArrowRight": return UIKeyCommand.inputRightArrow
+    case "ArrowUp": return UIKeyCommand.inputUpArrow
+    case "ArrowDown": return UIKeyCommand.inputDownArrow
+    case "Escape": return UIKeyCommand.inputEscape
+    case "Enter": return "\r"
+    case "Tab": return "\t"
+    case "Backspace": return "\u{8}"
+    case "Delete": return UIKeyCommand.inputDelete
+    case "Home": return UIKeyCommand.inputHome
+    case "End": return UIKeyCommand.inputEnd
+    case "PageUp": return UIKeyCommand.inputPageUp
+    case "PageDown": return UIKeyCommand.inputPageDown
+    case "Insert": return "\u{F727}"
+    default:
+      if code.hasPrefix("F"), let number = Int(code.dropFirst()), (1...12).contains(number) {
+        let keys = [UIKeyCommand.f1, UIKeyCommand.f2, UIKeyCommand.f3, UIKeyCommand.f4,
+                    UIKeyCommand.f5, UIKeyCommand.f6, UIKeyCommand.f7, UIKeyCommand.f8,
+                    UIKeyCommand.f9, UIKeyCommand.f10, UIKeyCommand.f11, UIKeyCommand.f12]
+        return keys[number - 1]
+      }
+      return key
+    }
+  }
+
+  var event: [String: Any] {
+    return ["key": key, "code": code, "ctrlKey": ctrlKey, "metaKey": metaKey,
+            "altKey": altKey, "shiftKey": shiftKey, "repeat": false]
+  }
+}
 
 /// UIKit spells non-character keys as sentinel input strings rather than as the
 /// character they would type. JS sends the DOM `code` and the mapping lives
@@ -107,6 +159,15 @@ public class PaseoHardwareKeyboardModule: Module {
       }
     }
 
+    Function("setHardwareKeyboardShortcuts") { (commands: [HardwareShortcut], capturing: Bool) in
+      DispatchQueue.main.async {
+        guard activeModule === self else { return }
+        shortcuts = commands
+        isCapturingShortcut = capturing
+        UIMenuSystem.main.setNeedsRebuild()
+      }
+    }
+
     OnDestroy {
       self.keyboardObservers.forEach(NotificationCenter.default.removeObserver)
       self.keyboardObservers = []
@@ -115,12 +176,19 @@ public class PaseoHardwareKeyboardModule: Module {
         isHardwareSubmitEnabled = false
         overlayKeys = []
         claimedShortcuts = []
+        shortcuts = []
+        isCapturingShortcut = false
+        UIMenuSystem.main.setNeedsRebuild()
       }
     }
   }
 
   fileprivate func emitHardwareKeyboardSubmit() {
     sendEvent(hardwareSubmitEventName, [:])
+  }
+
+  fileprivate func emitShortcut(_ shortcut: HardwareShortcut) {
+    sendEvent(hardwareShortcutEventName, shortcut.event)
   }
 
   fileprivate func emitHardwareKeyboardPress(_ press: UIPress, isRepeat: Bool) {
@@ -180,12 +248,16 @@ public final class PaseoHardwareKeyboardWindow: UIWindow {
   }
   public override var keyCommands: [UIKeyCommand]? {
     var commands = super.keyCommands ?? []
-    if isHardwareSubmitEnabled && !isPlainReturnClaimed && !isComposingText()
+    let configuredShortcuts = isCapturingShortcut
+      ? shortcuts
+      : shortcuts.filter { !($0.modifiers.isEmpty && overlayKeys.contains($0.code)) }
+    commands.append(contentsOf: configuredShortcuts.map(makeConfiguredShortcutCommand))
+    if !isCapturingShortcut && isHardwareSubmitEnabled && !isPlainReturnClaimed && !isComposingText()
       && UIDevice.current.userInterfaceIdiom == .pad
     {
       commands.append(makeSubmitCommand())
     }
-    if !isComposingText() {
+    if !isCapturingShortcut && !isComposingText() {
       commands.append(contentsOf: overlayKeys.compactMap(makeShortcutCommand))
       commands.append(contentsOf: claimedShortcuts.map(makeClaimedCommand))
     }
@@ -199,7 +271,17 @@ public final class PaseoHardwareKeyboardWindow: UIWindow {
   /// two commands on one press, and the composer would win a press the picker
   /// asked for — Enter would create the workspace instead of choosing a project.
   private var isPlainReturnClaimed: Bool {
-    overlayKeys.contains("Enter")
+    overlayKeys.contains("Enter") || shortcuts.contains { $0.input == "\r" && $0.modifiers.isEmpty }
+  }
+
+  private func makeConfiguredShortcutCommand(_ shortcut: HardwareShortcut) -> UIKeyCommand {
+    let command = UIKeyCommand(
+      input: shortcut.input,
+      modifierFlags: shortcut.modifiers,
+      action: #selector(handleConfiguredShortcut(_:))
+    )
+    if #available(iOS 15.0, *) { command.wantsPriorityOverSystemBehavior = true }
+    return command
   }
 
   private func makeSubmitCommand() -> UIKeyCommand {
@@ -231,6 +313,15 @@ public final class PaseoHardwareKeyboardWindow: UIWindow {
     )
     if #available(iOS 15.0, *) { command.wantsPriorityOverSystemBehavior = true }
     return command
+  }
+
+  @objc
+  private func handleConfiguredShortcut(_ sender: UIKeyCommand) {
+    guard !isComposingText() else { return }
+    guard let shortcut = shortcuts.first(where: {
+      $0.input == sender.input && $0.modifiers == sender.modifierFlags
+    }) else { return }
+    activeModule?.emitShortcut(shortcut)
   }
 
   @objc

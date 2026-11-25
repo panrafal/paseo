@@ -9,6 +9,7 @@ import { AgentStorage } from "../../agent-storage.js";
 import { ProviderSnapshotManager } from "../../provider-snapshot-manager.js";
 import { OpenCodeBridge } from "./bridge.js";
 import { ScheduleService } from "../../../schedule/service.js";
+import { ScheduleStore } from "../../../schedule/store.js";
 import { createWorkspaceScriptsService } from "../../../session/workspace-scripts/workspace-scripts-service.js";
 import {
   FileBackedProjectRegistry,
@@ -29,7 +30,8 @@ test("bridge preserves tool failure messages and classifies invalid requests as 
     throw new Error("Unexpected workspace or agent creation");
   };
   const scheduleService = new ScheduleService({
-    paseoHome,
+    store: new ScheduleStore(path.join(paseoHome, "schedules"), logger),
+    workspaceLabels: { resolveNames: unused, assignLabels: unused },
     logger,
     agentManager,
     agentStorage,

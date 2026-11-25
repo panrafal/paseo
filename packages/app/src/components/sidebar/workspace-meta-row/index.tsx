@@ -3,7 +3,15 @@ import { Fragment, useCallback, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ExternalLink, Folder, GitBranch, Globe } from "lucide-react-native";
+import {
+  ExternalLink,
+  Folder,
+  GitBranch,
+  Globe,
+  Layers,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react-native";
 import {
   workspaceLabelKey,
   type WorkspaceLabelDefinition,
@@ -11,9 +19,10 @@ import {
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { HostBadge, HOST_BADGE_ICON_SIZE } from "@/hosts/host-badge";
 import { WorkspaceLabelChip, WORKSPACE_LABEL_CHIP_INSET } from "@/workspace-labels/chip";
-import type { PrHint } from "@/git/pr-hint";
+import type { PrHint, PrHintStack } from "@/git/pr-hint";
 import { getForgePresentation, normalizeForge } from "@/git/forge";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSidebarMetaPreferences } from "@/components/sidebar/display-preferences/model";
 import type { Theme } from "@/styles/theme";
 import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
@@ -25,6 +34,7 @@ import {
 import { CheckIndicator } from "./check-indicator";
 import type { CheckSummary, CheckSummaryState } from "./check-summary";
 import { selectMetaRowItems, type MetaRowItem } from "./meta-items";
+import type { ReviewSummary } from "./review-summary";
 import { workspaceServiceLabelKey, type WorkspaceServiceSummary } from "./service-summary";
 
 export {
@@ -44,6 +54,9 @@ const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedGlobe = withUnistyles(Globe);
+const ThemedLayers = withUnistyles(Layers);
+const ThemedThumbsDown = withUnistyles(ThumbsDown);
+const ThemedThumbsUp = withUnistyles(ThumbsUp);
 
 /** Stable identity so a row without labels doesn't re-select its items on every render. */
 const EMPTY_LABELS: readonly WorkspaceLabelDefinition[] = [];
@@ -156,6 +169,12 @@ function MetaItemNode({
   }
   if (item.kind === "labels") {
     return <LabelsItem labels={item.labels} leading={leading} />;
+  }
+  if (item.kind === "reviews") {
+    return <ReviewsItem summary={item.summary} />;
+  }
+  if (item.kind === "stack") {
+    return <StackItem stack={item.stack} />;
   }
   return <ServiceItem summary={item.summary} />;
 }
@@ -328,6 +347,94 @@ function ServiceItem({ summary }: { summary: WorkspaceServiceSummary }) {
 
 const successMapping = (theme: Theme) => ({ color: theme.colors.statusSuccess });
 
+/**
+ * Where the change request sits in its stack, as `position/size` counted from the base branch,
+ * so `1/3` merges first. The glyph names the subject; a bare fraction after a run of other
+ * tokens could be anything.
+ */
+function StackItem({ stack }: { stack: PrHintStack }) {
+  const { t } = useTranslation();
+  return (
+    <View
+      style={styles.item}
+      accessibilityLabel={t("workspace.git.pr.stackSummary.accessible", {
+        position: stack.position,
+        size: stack.size,
+      })}
+      testID="sidebar-workspace-stack"
+    >
+      <ThemedLayers size={META_ICON_SIZE} uniProps={mutedMapping} />
+      <Text style={styles.prText} numberOfLines={1}>
+        {stack.position}/{stack.size}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * The reviewers' verdict as glyphs only: a thumbs up when someone approved, a thumbs down when
+ * someone asked for changes, both when reviewers disagree. A row
+ * whose review is pending or only commented on shows nothing, so the item stays rare enough to
+ * notice.
+ *
+ * Who decided lives in the tooltip and the accessible name. Names are arbitrary text, and the line
+ * already spends its arbitrary-text budget on the service name and labels.
+ */
+function ReviewsItem({ summary }: { summary: ReviewSummary }) {
+  const { t } = useTranslation();
+  const lines: string[] = [];
+  if (summary.approved) {
+    lines.push(
+      summary.approvedBy.length > 0
+        ? t("workspace.git.pr.reviewSummary.approvedBy", { names: summary.approvedBy.join(", ") })
+        : t("workspace.git.pr.reviewSummary.approved"),
+    );
+  }
+  if (summary.changesRequested) {
+    lines.push(
+      summary.changesRequestedBy.length > 0
+        ? t("workspace.git.pr.reviewSummary.changesRequestedBy", {
+            names: summary.changesRequestedBy.join(", "),
+          })
+        : t("workspace.git.pr.reviewSummary.changesRequested"),
+    );
+  }
+
+  return (
+    <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <View
+          style={styles.item}
+          accessibilityLabel={lines.join(", ")}
+          testID="sidebar-workspace-reviews"
+        >
+          {summary.approved ? (
+            <ThemedThumbsUp
+              size={META_ICON_SIZE}
+              uniProps={successMapping}
+              testID="sidebar-workspace-reviews-approved"
+            />
+          ) : null}
+          {summary.changesRequested ? (
+            <ThemedThumbsDown
+              size={META_ICON_SIZE}
+              uniProps={dangerMapping}
+              testID="sidebar-workspace-reviews-changes-requested"
+            />
+          ) : null}
+        </View>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        {lines.map((line) => (
+          <Text key={line} style={styles.tooltipText}>
+            {line}
+          </Text>
+        ))}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 const PR_STATE_LABEL_KEYS = {
   merged: "workspace.git.pr.states.merged",
   closed: "workspace.git.pr.states.closed",
@@ -351,11 +458,15 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexShrink: 0,
   },
+  // Capped rather than weighted: flex shrink is proportional to length, so an uncapped branch
+  // name kept most of the line and squeezed the host and labels after it down to an ellipsis.
+  // A percentage leaves short names at their own width and still hints at long ones.
   identityItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
     minWidth: 0,
+    maxWidth: "45%",
     flexShrink: 1,
   },
   identityIcon: {
@@ -423,6 +534,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     lineHeight: 16,
     flexShrink: 0,
+  },
+  tooltipText: {
+    fontSize: theme.fontSize.base,
+    color: theme.colors.popoverForeground,
   },
   // Matches the indicator — see COLOR_MAPPINGS in check-indicator.tsx.
   checksTextPassed: {

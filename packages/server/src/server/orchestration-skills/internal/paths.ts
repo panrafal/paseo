@@ -14,7 +14,13 @@ export function resolveBundledSkillsDir(moduleUrl: string | URL = import.meta.ur
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!;
 }
 
-export function resolveSkillTargets(home: string = os.homedir()): SkillTargets {
+/**
+ * PASEO_SKILLS_HOME replaces the home directory whose agent skill folders Paseo
+ * manages. Test daemons set it so they never write into the developer's skills.
+ */
+export function resolveSkillTargets(
+  home: string = process.env.PASEO_SKILLS_HOME || os.homedir(),
+): SkillTargets {
   return {
     sourceDir: resolveBundledSkillsDir(),
     // Append new install roots to the end — transaction backups reference roots
@@ -23,6 +29,7 @@ export function resolveSkillTargets(home: string = os.homedir()): SkillTargets {
       path.join(home, ".agents", "skills"),
       path.join(home, ".claude", "skills"),
       path.join(home, ".gemini", "config", "skills"),
+      path.join(home, ".kilo", "skills"),
     ],
     codexDir: path.join(home, ".codex", "skills"),
   };

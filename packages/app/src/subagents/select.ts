@@ -98,7 +98,7 @@ export function selectSubagentsForParent(
     return EMPTY_SUBAGENT_ROWS;
   }
 
-  rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  rows.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   return rows;
 }
 
@@ -167,7 +167,7 @@ export function selectProviderSubagentsForParent(
       createdAt: new Date(subagent.createdAt),
     });
   }
-  rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  rows.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   return rows;
 }
 
@@ -204,7 +204,7 @@ export function useSubagentsForParent(params: SelectSubagentsParams): SubagentRo
     if (params.providerParentSubagentId) return providerRows;
     if (providerRows.length === 0) return paseoRows;
     const rows = [...paseoRows, ...providerRows];
-    rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    rows.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
     return rows;
   }, [params.providerParentSubagentId, paseoRows, providerRows]);
 }

@@ -458,7 +458,12 @@ describe("skills controller", () => {
       skills: ["paseo", "paseo-loop"],
     });
     const readOnly = await makeHarness(store);
+    const kiloDir = path.join(readOnly.root, "home", ".kilo", "skills");
+    readOnly.targets.installDirs.push(kiloDir);
     await readOnly.controller.install();
+    const kiloNotes = path.join(kiloDir, "paseo-loop", "notes", "mine.md");
+    await mkdir(path.dirname(kiloNotes), { recursive: true });
+    await writeFile(kiloNotes, "hand written");
     await writeUserFile(readOnly.targets, "paseo-loop", "notes/mine.md", "hand written");
 
     // Deselects paseo-loop and adds paseo-advisor, then fails to commit.
@@ -490,6 +495,8 @@ describe("skills controller", () => {
       "hand written",
     ]);
     expect(await backupArtifacts(readOnly.targets)).toEqual([[], [], [], []]);
+    expect(await readFile(kiloNotes, "utf8")).toBe("hand written");
+    expect(await installedSkills(kiloDir)).toEqual(["paseo", "paseo-loop"]);
     await rm(readOnly.root, { recursive: true, force: true });
   });
 

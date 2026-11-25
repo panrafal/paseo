@@ -44,6 +44,7 @@ export {
 import { TerminalProfileSchema } from "./terminal-profile.js";
 export { TerminalProfileSchema, type TerminalProfile } from "./terminal-profile.js";
 import { z } from "zod";
+import { NotifyRequestSchema, NotifyResponseSchema } from "./notify.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
@@ -871,7 +872,7 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("attention_required"),
     provider: AgentProviderSchema,
-    reason: z.enum(["finished", "error", "permission"]),
+    reason: z.enum(["finished", "error", "permission", "notify"]),
     timestamp: z.string(),
     shouldNotify: z.boolean(),
     notification: z
@@ -882,7 +883,7 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
           serverId: z.string(),
           workspaceId: z.string().optional(),
           agentId: z.string(),
-          reason: z.enum(["finished", "error", "permission"]),
+          reason: z.enum(["finished", "error", "permission", "notify"]),
         }),
       })
       .optional(),
@@ -1148,6 +1149,11 @@ export const WorkspaceLabelListRequestSchema = z.object({
   requestId: z.string(),
   subscribe: z.object({ subscriptionId: z.string().optional() }).optional(),
   sync: WorkspaceLabelSyncCursorSchema.optional(),
+});
+export const WorkspaceLabelCreateRequestSchema = z.object({
+  type: z.literal("workspace.label.create.request"),
+  requestId: z.string(),
+  label: WorkspaceLabelDefinitionSchema,
 });
 export const WorkspaceLabelAssignmentSetRequestSchema = z.object({
   type: z.literal("workspace.label.assignment.set.request"),
@@ -2024,8 +2030,16 @@ export const ProviderInstallationUpdateSubscribeRequestMessageSchema = z.object(
   requestId: z.string(),
 });
 
+export const CodexBankedResetConsumeRequestMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_banked_reset.request"),
+  creditId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  requestId: z.string(),
+});
+
 export const ProviderUsageListRequestMessageSchema = z.object({
   type: z.literal("provider.usage.list.request"),
+  forceRefresh: z.boolean().optional(),
   requestId: z.string(),
 });
 
@@ -3610,6 +3624,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspacePinSetRequestSchema,
   WorkspaceBaseBranchSetRequestSchema,
   WorkspaceLabelListRequestSchema,
+  WorkspaceLabelCreateRequestSchema,
   WorkspaceLabelAssignmentSetRequestSchema,
   WorkspaceLabelUpdateRequestSchema,
   WorkspaceLabelDeleteRequestSchema,
@@ -3674,6 +3689,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderInstallationUpdateRequestMessageSchema,
   ProviderInstallationUpdateSubscribeRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
+  CodexBankedResetConsumeRequestMessageSchema,
   UsageListReportsRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
@@ -3791,6 +3807,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ChatPostRequestSchema,
   ChatReadRequestSchema,
   ChatWaitRequestSchema,
+  NotifyRequestSchema,
   ScheduleCreateRequestSchema,
   ScheduleListRequestSchema,
   SpeechLocalModelsListRequestSchema,
@@ -4019,6 +4036,10 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(worktreeRefActions): added after v0.16.2, remove gate after 2027-11-19.
         // Hosts without it check out a change request even when asked to branch off it.
         worktreeRefActions: z.boolean().optional(),
+        // COMPAT(scheduleWorkspaceLabels): added in v0.7.3, remove after 2027-03-06.
+        scheduleWorkspaceLabels: z.boolean().optional(),
+        // COMPAT(workspaceLabelCreation): added in v0.7.3, remove after 2027-03-06.
+        workspaceLabelCreation: z.boolean().optional(),
         // COMPAT(workspaceSetupRun): added in v0.8.0, remove gate after 2027-09-02.
         workspaceSetupRun: z.boolean().optional(),
         // COMPAT(workspaceTerminals): added in v0.8.0, remove gate after 2027-09-05.
@@ -4115,6 +4136,8 @@ export const ServerInfoStatusPayloadSchema = z
         fileByteWrites: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: z.boolean().optional(),
+        // COMPAT(codexBankedResets): added in v0.7.3, remove after 2027-03-06.
+        codexBankedResets: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: z.boolean().optional(),
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.
@@ -4492,6 +4515,17 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
           .optional(),
         checksStatus: z.enum(["none", "pending", "success", "failure"]).optional(),
         reviewDecision: z.enum(["approved", "changes_requested", "pending"]).nullable().optional(),
+        // Latest verdict per reviewer. State stays open so a future verdict still parses.
+        reviews: z
+          .array(
+            z.object({
+              author: z.string(),
+              state: z.string(),
+            }),
+          )
+          .optional(),
+        // Position in a forge-native stack, 1 closest to the base branch. Absent when unstacked.
+        stack: z.object({ position: z.number(), size: z.number() }).optional(),
         repoOwner: z.string().optional(),
         repoName: z.string().optional(),
         github: z.unknown().optional(),
@@ -4817,6 +4851,10 @@ export const WorkspaceLabelUpdateSchema = z.object({
       seq: z.number().int().positive(),
     }),
   ]),
+});
+export const WorkspaceLabelCreateResponseSchema = z.object({
+  type: z.literal("workspace.label.create.response"),
+  payload: z.object({ requestId: z.string(), label: WorkspaceLabelDefinitionSchema }),
 });
 export const WorkspaceLabelAssignmentSetResponseSchema = z.object({
   type: z.literal("workspace.label.assignment.set.response"),
@@ -5154,6 +5192,13 @@ export const AgentTimelineEntryPayloadSchema = z.object({
   turnMetrics: z.array(AgentMetricSchema).optional(),
 });
 
+/**
+ * Timeline fetch failed for a reason retrying cannot fix. The agent's recorded
+ * working directory is gone (its worktree was removed), so the daemon cannot
+ * resume it to read history.
+ */
+export const AGENT_TIMELINE_ERROR_CWD_MISSING = "agent_cwd_missing";
+
 export const FetchAgentTimelineResponseMessageSchema = z.object({
   type: z.literal("fetch_agent_timeline_response"),
   payload: z.object({
@@ -5178,6 +5223,9 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
     mergeWindow: z.boolean().optional(),
     entries: z.array(AgentTimelineEntryPayloadSchema),
     error: z.string().nullable(),
+    // Set when the failure is expected and cannot succeed on retry, so clients
+    // can stop retrying. Absent on older daemons: treat that as retryable.
+    errorCode: z.string().optional(),
   }),
 });
 
@@ -5394,7 +5442,7 @@ export const AgentAttentionRequiredMessageSchema = z.object({
   payload: z.object({
     subscriptionId: z.string().optional(),
     agentId: z.string(),
-    reason: z.enum(["finished", "error", "permission"]),
+    reason: z.enum(["finished", "error", "permission", "notify"]),
     timestamp: z.string(),
     shouldNotify: z.boolean(),
     notification: z
@@ -5405,7 +5453,7 @@ export const AgentAttentionRequiredMessageSchema = z.object({
           serverId: z.string(),
           workspaceId: z.string().optional(),
           agentId: z.string(),
-          reason: z.enum(["finished", "error", "permission"]),
+          reason: z.enum(["finished", "error", "permission", "notify"]),
         }),
       })
       .optional(),
@@ -5668,6 +5716,10 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
       url: z.string(),
       qr: z.string().nullable().optional(),
       relayEnabled: z.boolean(),
+      // Absent from daemons whose pairing links never expire.
+      expiresAt: z.string().nullable().optional(),
+      // Time left when the daemon answered; clients time the link with their own clock.
+      expiresInMs: z.number().nullable().optional(),
     })
     .passthrough(),
 });
@@ -7065,6 +7117,30 @@ export const ProviderUsageDetailSchema = z.object({
   tone: ProviderUsageToneSchema.optional(),
 });
 
+export const CodexBankedResetSchema = z.object({
+  id: z.string(),
+  resetType: z.string(),
+  supportedByPlan: z.boolean().nullable(),
+  status: z.string(),
+  grantedAt: z.string(),
+  expiresAt: z.string().nullable(),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+});
+
+export const CodexBankedResetsSchema = z.object({
+  availableCount: z.number().int().nonnegative(),
+  credits: z.array(CodexBankedResetSchema).nullable(),
+  error: z.string().nullable(),
+});
+
+export const CodexBankedResetOutcomeSchema = z.enum([
+  "reset",
+  "nothing_to_reset",
+  "no_credit",
+  "already_redeemed",
+]);
+
 export const ProviderUsageSchema = z.object({
   providerId: z.string(),
   displayName: z.string(),
@@ -7076,7 +7152,16 @@ export const ProviderUsageSchema = z.object({
   windows: z.array(ProviderUsageWindowSchema),
   balances: z.array(ProviderUsageBalanceSchema).optional(),
   details: z.array(ProviderUsageDetailSchema).optional(),
+  bankedResets: CodexBankedResetsSchema.optional(),
   error: z.string().nullable().optional(),
+});
+
+export const CodexBankedResetConsumeResponseMessageSchema = z.object({
+  type: z.literal("provider.codex.consume_banked_reset.response"),
+  payload: z.object({
+    requestId: z.string(),
+    outcome: CodexBankedResetOutcomeSchema,
+  }),
 });
 
 export const ProviderUsageListResponseMessageSchema = z.object({
@@ -7110,7 +7195,7 @@ const AvailableUsageReportSchema = z.object({
   details: z.array(ProviderUsageDetailSchema).optional(),
 });
 export const UsageReportSchema = z.discriminatedUnion("status", [
-  AvailableUsageReportSchema,
+  AvailableUsageReportSchema.extend({ bankedResets: CodexBankedResetsSchema.optional() }),
   z.object({ status: z.literal("unavailable"), problem: UsageProblemSchema }),
   z.object({ status: z.literal("error"), error: z.string() }),
 ]);
@@ -7745,6 +7830,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceUpdateMessageSchema,
   WorkspaceLabelListResponseSchema,
   WorkspaceLabelUpdateSchema,
+  WorkspaceLabelCreateResponseSchema,
   WorkspaceLabelAssignmentSetResponseSchema,
   WorkspaceLabelUpdateResponseSchema,
   WorkspaceLabelDeleteResponseSchema,
@@ -7904,6 +7990,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderInstallationUpdateClearedMessageSchema,
   ProviderUsageListResponseMessageSchema,
   UsageListReportsUpdateMessageSchema,
+  CodexBankedResetConsumeResponseMessageSchema,
   UsageListReportsResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
@@ -7922,6 +8009,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ChatPostResponseSchema,
   ChatReadResponseSchema,
   ChatWaitResponseSchema,
+  NotifyResponseSchema,
   ScheduleCreateResponseSchema,
   ScheduleListResponseSchema,
   SpeechLocalModelsListResponseSchema,
@@ -8110,6 +8198,9 @@ export type ProviderInstallationUpdateCleared = Omit<
   z.infer<typeof ProviderInstallationUpdateClearedMessageSchema>["payload"],
   "subscriptionId"
 >;
+export type CodexBankedReset = z.infer<typeof CodexBankedResetSchema>;
+export type CodexBankedResets = z.infer<typeof CodexBankedResetsSchema>;
+export type CodexBankedResetOutcome = z.infer<typeof CodexBankedResetOutcomeSchema>;
 export type ProviderUsageTone = z.infer<typeof ProviderUsageToneSchema>;
 export type UsageProblem = z.infer<typeof UsageProblemSchema>;
 export type UsageReport = z.infer<typeof UsageReportSchema>;

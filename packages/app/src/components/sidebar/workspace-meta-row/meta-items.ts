@@ -1,15 +1,20 @@
 import type { WorkspaceLabelDefinition } from "@getpaseo/protocol/workspace-labels";
-import type { PrHint } from "@/git/pr-hint";
+import type { PrHint, PrHintStack } from "@/git/pr-hint";
 import type { SidebarChecksDisplay } from "@/components/sidebar/display-preferences/checks-display";
 import type { SidebarRowItems } from "@/components/sidebar/display-preferences/row-items";
 import { selectCheckSummary, type CheckSummary } from "./check-summary";
+import { selectReviewSummary, type ReviewSummary } from "./review-summary";
 import type { WorkspaceServiceSummary } from "./service-summary";
 
 /**
  * What ends up on the line under a workspace title, in the order it is read: where the
  * workspace lives, what change it belongs to, whether that change is passing, what it is
- * running, and what someone filed it under. Identity first, then the work, then the work's
- * state, then the labels a person put on it.
+ * running, what someone filed it under, where its review stands, and where it sits in a stack.
+ * Identity first, then the work, then the work's state, then the labels a person put on it, then
+ * the reviewers' verdict and the stack position.
+ *
+ * The last two go last because most rows have neither: a token that comes and goes at the end of
+ * the line moves nothing else on it.
  *
  * Labels are one item rather than one per label: they are drawn as a run of chips with a single
  * separator in front of them, so the line reads as four peers however many labels a workspace
@@ -22,7 +27,9 @@ export type MetaRowItem =
   | { kind: "changeRequest"; hint: PrHint }
   | { kind: "checks"; summary: CheckSummary; label: boolean }
   | { kind: "services"; summary: WorkspaceServiceSummary }
-  | { kind: "labels"; labels: readonly WorkspaceLabelDefinition[] };
+  | { kind: "labels"; labels: readonly WorkspaceLabelDefinition[] }
+  | { kind: "reviews"; summary: ReviewSummary }
+  | { kind: "stack"; stack: PrHintStack };
 
 /**
  * Which peers a row should draw, given what it knows and what the user left switched on.
@@ -56,14 +63,14 @@ export function selectMetaRowItems(input: {
   } = input;
   const items: MetaRowItem[] = [];
 
+  if (hasHostBadge) {
+    items.push({ kind: "host" });
+  }
   if (currentBranch && visible.branch) {
     items.push({ kind: "branch", name: currentBranch });
   }
   if (projectName && visible.project) {
     items.push({ kind: "project", name: projectName });
-  }
-  if (hasHostBadge) {
-    items.push({ kind: "host" });
   }
   if (prHint && visible.changeRequest) {
     items.push({ kind: "changeRequest", hint: prHint });
@@ -86,6 +93,17 @@ export function selectMetaRowItems(input: {
 
   if (labels.length > 0 && visible.labels) {
     items.push({ kind: "labels", labels });
+  }
+
+  if (visible.reviews) {
+    const summary = selectReviewSummary(prHint);
+    if (summary) {
+      items.push({ kind: "reviews", summary });
+    }
+  }
+
+  if (prHint?.stack && visible.stack) {
+    items.push({ kind: "stack", stack: prHint.stack });
   }
 
   return items;
