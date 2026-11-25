@@ -17,6 +17,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     setupFiles: [path.resolve(__dirname, "./src/test-utils/vitest-setup.ts")],
+    globalSetup: [path.resolve(__dirname, "./src/test-utils/vitest-global-setup.ts")],
     pool: "forks",
     fileParallelism: false,
     // On 4-CPU CI runners, Vitest's default (availableParallelism - 1 = 3) leaves

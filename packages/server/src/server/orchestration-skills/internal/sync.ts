@@ -108,7 +108,15 @@ async function pruneEmptyParentDirs(rootDir: string, rels: readonly string[]): P
   }
 }
 
+async function isSymbolicLink(p: string): Promise<boolean> {
+  const info = await fs.lstat(p).catch(() => null);
+  return info?.isSymbolicLink() ?? false;
+}
+
 async function assertManagedPathsStayInsideSkill(rootDir: string, rels: readonly string[]) {
+  if (await isSymbolicLink(rootDir)) {
+    throw new Error(`Cannot sync into a skill directory that is a symbolic link: ${rootDir}`);
+  }
   for (const rel of rels) {
     const normalized = path.normalize(rel);
     if (
@@ -182,6 +190,8 @@ export async function removeSkill(skillName: string, targets: RemoveSkillTargets
   let firstError: unknown = null;
   for (const p of paths) {
     try {
+      // A linked skill belongs to the user, even if other roots have managed copies.
+      if (await isSymbolicLink(p)) continue;
       await fs.rm(p, { recursive: true, force: true });
     } catch (error) {
       // If an ancestor is a regular file, no skill directory can exist below it.
@@ -257,8 +267,16 @@ export async function syncSkills(options: SkillSyncOptions): Promise<SkillSyncRe
     // Attempt every install root for every skill before throwing so one
     // unwritable target does not stop updates from reaching healthy targets.
     for (const installDir of options.installDirs) {
+      const dstDir = path.join(installDir, skillName);
+      if (await isSymbolicLink(dstDir)) {
+        options.onSkillError?.(
+          skillName,
+          new Error(`Skipped skill directory that is a symbolic link: ${dstDir}`),
+        );
+        continue;
+      }
       try {
-        changedFiles += await syncDirectoryFiles(bundleSkillDir, path.join(installDir, skillName));
+        changedFiles += await syncDirectoryFiles(bundleSkillDir, dstDir);
       } catch (error) {
         if (!skillFailed) {
           skillFailed = true;

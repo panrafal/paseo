@@ -42,8 +42,30 @@ describe("orchestration skill paths", () => {
   });
 
   it("keeps the original fixed managed directories under the daemon user's home", () => {
-    const home = os.homedir();
+    const previous = process.env.PASEO_SKILLS_HOME;
+    delete process.env.PASEO_SKILLS_HOME;
+    try {
+      const home = os.homedir();
 
+      expect(resolveSkillTargets()).toMatchObject({
+        installDirs: [
+          path.join(home, ".agents", "skills"),
+          path.join(home, ".claude", "skills"),
+          path.join(home, ".gemini", "config", "skills"),
+        ],
+        codexDir: path.join(home, ".codex", "skills"),
+      });
+    } finally {
+      if (previous !== undefined) process.env.PASEO_SKILLS_HOME = previous;
+    }
+  });
+
+  it("puts the managed directories under PASEO_SKILLS_HOME when it is set", () => {
+    const home = process.env.PASEO_SKILLS_HOME;
+
+    expect(home).toBeTypeOf("string");
+    if (!home) throw new Error("Expected test skills home");
+    expect(home).not.toBe(os.homedir());
     expect(resolveSkillTargets()).toMatchObject({
       installDirs: [
         path.join(home, ".agents", "skills"),
