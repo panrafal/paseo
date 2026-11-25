@@ -53,6 +53,7 @@ import { ProviderList } from "@/provider-settings";
 import { openProviderSettings } from "@/navigation/settings-navigation";
 import { HostUsageSection } from "@/usage";
 import { HostAppearanceSection } from "@/screens/settings/host-appearance-section";
+import { HostOpenInEditorSection } from "@/screens/settings/host-open-in-editor-section";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
@@ -385,6 +386,8 @@ export function HostSettingsPage({
       <HostConnectionError serverId={serverId} />
 
       <HostAppearanceSection host={host} />
+
+      <HostOpenInEditorSection serverId={serverId} isLocalDaemon={isLocalDaemon} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 
