@@ -125,8 +125,9 @@ export interface DesktopEventsBridge {
   on?: (event: string, handler: (payload: unknown) => void) => Promise<() => void> | (() => void);
 }
 
-export interface DesktopAgentNavigationBridge {
-  ready?: () => Promise<{ serverId: string; agentId: string } | null>;
+export interface DesktopNavigationBridge {
+  /** Marks this window ready and returns the deep link queued while it loaded. */
+  ready?: () => Promise<unknown>;
 }
 
 export type DesktopBrowserShortcutEvent =
@@ -179,7 +180,7 @@ export interface DesktopHostBridge {
   browserHostInstanceId?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
-  agentNavigation?: DesktopAgentNavigationBridge;
+  navigation?: DesktopNavigationBridge;
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;
