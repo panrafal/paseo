@@ -74,6 +74,7 @@ export function describeActiveConnection(
   switch (connection.type) {
     case "directSocket":
     case "directPipe":
+    case "directTcpBridge":
       return { kind: "local" };
     case "relay":
       return { kind: "relay", endpoint: formatConnectionEndpoint(connection.endpoint) };
@@ -100,6 +101,7 @@ export function describeHostConnection(
   switch (connection.type) {
     case "directSocket":
     case "directPipe":
+    case "directTcpBridge":
       return { kind: "local" };
     case "relay":
       return { kind: "relay", endpoint: formatConnectionEndpoint(connection.relayEndpoint) };
