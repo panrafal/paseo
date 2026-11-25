@@ -53,6 +53,9 @@ trap restore_tree EXIT
 # vitest writes. node_modules is ignored by git and kept between runs.
 export TMPDIR="$dir/node_modules/.tmp"
 mkdir -p "$TMPDIR"
+# That puts every temp dir inside this checkout's work tree, so a test's "not a git repo"
+# fixture would find this repository. Git stops looking for one at the ceiling.
+export GIT_CEILING_DIRECTORIES="$TMPDIR${GIT_CEILING_DIRECTORIES:+:$GIT_CEILING_DIRECTORIES}"
 
 step() { section "🧪" "$*"; }
 failures=()
