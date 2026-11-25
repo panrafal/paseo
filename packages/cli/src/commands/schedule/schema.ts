@@ -85,6 +85,13 @@ export function createScheduleInspectRows(schedule: ScheduleRecord): ScheduleIns
           },
         ]
       : []),
+    {
+      key: "WorkspaceLabels",
+      value:
+        schedule.target.type === "new-agent"
+          ? (schedule.target.config.workspaceLabels ?? []).join(", ")
+          : "",
+    },
     { key: "Status", value: schedule.status },
     { key: "CreatedAt", value: schedule.createdAt },
     { key: "UpdatedAt", value: schedule.updatedAt },

@@ -21,6 +21,7 @@ export interface ScheduleCreateOptions extends ScheduleCommandOptions {
   thinking?: string;
   cwd?: string;
   archiveOnFinish?: boolean;
+  workspaceLabel?: string[];
   maxRuns?: string;
   expiresIn?: string;
   runNow?: boolean;
@@ -45,6 +46,7 @@ export async function runCreateCommand(
     thinking: options.thinking,
     cwd: options.cwd,
     archiveOnFinish: options.archiveOnFinish,
+    workspaceLabel: options.workspaceLabel,
     daemonTarget: options.daemonTarget,
     maxRuns: options.maxRuns,
     expiresIn: options.expiresIn,

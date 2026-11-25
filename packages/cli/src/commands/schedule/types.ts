@@ -29,6 +29,7 @@ export type ScheduleTarget =
         model?: string;
         thinkingOptionId?: string;
         archiveOnFinish?: boolean;
+        workspaceLabels?: string[];
         title?: string | null;
         providerOptions?: Record<string, unknown>;
       };
@@ -136,6 +137,7 @@ export interface ScheduleRunOncePayload {
 }
 
 export interface UpdateScheduleNewAgentConfig {
+  workspaceLabels?: string[];
   provider?: string;
   model?: string | null;
   modeId?: string | null;
