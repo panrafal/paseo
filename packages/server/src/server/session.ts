@@ -27,6 +27,7 @@ import type {
   CreationSnapshot,
   AgentCreateRequest,
 } from "@getpaseo/protocol/messages";
+import { AGENT_TIMELINE_ERROR_CWD_MISSING } from "@getpaseo/protocol/messages";
 import type { MessageReceipts } from "./message-receipts/index.js";
 import {
   isDaemonBackgroundWorkItem,
@@ -126,7 +127,11 @@ import {
   type WorkspaceLabelService,
 } from "./workspace-labels/index.js";
 
-import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
+import {
+  AgentManager,
+  AgentRunCancellationError,
+  WorkingDirectoryMissingError,
+} from "./agent/agent-manager.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
@@ -8738,10 +8743,21 @@ export class Session {
         source,
       );
     } catch (error) {
-      this.sessionLogger.error(
-        { err: error, agentId: msg.agentId },
-        "Failed to handle fetch_agent_timeline_request",
-      );
+      // An agent whose worktree was removed cannot be resumed to read history.
+      // That is expected for archived work, and retrying never fixes it, so it
+      // is reported without a stack and tagged so clients stop asking.
+      const cwdMissing = error instanceof WorkingDirectoryMissingError;
+      if (cwdMissing) {
+        this.sessionLogger.warn(
+          { agentId: msg.agentId, cwd: error.cwd },
+          "Timeline unavailable: agent working directory no longer exists",
+        );
+      } else {
+        this.sessionLogger.error(
+          { err: error, agentId: msg.agentId },
+          "Failed to handle fetch_agent_timeline_request",
+        );
+      }
       this.emitForSource(
         {
           type: "fetch_agent_timeline_response",
@@ -8763,6 +8779,7 @@ export class Session {
             ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
             entries: [],
             error: error instanceof Error ? error.message : String(error),
+            ...(cwdMissing ? { errorCode: AGENT_TIMELINE_ERROR_CWD_MISSING } : {}),
           },
         },
         source,
