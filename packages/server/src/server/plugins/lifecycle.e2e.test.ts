@@ -559,6 +559,7 @@ test("agent creation hooks change the provider and environment before the sessio
       cwd: directory,
       title: "Hook test",
       systemPrompt: "Saved instructions",
+      labels: { "paseo.schedule-id": "sched-1" },
     });
     expect(agent.provider).toBe(PROVIDER_ID);
     expect(await daemon.daemon.agentStorage.get(agent.id)).toMatchObject({
@@ -579,7 +580,11 @@ test("agent creation hooks change the provider and environment before the sessio
       .toMatchObject([
         {
           hook: "agent.open.before",
-          request: { agentId: agent.id, env: { HOOK_CREATE: "created" } },
+          request: {
+            agentId: agent.id,
+            labels: { "paseo.schedule-id": "sched-1" },
+            env: { HOOK_CREATE: "created" },
+          },
         },
         {
           hook: "provider.open",
