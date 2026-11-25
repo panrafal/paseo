@@ -1192,6 +1192,7 @@ export const es: TranslationResources = {
     },
   },
   workspaceLabels: {
+    staleSelection: "Algunas etiquetas seleccionadas ya no existen. Elimínalas para continuar.",
     title: "Etiquetas",
     unlabelled: "Sin etiqueta",
     create: "Crear etiqueta",

@@ -400,6 +400,7 @@ function resolveScheduleUpdateProviderAndModel(params: {
 }
 
 interface ScheduleUpdateToolInput {
+  workspaceLabels?: string[];
   id: string;
   every?: string;
   cron?: string;
@@ -546,6 +547,7 @@ function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateSchedul
     ...(input.mode !== undefined ? { modeId: input.mode } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
     ...(input.archiveOnFinish !== undefined ? { archiveOnFinish: input.archiveOnFinish } : {}),
+    ...(input.workspaceLabels !== undefined ? { workspaceLabels: input.workspaceLabels } : {}),
   };
 
   return {
@@ -1002,6 +1004,7 @@ function createToolCatalog(
   };
 
   const resolveNewAgentScheduleTarget = (params?: {
+    workspaceLabels?: string[];
     provider?: string;
     cwd?: string;
     isolation?: "local" | "worktree";
@@ -1017,6 +1020,9 @@ function createToolCatalog(
           ...buildCallerAgentScheduleConfig(callerAgent, params),
           ...(params?.isolation ? { isolation: params.isolation } : {}),
           ...archiveOnFinish,
+          ...(params?.workspaceLabels !== undefined
+            ? { workspaceLabels: params.workspaceLabels }
+            : {}),
         },
       };
     }
@@ -1037,6 +1043,9 @@ function createToolCatalog(
         ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
         ...(params?.isolation ? { isolation: params.isolation } : {}),
         ...archiveOnFinish,
+        ...(params?.workspaceLabels !== undefined
+          ? { workspaceLabels: params.workspaceLabels }
+          : {}),
       },
     };
   };
@@ -2724,6 +2733,10 @@ function createToolCatalog(
             .describe(
               "Archive each run's workspace and agent when the run ends. Defaults to true; pass false to keep them active.",
             ),
+          workspaceLabels: z
+            .array(z.string().trim().min(1))
+            .optional()
+            .describe("Existing workspace label names; omitted or [] assigns none."),
           maxRuns: z.number().int().positive().optional(),
           expiresIn: scheduleDurationInputSchema.optional(),
         })
@@ -2739,6 +2752,7 @@ function createToolCatalog(
       cwd,
       isolation,
       archiveOnFinish,
+      workspaceLabels,
       maxRuns,
       expiresIn,
     }) => {
@@ -2753,7 +2767,13 @@ function createToolCatalog(
           cron,
           ...(timezone !== undefined ? { timezone } : {}),
         }),
-        target: resolveNewAgentScheduleTarget({ provider, cwd, isolation, archiveOnFinish }),
+        target: resolveNewAgentScheduleTarget({
+          provider,
+          cwd,
+          isolation,
+          archiveOnFinish,
+          workspaceLabels,
+        }),
         ...(name?.trim() ? { name: name.trim() } : {}),
         ...(maxRuns === undefined ? {} : { maxRuns }),
         ...(expiresAt === undefined ? {} : { expiresAt }),
@@ -3072,6 +3092,10 @@ function createToolCatalog(
             .nullable()
             .optional()
             .describe("New mode for new-agent target (null to clear)."),
+          workspaceLabels: z
+            .array(z.string().trim().min(1))
+            .optional()
+            .describe("Replace with existing label names; [] clears; omitted preserves."),
           cwd: z.string().trim().min(1).optional().describe("New cwd for new-agent target."),
           archiveOnFinish: z
             .boolean()
