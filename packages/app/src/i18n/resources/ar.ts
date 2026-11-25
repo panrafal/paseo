@@ -1089,6 +1089,15 @@ export const ar: TranslationResources = {
           failedAccessible: "فشلت الفحوصات",
           runningAccessible: "الفحوصات قيد التشغيل",
         },
+        reviewSummary: {
+          approved: "تمت الموافقة",
+          approvedBy: "وافق عليه {{names}}",
+          changesRequested: "طُلبت تغييرات",
+          changesRequestedBy: "طلب {{names}} تغييرات",
+        },
+        stackSummary: {
+          accessible: "طلب السحب {{position}} من {{size}} في حزمته",
+        },
         sections: {
           checks: "الشيكات",
           pipeline: "خط المعالجة",
@@ -1250,6 +1259,8 @@ export const ar: TranslationResources = {
         project: "المشروع",
         host: "المضيف",
         changeRequest: "طلب السحب",
+        reviews: "المراجعات",
+        stack: "حزمة طلبات السحب",
         checks: "الفحوصات",
         services: "الخدمات",
         labels: "التسميات",

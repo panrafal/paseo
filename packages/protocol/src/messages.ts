@@ -4492,6 +4492,17 @@ export const WorkspaceGitHubRuntimePayloadSchema = z
           .optional(),
         checksStatus: z.enum(["none", "pending", "success", "failure"]).optional(),
         reviewDecision: z.enum(["approved", "changes_requested", "pending"]).nullable().optional(),
+        // Latest verdict per reviewer. State stays open so a future verdict still parses.
+        reviews: z
+          .array(
+            z.object({
+              author: z.string(),
+              state: z.string(),
+            }),
+          )
+          .optional(),
+        // Position in a forge-native stack, 1 closest to the base branch. Absent when unstacked.
+        stack: z.object({ position: z.number(), size: z.number() }).optional(),
         repoOwner: z.string().optional(),
         repoName: z.string().optional(),
         github: z.unknown().optional(),

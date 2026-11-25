@@ -23,7 +23,7 @@ const EXPECTED_GITHUB_FAST_POLL_MS = 20_000;
 const EXPECTED_GITHUB_SLOW_POLL_MS = 120_000;
 const EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS = 300_000;
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,updatedAt,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,updatedAt,mergedAt,reviewDecision,latestReviews,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 const FORK_PR_QUERY = "state=all&per_page=100&head=forkOwner%3Afeature%2Ffork";
 
@@ -1170,6 +1170,127 @@ describe("ForgeService", () => {
       }
     },
   );
+
+  it("carries the opinionated review list from a batched poll", async () => {
+    const runner = createScriptedRunner([
+      batchPollStatusJson({
+        t0: batchPollRepositoryJson([
+          batchPollPrNodeJson({
+            headRefName: "feat-a",
+            state: "OPEN",
+            mergedAt: null,
+            latestOpinionatedReviews: {
+              nodes: [
+                { author: { login: "alice" }, state: "APPROVED" },
+                { author: { login: "carol" }, state: "CHANGES_REQUESTED" },
+              ],
+            },
+          }),
+        ]),
+      }),
+      batchPollStatusJson({ t0: batchPollChecksAliasJson([]) }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => "acme/widgets",
+      now: () => 0,
+    });
+    const statuses: Array<CurrentPullRequestStatus | null> = [];
+    try {
+      service.retainCurrentPullRequestStatusPoll?.({
+        cwd: "/repo",
+        headRef: "feat-a",
+        onStatus: (status) => statuses.push(status),
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await flushMicrotasks();
+
+      expect(statuses.map((status) => status?.reviews)).toEqual([
+        [
+          { author: "alice", state: "approved" },
+          { author: "carol", state: "changes_requested" },
+        ],
+      ]);
+      expect(runner.calls[0]?.args.join(" ")).toContain("latestOpinionatedReviews(first: 20)");
+    } finally {
+      service.dispose?.();
+    }
+  });
+
+  it("reads the stack position from a github.com batched poll", async () => {
+    const runner = createScriptedRunner([
+      batchPollStatusJson({
+        t0: batchPollRepositoryJson([
+          batchPollPrNodeJson({
+            headRefName: "feat-a",
+            state: "OPEN",
+            mergedAt: null,
+            stackEntry: { position: 2, stack: { size: 3 } },
+          }),
+        ]),
+      }),
+      batchPollStatusJson({ t0: batchPollChecksAliasJson([]) }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => "acme/widgets",
+      now: () => 0,
+    });
+    const statuses: Array<CurrentPullRequestStatus | null> = [];
+    try {
+      service.retainCurrentPullRequestStatusPoll?.({
+        cwd: "/repo",
+        headRef: "feat-a",
+        onStatus: (status) => statuses.push(status),
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await flushMicrotasks();
+
+      expect(statuses.map((status) => status?.stack)).toEqual([{ position: 2, size: 3 }]);
+      expect(runner.calls[0]?.args.join(" ")).toContain("stackEntry {");
+    } finally {
+      service.dispose?.();
+    }
+  });
+
+  it("leaves the stack selection out of a GitHub Enterprise batched poll", async () => {
+    const runner = createScriptedRunner([
+      batchPollStatusJson({
+        t0: batchPollRepositoryJson([
+          batchPollPrNodeJson({ headRefName: "feat-a", state: "OPEN", mergedAt: null }),
+        ]),
+      }),
+      batchPollStatusJson({ t0: batchPollChecksAliasJson([]) }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => "github.acme.internal",
+      resolveRepoSlug: async () => "acme/widgets",
+      now: () => 0,
+    });
+    try {
+      service.retainCurrentPullRequestStatusPoll?.({
+        cwd: "/repo",
+        headRef: "feat-a",
+        onStatus: () => {},
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await flushMicrotasks();
+
+      const query = runner.calls
+        .map((call) => call.args.join(" "))
+        .find((args) => args.includes("PaseoBatchPullRequestStatus"));
+      expect(query).toBeDefined();
+      expect(query).not.toContain("stackEntry");
+    } finally {
+      service.dispose?.();
+    }
+  });
 
   it("batches PR status polls across workspaces into one GraphQL request", async () => {
     let now = 0;
@@ -3258,6 +3379,54 @@ describe("ForgeService", () => {
     });
 
     expect(status?.mergeable).toBe("UNKNOWN");
+  });
+
+  it("keeps each reviewer's approval or change request and drops comment-only reviews", async () => {
+    const runner = createRunner([
+      currentPullRequestJson({
+        latestReviews: [
+          { author: { login: "alice" }, state: "APPROVED" },
+          { author: { login: "bob" }, state: "COMMENTED" },
+          { author: { login: "carol" }, state: "CHANGES_REQUESTED" },
+          { author: null, state: "APPROVED" },
+          { author: { login: "dave" }, state: "DISMISSED" },
+        ],
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+
+    expect(status?.reviews).toEqual([
+      { author: "alice", state: "approved" },
+      { author: "carol", state: "changes_requested" },
+      { author: "ghost", state: "approved" },
+    ]);
+  });
+
+  it("omits reviews when no reviewer has approved or requested changes", async () => {
+    const runner = createRunner([
+      currentPullRequestJson({
+        latestReviews: [{ author: { login: "bob" }, state: "COMMENTED" }],
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+
+    expect(status).not.toHaveProperty("reviews");
   });
 
   it("keeps an open PR when its remote head SHA differs from the checkout HEAD", async () => {

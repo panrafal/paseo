@@ -79,6 +79,22 @@ export type PullRequestChecksStatus = "none" | "pending" | "success" | "failure"
 export type PullRequestReviewDecision = "approved" | "changes_requested" | "pending" | null;
 export type PullRequestMergeable = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
 
+/**
+ * A reviewer's standing verdict on a change request. Only the two verdicts that block or clear
+ * a merge are kept: a review that only comments, or one that was dismissed, says nothing about
+ * whether the change can land.
+ */
+export interface PullRequestReview {
+  author: string;
+  state: "approved" | "changes_requested";
+}
+
+/** Where a change request sits in a forge-native stack: 1 is closest to the base branch. */
+export interface PullRequestStackPosition {
+  position: number;
+  size: number;
+}
+
 export function computeChecksStatus(checks: PullRequestCheck[]): PullRequestChecksStatus {
   if (checks.length === 0) {
     return "none";
@@ -136,6 +152,10 @@ export interface CurrentPullRequestStatus {
   checks: PullRequestCheck[];
   checksStatus: PullRequestChecksStatus;
   reviewDecision: PullRequestReviewDecision;
+  /** Latest verdict per reviewer. Absent when the forge reports none. */
+  reviews?: PullRequestReview[];
+  /** Absent when the change request is not part of a stack, or the forge cannot say. */
+  stack?: PullRequestStackPosition;
   forgeSpecific?: ForgeSpecificStatusFacts;
 }
 

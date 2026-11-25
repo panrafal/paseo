@@ -1113,6 +1113,15 @@ export const ptBR: TranslationResources = {
           failedAccessible: "Verificações com falha",
           runningAccessible: "Verificações em andamento",
         },
+        reviewSummary: {
+          approved: "Aprovado",
+          approvedBy: "Aprovado por {{names}}",
+          changesRequested: "Alterações solicitadas",
+          changesRequestedBy: "Alterações solicitadas por {{names}}",
+        },
+        stackSummary: {
+          accessible: "Pull request {{position}} de {{size}} na pilha",
+        },
         sections: {
           checks: "Verificações",
           pipeline: "Pipeline",
@@ -1277,6 +1286,8 @@ export const ptBR: TranslationResources = {
         project: "Projeto",
         host: "Host",
         changeRequest: "Pull request",
+        reviews: "Revisões",
+        stack: "Pilha de PR",
         checks: "Verificações",
         services: "Serviços",
         labels: "Etiquetas",

@@ -1123,6 +1123,15 @@ export const es: TranslationResources = {
           failedAccessible: "Comprobaciones fallidas",
           runningAccessible: "Comprobaciones en curso",
         },
+        reviewSummary: {
+          approved: "Aprobado",
+          approvedBy: "Aprobado por {{names}}",
+          changesRequested: "Cambios solicitados",
+          changesRequestedBy: "Cambios solicitados por {{names}}",
+        },
+        stackSummary: {
+          accessible: "Pull request {{position}} de {{size}} en su pila",
+        },
         sections: {
           checks: "cheques",
           pipeline: "Pipeline",
@@ -1287,6 +1296,8 @@ export const es: TranslationResources = {
         project: "Proyecto",
         host: "Host",
         changeRequest: "Pull request",
+        reviews: "Revisiones",
+        stack: "Pila de PR",
         checks: "Comprobaciones",
         services: "Servicios",
         labels: "Etiquetas",

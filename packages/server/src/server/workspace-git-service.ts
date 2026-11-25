@@ -36,6 +36,8 @@ import type {
   ForgeSpecificStatusFacts,
   PullRequestCheck,
   PullRequestMergeable,
+  PullRequestReview,
+  PullRequestStackPosition,
 } from "../services/forge-service.js";
 import { createForgeService } from "../services/forge-registry.js";
 import {
@@ -216,6 +218,8 @@ export interface WorkspaceGitRuntimeSnapshot {
       checks?: PullRequestCheck[];
       checksStatus?: "none" | "pending" | "success" | "failure";
       reviewDecision?: "approved" | "changes_requested" | "pending" | null;
+      reviews?: PullRequestReview[];
+      stack?: PullRequestStackPosition;
       forgeSpecific?: ForgeSpecificStatusFacts;
     } | null;
     error: { message: string } | null;

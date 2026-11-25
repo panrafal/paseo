@@ -1100,6 +1100,15 @@ export const en = {
           failedAccessible: "Checks failed",
           runningAccessible: "Checks running",
         },
+        reviewSummary: {
+          approved: "Approved",
+          approvedBy: "Approved by {{names}}",
+          changesRequested: "Changes requested",
+          changesRequestedBy: "Changes requested by {{names}}",
+        },
+        stackSummary: {
+          accessible: "Pull request {{position}} of {{size}} in its stack",
+        },
         sections: {
           checks: "Checks",
           pipeline: "Pipeline",
@@ -1261,6 +1270,8 @@ export const en = {
         project: "Project",
         host: "Host",
         changeRequest: "Pull request",
+        reviews: "Reviews",
+        stack: "PR stack",
         checks: "Checks",
         services: "Services",
         labels: "Labels",
