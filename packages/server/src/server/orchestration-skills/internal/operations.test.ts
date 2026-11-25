@@ -256,13 +256,18 @@ describe("getSkillsStatus", () => {
     expect(status.ops).toEqual([{ kind: "update", name: "paseo" }]);
   });
 
-  it("returns drift when Antigravity is missing or stale", async () => {
+  it.each(["Antigravity", "Kilo"])("returns drift when %s is missing or stale", async (agent) => {
+    const targetDir =
+      agent === "Antigravity"
+        ? sandbox.targets.antigravityDir
+        : path.join(sandbox.root, "home", ".kilo", "skills");
+    sandbox.targets.installDirs[2] = targetDir;
     await writeCurrentBundle(sandbox.targets.sourceDir);
     await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", { "SKILL.md": "paseo-v1" });
     await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo-loop", { "SKILL.md": "loop-v1" });
     await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", { "SKILL.md": "paseo-v1" });
     await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.antigravityDir, "paseo", { "SKILL.md": "stale" });
+    await writeOnDiskSkill(targetDir, "paseo", { "SKILL.md": "stale" });
 
     const status = await getSkillsStatus(sandbox.targets, ALL_SKILLS);
 

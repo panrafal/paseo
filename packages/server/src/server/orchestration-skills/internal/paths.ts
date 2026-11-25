@@ -23,6 +23,7 @@ export function resolveSkillTargets(home: string = os.homedir()): SkillTargets {
       path.join(home, ".agents", "skills"),
       path.join(home, ".claude", "skills"),
       path.join(home, ".gemini", "config", "skills"),
+      path.join(home, ".kilo", "skills"),
     ],
     codexDir: path.join(home, ".codex", "skills"),
   };

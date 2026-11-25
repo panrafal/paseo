@@ -11,6 +11,7 @@ interface Sandbox {
   claudeDir: string;
   codexDir: string;
   antigravityDir: string;
+  kiloDir: string;
   installDirs: string[];
 }
 
@@ -21,9 +22,10 @@ async function makeSandbox(): Promise<Sandbox> {
   const claudeDir = path.join(root, "home", ".claude", "skills");
   const codexDir = path.join(root, "home", ".codex", "skills");
   const antigravityDir = path.join(root, "home", ".gemini", "config", "skills");
-  const installDirs = [agentsDir, claudeDir, antigravityDir];
+  const kiloDir = path.join(root, "home", ".kilo", "skills");
+  const installDirs = [agentsDir, claudeDir, antigravityDir, kiloDir];
   await fs.mkdir(sourceDir, { recursive: true });
-  return { root, sourceDir, agentsDir, claudeDir, codexDir, antigravityDir, installDirs };
+  return { root, sourceDir, agentsDir, claudeDir, codexDir, antigravityDir, kiloDir, installDirs };
 }
 
 async function writeBundleSkill(
@@ -83,6 +85,9 @@ describe("syncSkills", () => {
       "utf-8",
     );
     expect(antigravityContent).toBe("new paseo content");
+    expect(await fs.readFile(path.join(sandbox.kiloDir, "paseo", "SKILL.md"), "utf-8")).toBe(
+      "new paseo content",
+    );
     await expect(fs.stat(path.join(sandbox.codexDir, "paseo", "SKILL.md"))).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -411,6 +416,7 @@ describe("removeSkill", () => {
     await expect(fs.access(path.join(sandbox.claudeDir, "paseo"))).rejects.toThrow();
     await expect(fs.access(path.join(sandbox.codexDir, "paseo"))).rejects.toThrow();
     await expect(fs.access(path.join(sandbox.antigravityDir, "paseo"))).rejects.toThrow();
+    await expect(fs.access(path.join(sandbox.kiloDir, "paseo"))).rejects.toThrow();
   });
 
   it("does not throw when targets are missing", async () => {
